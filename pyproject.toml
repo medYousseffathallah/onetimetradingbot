@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling>=1.25,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bvmt-research-starter"
+version = "0.1.0"
+description = "Offline-first foundation for auditable BVMT virtual-competition research"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = []
+
+[project.scripts]
+bvmt = "bvmt.cli:main"
+
+[project.optional-dependencies]
+data = ["duckdb>=1.1,<2", "pandas>=2.2,<3", "pyarrow>=18,<30", "httpx>=0.27,<1"]
+research = ["backtrader==1.9.78.123", "lightgbm>=4.5,<5", "scikit-learn>=1.5,<2"]
+dashboard = ["streamlit>=1.40,<2"]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "ruff>=0.9,<1", "mypy>=1.14,<2", "pip-audit>=2.7,<3"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bvmt"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/bvmt"]

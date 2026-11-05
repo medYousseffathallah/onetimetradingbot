@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Model Validation"
+  short_description: "BVMT Model Validation: auditable project workflow"
+  default_prompt: "Use $bvmt-model-validation for the current BVMT project task."

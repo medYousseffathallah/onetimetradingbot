@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Backtest Validation"
+  short_description: "BVMT Backtest Validation: auditable project workflow"
+  default_prompt: "Use $bvmt-backtest-validation for the current BVMT project task."

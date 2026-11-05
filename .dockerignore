@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+.env.*
+artifacts
+data/raw
+data/processed
+references
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+skill-packages

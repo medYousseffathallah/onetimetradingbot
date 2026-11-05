@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Competition Rules"
+  short_description: "BVMT Competition Rules: auditable project workflow"
+  default_prompt: "Use $bvmt-competition-rules for the current BVMT project task."

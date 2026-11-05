@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Security Review"
+  short_description: "BVMT Security Review: auditable project workflow"
+  default_prompt: "Use $bvmt-security-review for the current BVMT project task."

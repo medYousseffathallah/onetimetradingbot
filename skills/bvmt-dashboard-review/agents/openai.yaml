@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Dashboard Review"
+  short_description: "BVMT Dashboard Review: auditable project workflow"
+  default_prompt: "Use $bvmt-dashboard-review for the current BVMT project task."

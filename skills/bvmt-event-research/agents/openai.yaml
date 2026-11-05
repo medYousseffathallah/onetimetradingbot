@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Event Research"
+  short_description: "BVMT Event Research: auditable project workflow"
+  default_prompt: "Use $bvmt-event-research for the current BVMT project task."

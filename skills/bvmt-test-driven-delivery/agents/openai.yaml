@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Test-Driven Delivery"
+  short_description: "BVMT Test-Driven Delivery: auditable project workflow"
+  default_prompt: "Use $bvmt-test-driven-delivery for the current BVMT project task."

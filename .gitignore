@@ -1,0 +1,56 @@
+# Python & Virtual Environments
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Test, Lint & Type Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment & Credentials (Never Commit Secrets)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+*secret*.json
+configs/llm_budget.local.json
+
+# Local Databases, Caches & Logs
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite3
+*.log
+
+# Generated Artifacts, Alerts & Local Portfolio Journals
+artifacts/*
+!artifacts/.gitkeep
+
+# Raw Snapshots, Staging, Processed Data & Private Portfolio Ledgers
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/portfolio/
+data/staging/
+
+# External References, Browser Profiles & Editor Skills Copies
+/references/
+node_modules/
+playwright-report/
+browser-profiles/
+.agents/skills/
+.claude/skills/
+.cursor/skills/
+.DS_Store
+Thumbs.db

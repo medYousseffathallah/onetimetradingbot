@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "mode": "competition_exact",
+  "execution_enabled": false,
+  "official_source": "https://www.tunisbourse-challenge.com/displayp.aspx",
+  "access_note": "Public reglement.aspx snapshotted on 2026-11-05; help.aspx FAQ statements supplied by participant on 2026-11-05. Overall gate remains blocked pending resolution of simulator ambiguities and human review sign-off.",
+  "fields": {
+    "edition": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "initial_cash_tnd": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "start_date": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "end_date": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "eligible_instruments": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "scoring_and_final_valuation": {
+      "value": {
+        "final_valuation_methodology": null,
+        "leaderboard_recalculation_window_tunis": "11:00-15:00 hourly",
+        "max_accounts_per_participant": 1,
+        "pnl_includes_realized_gains_and_losses": true
+      },
+      "status": "unverified",
+      "source": "https://www.tunisbourse-challenge.com/help.aspx (participant-supplied, captured 2026-11-05)",
+      "evidence_locator": "FAQ: Leaderboard & Participation sections (final valuation methodology remains unresolved)",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "fees_and_taxes": {
+      "value": {
+        "additional_fees_assumed": false,
+        "buy_fee_bps": "50",
+        "buy_fee_rate": "0.005",
+        "sell_fee_bps": "50",
+        "sell_fee_rate": "0.005"
+      },
+      "status": "unverified",
+      "source": "https://www.tunisbourse-challenge.com/help.aspx (participant-supplied, captured 2026-11-05)",
+      "evidence_locator": "FAQ: Transaction costs (0.50% purchase fee, 0.50% sale fee)",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "execution_matching": {
+      "value": {
+        "execution_window_tunis": "09:00-14:15",
+        "limit_orders_pending_until_satisfied": true,
+        "minimum_trading_activity_threshold": null,
+        "orders_enter_pending_state_first": true,
+        "outside_window_routed_to_next_session": true,
+        "partial_execution_possible": true,
+        "pending_on_no_trade_or_low_activity": true,
+        "suspended_security_orders_remain_pending": true,
+        "unexecuted_order_expiry": "1_week_convention_unresolved"
+      },
+      "status": "unverified",
+      "source": "https://www.tunisbourse-challenge.com/help.aspx (participant-supplied, captured 2026-11-05)",
+      "evidence_locator": "FAQ: Execution & Order expiry sections (minimum activity threshold and 1-week calendar vs trading-week convention unresolved)",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "allowed_order_types": {
+      "value": {
+        "AllowedSides": [
+          "buy",
+          "sell"
+        ],
+        "OrderTypes": [
+          "market",
+          "limit"
+        ],
+        "pending_orders_cancellable": true,
+        "sell_cannot_exceed_owned_shares": true
+      },
+      "status": "unverified",
+      "source": "https://www.tunisbourse-challenge.com/help.aspx (participant-supplied, captured 2026-11-05)",
+      "evidence_locator": "FAQ: Order types section",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "position_and_sector_limits": {
+      "value": {
+        "auto_reduce_order_quantity_to_cap": true,
+        "calculation_timing_and_pending_order_treatment": null,
+        "cancel_or_purge_on_violation": true,
+        "max_single_stock_weight": "0.10"
+      },
+      "status": "unverified",
+      "source": "https://www.tunisbourse-challenge.com/help.aspx (participant-supplied, captured 2026-11-05)",
+      "evidence_locator": "FAQ: Portfolio constraints section (10% max single-stock exposure; exact calculation timing and treatment of pending orders unresolved)",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "short_selling_and_leverage": {
+      "value": {
+        "cancel_or_purge_on_insufficient_cash_or_shares": true,
+        "leverage_allowed": false,
+        "sell_capped_at_owned_shares": true,
+        "short_selling_allowed": false
+      },
+      "status": "unverified",
+      "source": "https://www.tunisbourse-challenge.com/help.aspx (participant-supplied, captured 2026-11-05)",
+      "evidence_locator": "FAQ: Order types & Portfolio constraints sections",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "settlement_and_cash": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "corporate_actions": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "tick_and_lot_rules": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    "automation_policy": {
+      "value": null,
+      "status": "unverified",
+      "source": null,
+      "evidence_locator": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    }
+  }
+}

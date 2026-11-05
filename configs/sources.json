@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "synthetic-fixture",
+      "kind": "local",
+      "permission_status": "project-generated-synthetic",
+      "path": "tests/fixtures/daily_bars.csv",
+      "automation_enabled": false
+    },
+    {
+      "id": "bvmt-official",
+      "url": "https://www.tunis-stockexchange.com/",
+      "kind": "candidate",
+      "permission_status": "unverified",
+      "automation_enabled": false
+    },
+    {
+      "id": "cmf-official",
+      "url": "https://www.cmf.tn/",
+      "kind": "candidate",
+      "permission_status": "unverified",
+      "automation_enabled": false
+    }
+  ]
+}

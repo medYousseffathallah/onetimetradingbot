@@ -1,0 +1,30 @@
+{
+  "application_version": "0.1.0",
+  "competition_config_sha256": "15c7cfb47d35997b13f2b8022a4d6462aeca98c1b7554bb66d69a3ca09a3e5bc",
+  "competition_readiness": "blocked",
+  "dataset_sha256": "c460956833131e35f7726e2f5a56e30b512fab521d423c1b065de3352b26a580",
+  "decision_cutoff": "2026-01-09T17:00:00+00:00",
+  "execution_authorized": false,
+  "mode": "synthetic_demo",
+  "rankings": [
+    {
+      "close": "10.800",
+      "instrument_id": "DEMO_A",
+      "last_session": "2026-01-09",
+      "observed_bars": 4,
+      "score": 0.058823529411764705,
+      "symbol": "DEMO_A"
+    },
+    {
+      "close": "19.300",
+      "instrument_id": "DEMO_B",
+      "last_session": "2026-01-09",
+      "observed_bars": 4,
+      "score": -0.025252525252525252,
+      "symbol": "DEMO_B"
+    }
+  ],
+  "rows": 15,
+  "rule_blocker_count": 90,
+  "warning": "Synthetic data; no real stocks, no backtest, no profitability evidence."
+}

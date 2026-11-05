@@ -1,0 +1,7 @@
+instrument_id,isin,symbol,valid_from,valid_to,listed_from,listed_to,market_segment,currency,source_document_id
+DEMO_A,TN0001000010,DEMO_A_OLD,2026-01-01,2026-01-04,2026-01-01,,Continu_Principal,TND,synthetic_master_v1
+DEMO_A,TN0001000010,DEMO_A,2026-01-05,,2026-01-01,,Continu_Principal,TND,synthetic_master_v1
+DEMO_B,TN0001000028,DEMO_B,2026-01-01,,2026-01-01,,Continu_Principal,TND,synthetic_master_v1
+DEMO_C,TN0001000036,DEMO_C,2026-01-01,,2026-01-01,,Continu_Principal,TND,synthetic_master_v1
+DEMO_DELIST,TN0001000044,DEMO_DELIST,2026-01-01,2026-01-06,2026-01-01,2026-01-06,Continu_Principal,TND,synthetic_master_v1
+

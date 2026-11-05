@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Risk Review"
+  short_description: "BVMT Risk Review: auditable project workflow"
+  default_prompt: "Use $bvmt-risk-review for the current BVMT project task."

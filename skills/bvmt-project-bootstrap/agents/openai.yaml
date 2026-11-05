@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Project Bootstrap"
+  short_description: "BVMT Project Bootstrap: auditable project workflow"
+  default_prompt: "Use $bvmt-project-bootstrap for the current BVMT project task."

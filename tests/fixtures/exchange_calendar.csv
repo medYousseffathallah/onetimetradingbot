@@ -1,0 +1,8 @@
+session_date,is_open,schedule_type,opens_at,closes_at,timezone,source_document_id
+2026-01-05,true,synthetic_regular,2026-01-05T09:00:00+01:00,2026-01-05T14:00:00+01:00,Africa/Tunis,synthetic_calendar_v1
+2026-01-06,true,synthetic_regular,2026-01-06T09:00:00+01:00,2026-01-06T14:00:00+01:00,Africa/Tunis,synthetic_calendar_v1
+2026-01-07,true,synthetic_regular,2026-01-07T09:00:00+01:00,2026-01-07T14:00:00+01:00,Africa/Tunis,synthetic_calendar_v1
+2026-01-08,true,synthetic_regular,2026-01-08T09:00:00+01:00,2026-01-08T14:00:00+01:00,Africa/Tunis,synthetic_calendar_v1
+2026-01-09,true,synthetic_regular,2026-01-09T09:00:00+01:00,2026-01-09T14:00:00+01:00,Africa/Tunis,synthetic_calendar_v1
+2026-01-12,false,synthetic_holiday,,,Africa/Tunis,synthetic_calendar_v1
+

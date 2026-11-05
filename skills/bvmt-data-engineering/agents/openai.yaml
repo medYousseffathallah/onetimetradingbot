@@ -1,0 +1,4 @@
+interface:
+  display_name: "BVMT Data Engineering"
+  short_description: "BVMT Data Engineering: auditable project workflow"
+  default_prompt: "Use $bvmt-data-engineering for the current BVMT project task."
