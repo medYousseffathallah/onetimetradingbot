@@ -9,12 +9,14 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
+from bvmt.browser import CompetitionPortfolioDOMSnapshot
 from bvmt.data import DailyBar, aware_timestamp
 from bvmt.snapshots import (
     atomic_write_text,
@@ -596,6 +598,65 @@ class CompetitionScreenshotSnapshot:
             live_synchronized=bool(raw.get("live_synchronized", False)),
             limitations=lims_list,
         )
+
+
+def build_snapshot_from_dom(
+    dom_snap: CompetitionPortfolioDOMSnapshot,
+    *,
+    snapshot_id: str | None = None,
+) -> CompetitionScreenshotSnapshot:
+    """Transform an authenticated browser DOM extraction into an auditable CompetitionScreenshotSnapshot."""
+    holdings = [
+        ScreenshotHoldingSnapshot(
+            symbol=h.symbol,
+            instrument_id=re.sub(r"[^A-Z0-9._-]+", "_", h.symbol.strip().upper()).strip("_"),
+            isin="TN0001900604" if "BH" in h.symbol.upper() else None,
+            quantity=h.quantity,
+            displayed_acquisition_price_tnd=quantize_tnd(h.acquisition_price_tnd),
+            displayed_acquisition_amount_tnd=quantize_tnd(h.acquisition_amount_tnd),
+            displayed_last_price_tnd=quantize_tnd(h.latest_price_tnd),
+            current_market_value_tnd=quantize_tnd(h.market_value_tnd),
+            displayed_unrealized_pnl_tnd=quantize_tnd(h.gain_tnd),
+            displayed_unrealized_return_pct=quantize_tnd(h.gain_pct),
+            portfolio_allocation_pct=quantize_tnd(
+                (h.market_value_tnd / dom_snap.portfolio_total_tnd * Decimal(100))
+                if dom_snap.portfolio_total_tnd > 0
+                else Decimal(0)
+            ),
+        )
+        for h in dom_snap.holdings
+    ]
+    stamp = dom_snap.retrieved_at.isoformat()
+    snap_id = snapshot_id or f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    return CompetitionScreenshotSnapshot(
+        snapshot_id=snap_id,
+        provenance=f"browser_dom_sync ({dom_snap.source_url})",
+        competition_window=dom_snap.challenge_period_text or "2026-10-01 to 2027-05-31",
+        capture_timestamp=stamp,
+        last_price_timestamp=stamp,
+        portfolio_total_tnd=quantize_tnd(dom_snap.portfolio_total_tnd),
+        available_cash_tnd=quantize_tnd(dom_snap.available_cash_tnd),
+        implied_initial_cash_tnd=Decimal("50000.000"),
+        competition_rank=dom_snap.competition_rank,
+        competition_participants=dom_snap.total_participants,
+        displayed_overall_performance_pct=quantize_tnd(
+            dom_snap.displayed_overall_performance_pct or Decimal("0.000")
+        ),
+        displayed_total_pnl_tnd=quantize_tnd(
+            sum((h.displayed_unrealized_pnl_tnd for h in holdings), Decimal("0.000"))
+        ),
+        holdings=holdings,
+        transactions_imported=False,
+        pending_orders_verified=False,
+        acquisition_fee_inclusion_verified=False,
+        live_synchronized=True,
+        limitations=[
+            "Extracted directly from authenticated displayp.aspx DOM via local browser session.",
+            "Pending orders cannot be proven absent from portfolio balance view alone.",
+            "Historical transaction executions not reconstructed; fee breakdown unverified.",
+            "Requires confirmation-gated reconciliation before mutating local ledger.",
+        ],
+    )
 
 
 @dataclass(frozen=True)

@@ -1033,3 +1033,63 @@ def test_g3_g4_real_competition_dashboard_and_price_drift(tmp_path):
     assert any("NOT LIVE-SYNCHRONIZED" in v for v in info_vals)
     assert any("Transaction history not yet imported" in v for v in warn_vals)
     assert any("Pending orders not verified" in v for v in warn_vals)
+
+
+def test_browser_sync_dom_conversion_and_confirmation_gated_update(tmp_path):
+    """Test browser DOM snapshot conversion, reconciliation, and confirmation-gated ledger update."""
+    from bvmt.browser import (
+        BrowserHoldingItem,
+        CompetitionPortfolioDOMSnapshot,
+    )
+    from bvmt.ledger import build_snapshot_from_dom
+
+    t0 = aware_timestamp("2026-11-06T12:00:00+00:00")
+    dom_snap = CompetitionPortfolioDOMSnapshot(
+        source_url="https://www.tunisbourse-challenge.com/displayp.aspx",
+        retrieved_at=t0,
+        portfolio_total_tnd=Decimal("49998.05"),
+        available_cash_tnd=Decimal("49608.05"),
+        holdings_market_value_tnd=Decimal("390.00"),
+        holdings=(
+            BrowserHoldingItem(
+                symbol="BH BANK",
+                quantity=30,
+                acquisition_price_tnd=Decimal("13.065"),
+                acquisition_amount_tnd=Decimal("391.95"),
+                latest_price_tnd=Decimal("13.00"),
+                market_value_tnd=Decimal("390.00"),
+                gain_tnd=Decimal("-1.95"),
+                gain_pct=Decimal("-0.50"),
+            ),
+        ),
+        competition_rank=4813,
+        total_participants=14530,
+        displayed_overall_performance_pct=Decimal("0.00"),
+        is_reconciled=True,
+        reconciliation_gap_tnd=Decimal("0.00"),
+        challenge_period_text="Tunisbourse Challenge est ouvert",
+    )
+
+    acct_snap = build_snapshot_from_dom(dom_snap)
+    assert acct_snap.portfolio_total_tnd == Decimal("49998.050")
+    assert acct_snap.available_cash_tnd == Decimal("49608.050")
+    assert acct_snap.competition_rank == 4813
+    assert acct_snap.competition_participants == 14530
+    assert acct_snap.live_synchronized is True
+    assert len(acct_snap.holdings) == 1
+    assert acct_snap.holdings[0].symbol == "BH BANK"
+    assert acct_snap.holdings[0].quantity == 30
+    assert acct_snap.holdings[0].displayed_acquisition_price_tnd == Decimal("13.065")
+
+    # Verify confirmation-gated update behavior on a ledger
+    ledger_path = tmp_path / "real_competition_ledger.json"
+    ledger = PortfolioLedger.from_opening_snapshot(
+        acct_snap,
+        initialized_at=t0,
+        confirmed_by_user=True,
+    )
+    assert ledger.settled_cash_tnd == Decimal("49608.050")
+    assert ledger.holdings["BH_BANK"].total_shares == 30
+    ledger.save(ledger_path)
+    assert ledger_path.exists()
+

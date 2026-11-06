@@ -1,10 +1,11 @@
 @echo off
 setlocal
+chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ============================================================================
-echo   BVMT Trading Intelligence — Local Decision-Support Terminal (Milestone 1C)
-echo   Mode: 100%% Localhost Only | Zero Autonomous Order Submission | Zero Cloud
+echo   BVMT Trading Intelligence - Local Decision-Support Terminal
+echo   Mode: 100%% Localhost Only ^| Zero Autonomous Order Submission ^| Zero Cloud
 echo ============================================================================
 echo.
 
@@ -40,4 +41,3 @@ if errorlevel 1 (
 echo Starting local Streamlit interface via uv at http://127.0.0.1:8501 ...
 uv run --extra dashboard bvmt dashboard %*
 exit /b %ERRORLEVEL%
-
