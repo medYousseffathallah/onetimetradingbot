@@ -358,3 +358,119 @@ def test_official_historical_csv(tmp_path, delimiter):
         "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
     }
     assert json.loads((out / "instrument_codes.json").read_text()) == {"DEMO_A": "TN0001000010"}
+
+
+def test_official_ndjson_adapter_and_exports(tmp_path):
+    from bvmt.calendar import evaluate_coverage, read_exchange_calendar, read_instrument_master
+    from bvmt.data import export_official_master_and_calendar, ingest_bars_csv
+
+    item = {
+        "dateSeance": "2026-11-05",
+        "codeISIN": "TN0001900604",
+        "mnemo": "BH",
+        "valeur": "BH BANK",
+        "groupe": "11",
+        "coursOuvert": 0,
+        "plusHaut": 0,
+        "plusBas": 0,
+        "cloture": "13.500",
+        "quantites": 0,
+        "capitaux": "0",
+        "echanges": 0,
+    }
+    path = tmp_path / "official.ndjson"
+    path.write_text(json.dumps({"seance": "2026-11-05", "data": [item, item]}) + "\n{bad\n")
+    out = tmp_path / "out"
+    result = ingest_bars_csv(
+        path,
+        source_format="tunis_stockexchange_ndjson",
+        source_id="official",
+        permission_status="authorized_local_import",
+        retrieved_at=STAMP,
+        raw_dir=tmp_path / "raw",
+        output_dir=out,
+    )
+    assert result.accepted_rows == 1 and result.rejected_rows == 2
+    bar = read_bars_csv(out / "daily_bars.canonical.csv")[0]
+    assert bar.instrument_id == "BH_BANK" and bar.symbol == "BH BANK"
+    assert bar.status == "untraded" and bar.volume_shares == 0
+    assert bar.open == bar.high == bar.low == bar.close == Decimal("13.500")
+    assert bar.turnover_tnd == Decimal("0.000")
+    assert bar.published_at is None
+    assert (out / "rejected_rows.csv").exists()
+    # Metadata export rejects malformed input rather than silently dropping sessions.
+    with pytest.raises(ValueError):
+        export_official_master_and_calendar(path, out)
+    path.write_text(json.dumps({"seance": "2026-11-05", "data": [item]}))
+    master, calendar = export_official_master_and_calendar(path, out, holidays=["2026-11-07"])
+    instruments = read_instrument_master(master)
+    sessions = read_exchange_calendar(calendar)
+    assert instruments[0].isin == "TN0001900604"
+    assert instruments[0].market_segment == "principal_continu"
+    assert instruments[0].is_competition_eligible
+    assert sessions[0].is_open and sessions[0].closes_at is None
+    assert not sessions[1].is_open
+    coverage = evaluate_coverage(instruments, sessions, [bar])
+    assert coverage.classification_counts["no_trade"] == 1
+    assert export_official_master_and_calendar(path, out, holidays=["2026-11-07"]) == (
+        master,
+        calendar,
+    )
+
+
+@pytest.mark.parametrize(
+    "group,segment,eligible",
+    [
+        ("11", "principal_continu", True),
+        ("12", "principal_fixing", True),
+        ("52", "alternatif", True),
+        ("99", "surveillance", False),
+    ],
+)
+def test_official_group_mapping_and_duplicate_envelopes(tmp_path, group, segment, eligible):
+    from bvmt.calendar import read_exchange_calendar, read_instrument_master
+    from bvmt.data import export_official_master_and_calendar
+
+    item = {
+        "dateSeance": "2026-11-05",
+        "codeISIN": "TN0001900604",
+        "valeur": "BH BANK",
+        "groupe": group,
+    }
+    envelope = json.dumps({"seance": "2026-11-05", "data": [item]})
+    path = tmp_path / "input.ndjson"
+    path.write_text(envelope + "\n" + envelope)
+    master, calendar = export_official_master_and_calendar(path, tmp_path / "out")
+    records = read_instrument_master(master)
+    assert len(records) == 1 and len(read_exchange_calendar(calendar)) == 1
+    assert records[0].market_segment == segment
+    assert records[0].is_competition_eligible == eligible
+    with pytest.raises(ValueError, match="conflicts with holiday"):
+        export_official_master_and_calendar(path, tmp_path / "bad", holidays=["2026-11-05"])
+
+
+def test_ndjson_quarantines_invalid_traded_prices_and_inconsistent_dates():
+    valid = {
+        "dateSeance": "2026-11-04",
+        "codeISIN": "TN0001900604",
+        "valeur": "BH BANK",
+        "coursOuvert": "13.4",
+        "plusHaut": "13.6",
+        "plusBas": "13.3",
+        "cloture": "13.5",
+        "quantites": 415,
+        "capitaux": "5561.060",
+        "echanges": 7,
+    }
+    items = [valid, dict(valid, valeur="BAD", coursOuvert=0), dict(valid, dateSeance="2026-11-05")]
+    accepted, rejected = _parse_csv_lines(
+        json.dumps({"seance": "2026-11-04", "data": items}),
+        input_format="tunis_stockexchange_ndjson",
+        source_id="official",
+        ingested_at=STAMP,
+    )
+    assert len(accepted) == 1 and len(rejected) == 2
+    assert accepted[0].isin == "TN0001900604" and accepted[0].close == Decimal("13.5")
+    assert accepted[0].volume_shares == 415
+    assert accepted[0].turnover_tnd == Decimal("5561.060")
+    assert "positive" in rejected[0].reason and "differs" in rejected[1].reason

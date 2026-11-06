@@ -328,3 +328,13 @@ def test_session_baseline_future_mutation_invariance_and_suspension_exclusion():
     with_susp = rank_session_baseline(instruments, sessions, bars, cutoff_past, suspensions=susp)
     assert [c.symbol for c in with_susp.candidates] == ["BETA"]
     assert any(e.symbol == "ALPHA" and e.reason == "suspended" for e in with_susp.exclusions)
+
+
+@pytest.mark.parametrize("segment", ["principal", "principal_continu", "principal_fixing"])
+def test_official_principal_segments_and_eligibility(segment):
+    instruments, sessions, bars, _, cutoff = _build_session_baseline_dataset(65)
+    instruments = [replace(r, market_segment=segment) for r in instruments]
+    ranked = rank_session_baseline(instruments, sessions, bars, cutoff)
+    assert any(c.symbol == "ALPHA" for c in ranked.candidates)
+    blocked = [replace(r, is_competition_eligible=False) for r in instruments]
+    assert not rank_session_baseline(blocked, sessions, bars, cutoff).candidates

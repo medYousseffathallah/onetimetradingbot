@@ -12,7 +12,7 @@ import io
 import json
 import re
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -202,7 +202,7 @@ def validate_bar(bar: DailyBar) -> None:
         raise ValueError("Volume must be a nonnegative integer share count")
     if not bar.turnover_tnd.is_finite() or bar.turnover_tnd < 0:
         raise ValueError("Turnover must be finite and nonnegative")
-    if bar.status not in {"traded", "no_trade", "suspended"}:
+    if bar.status not in {"traded", "no_trade", "untraded", "suspended"}:
         raise ValueError("Unknown trading status")
     if bar.status == "traded" and (bar.volume_shares == 0 or bar.turnover_tnd == 0):
         raise ValueError("A traded bar requires positive shares and turnover")
@@ -356,10 +356,14 @@ def parse_french_bvmt_csv(
 def _parse_csv_lines(
     text: str,
     *,
-    input_format: Literal["canonical", "french_bvmt", "bvmt_histo_cotation"],
+    input_format: Literal[
+        "canonical", "french_bvmt", "bvmt_histo_cotation", "tunis_stockexchange_ndjson"
+    ],
     source_id: str,
     ingested_at: datetime,
 ) -> tuple[list[DailyBar], list[RejectedRow]]:
+    if input_format == "tunis_stockexchange_ndjson":
+        return _parse_official_ndjson(text, source_id=source_id, ingested_at=ingested_at)
     lines = text.splitlines()
     while lines and not lines[-1].strip():
         lines.pop()
@@ -483,7 +487,9 @@ def import_local_csv(
     source_path: Path,
     *,
     source_id: str,
-    input_format: Literal["canonical", "french_bvmt", "bvmt_histo_cotation"],
+    input_format: Literal[
+        "canonical", "french_bvmt", "bvmt_histo_cotation", "tunis_stockexchange_ndjson"
+    ],
     permission_status: str,
     retrieved_at: datetime,
     raw_dir: Path,
@@ -492,7 +498,12 @@ def import_local_csv(
     """Ingest a local CSV file, snapshot raw bytes, validate rows, and write deterministic artifacts."""
     validate_safe_id(source_id, "source identifier")
     validate_permission_status(permission_status)
-    if input_format not in {"canonical", "french_bvmt", "bvmt_histo_cotation"}:
+    if input_format not in {
+        "canonical",
+        "french_bvmt",
+        "bvmt_histo_cotation",
+        "tunis_stockexchange_ndjson",
+    }:
         raise ValueError(f"Unsupported input_format '{input_format}'")
     if retrieved_at.tzinfo is None or retrieved_at.utcoffset() is None:
         raise ValueError("Retrieval time must be timezone-aware")
@@ -501,7 +512,9 @@ def import_local_csv(
     ensure_no_symlink_ancestors(output_dir)
 
     parser_version = (
-        CANONICAL_PARSER_VERSION
+        "tunis_stockexchange_ndjson_v1"
+        if input_format == "tunis_stockexchange_ndjson"
+        else CANONICAL_PARSER_VERSION
         if input_format == "canonical"
         else (
             "bvmt_histo_cotation_v1"
@@ -538,15 +551,39 @@ def import_local_csv(
         last_session=max((b.session_date.isoformat() for b in accepted), default=None),
         source_sha256=raw_sha256,
     )
+    quality_payload = asdict(quality)
+    if input_format == "tunis_stockexchange_ndjson":
+        quality_payload.update(
+            {
+                "accepted_rows": len(accepted),
+                "rejected_rows": len(rejected),
+                "distinct_sessions": len({b.session_date for b in accepted}),
+                "rejection_counts": dict(
+                    Counter(
+                        "duplicate_instrument_session"
+                        if r.reason.startswith("Duplicate")
+                        else r.reason
+                        for r in rejected
+                    )
+                ),
+            }
+        )
     atomic_write_text(
         output_dir / "quality_report.json",
-        json.dumps(asdict(quality), sort_keys=True, indent=2) + "\n",
+        json.dumps(quality_payload, sort_keys=True, indent=2) + "\n",
     )
     # Preserve source identifiers independently of the unchanged canonical CSV contract.
     atomic_write_text(
         output_dir / "instrument_codes.json",
         json.dumps({b.instrument_id: b.isin for b in accepted if b.isin}, sort_keys=True, indent=2)
         + "\n",
+    )
+    rejected_csv = io.StringIO(newline="")
+    rejection_writer = csv.writer(rejected_csv, lineterminator="\n")
+    rejection_writer.writerow(["line_number", "raw_row", "reason"])
+    rejection_writer.writerows((r.line_number, r.raw_row, r.reason) for r in rejected)
+    atomic_write_text(
+        output_dir / "rejected_rows.csv", rejected_csv.getvalue(), allow_identical=True
     )
     canonical_csv_path = output_dir / "daily_bars.canonical.csv"
     rejections_path = output_dir / "rejections.json"
@@ -668,7 +705,7 @@ def _parse_official_row(
         ),
         "",
     )
-    instrument = re.sub(r"[^A-Z0-9._-]+", "_", name.upper()).strip("_")
+    instrument = _normalize_instrument_token(name)
     volume = parse_french_int(row.get("quantite_negociee") or "")
     close = parse_french_decimal(row.get("cloture") or "")
     prices = [
@@ -678,7 +715,7 @@ def _parse_official_row(
         prices = [close if price == 0 else price for price in prices]
     bar = DailyBar(
         instrument_id=instrument,
-        symbol=name.upper(),
+        symbol=name,
         session_date=parse_french_session_date(row.get("seance") or ""),
         open=prices[0],
         high=prices[1],
@@ -698,3 +735,185 @@ def _parse_official_row(
 
 # Additive API; retains the established provenance and permission arguments.
 import_market_csv = import_local_csv
+
+
+SourceFormat = Literal[
+    "canonical", "french_bvmt", "bvmt_histo_cotation", "tunis_stockexchange_ndjson"
+]
+OFFICIAL_SEGMENTS = {
+    "11": "principal_continu",
+    "12": "principal_fixing",
+    "52": "alternatif",
+    "99": "surveillance",
+}
+
+
+def _normalize_instrument_token(value: str) -> str:
+    return re.sub(r"[^A-Z0-9._-]+", "_", value.strip().upper()).strip("_")
+
+
+def _parse_official_ndjson(
+    text: str, *, source_id: str, ingested_at: datetime
+) -> tuple[list[DailyBar], list[RejectedRow]]:
+    accepted: list[DailyBar] = []
+    rejected: list[RejectedRow] = []
+    seen: set[tuple[str, date]] = set()
+    for line_number, line in enumerate(text.splitlines(), 1):
+        try:
+            payload = json.loads(line, parse_float=Decimal)
+            if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+                raise ValueError("Expected session object with data array")
+            session = date.fromisoformat(payload["seance"])
+        except (ValueError, KeyError, TypeError) as exc:
+            rejected.append(RejectedRow(line_number, line, str(exc)))
+            continue
+        for item in payload["data"]:
+            try:
+                if not isinstance(item, dict):
+                    raise ValueError("Expected quotation object")
+                if date.fromisoformat(item["dateSeance"]) != session:
+                    raise ValueError("Quotation date differs from session envelope")
+                row: dict[str | None, str | None] = {
+                    target: str(item[key])
+                    for target, key in {
+                        "valeur": "valeur",
+                        "code": "codeISIN",
+                        "seance": "dateSeance",
+                        "ouverture": "coursOuvert",
+                        "plus_haut": "plusHaut",
+                        "plus_bas": "plusBas",
+                        "cloture": "cloture",
+                        "quantite_negociee": "quantites",
+                        "capitaux": "capitaux",
+                    }.items()
+                }
+                bar = _parse_official_row(row, source_id=source_id, ingested_at=ingested_at)
+                trades = parse_french_int(str(item["echanges"]), "echanges")
+                if bar.volume_shares == 0:
+                    if trades != 0:
+                        raise ValueError("Zero volume with nonzero trades")
+                    from dataclasses import replace
+
+                    bar = replace(bar, status="untraded", turnover_tnd=Decimal("0.000"))
+                key = (bar.instrument_id, bar.session_date)
+                if key in seen:
+                    raise ValueError(f"Duplicate instrument/session: {key}")
+                seen.add(key)
+                accepted.append(bar)
+            except (ValueError, InvalidOperation, KeyError, TypeError) as exc:
+                rejected.append(RejectedRow(line_number, json.dumps(item, default=str), str(exc)))
+    return sorted(accepted, key=lambda b: (b.instrument_id, b.session_date)), rejected
+
+
+def ingest_bars_csv(
+    source_path: Path,
+    *,
+    source_format: SourceFormat,
+    source_id: str,
+    permission_status: str,
+    retrieved_at: datetime,
+    raw_dir: Path,
+    output_dir: Path,
+) -> ImportSummary:
+    """Explicit-format ingestion, including official quotation NDJSON; no network access."""
+    return import_local_csv(
+        source_path,
+        source_id=source_id,
+        input_format=source_format,
+        permission_status=permission_status,
+        retrieved_at=retrieved_at,
+        raw_dir=raw_dir,
+        output_dir=output_dir,
+    )
+
+
+def export_official_master_and_calendar(
+    ndjson_path: Path, output_dir: Path, *, holidays: Sequence[str] = ()
+) -> tuple[Path, Path]:
+    """Export observed dated mappings and sessions, without inventing listing dates or hours.
+
+    listed_from is the first observation (a bounded research-universe convention),
+    not evidence of the original listing date. Unknown open/close times remain blank.
+    Competition eligibility is the caller-requested research classification, not a rule audit.
+    """
+    from datetime import timedelta
+
+    from bvmt.calendar import CALENDAR_COLUMNS, INSTRUMENT_COLUMNS
+
+    ensure_no_symlink_ancestors(ndjson_path)
+    ensure_no_symlink_ancestors(output_dir)
+    sessions: set[date] = set()
+    mappings: dict[str, list[tuple[date, str, str, str]]] = {}
+    for line in ndjson_path.read_text(encoding="utf-8-sig").splitlines():
+        payload = json.loads(line)
+        session = date.fromisoformat(payload["seance"])
+        sessions.add(session)
+        seen: set[str] = set()
+        for item in payload["data"]:
+            if date.fromisoformat(item["dateSeance"]) != session:
+                raise ValueError("Quotation date differs from session envelope")
+            key = _normalize_instrument_token(item["valeur"])
+            if key in seen:
+                raise ValueError("Duplicate instrument/session in metadata")
+            seen.add(key)
+            segment = OFFICIAL_SEGMENTS[str(item["groupe"])]
+            observation = (session, item["codeISIN"], item["valeur"].strip(), segment)
+            previous = [o for o in mappings.get(key, []) if o[0] == session]
+            if previous and previous[0] != observation:
+                raise ValueError("Conflicting instrument mapping within session")
+            if not previous:
+                mappings.setdefault(key, []).append(observation)
+    if not sessions or not mappings:
+        raise ValueError("Empty official dataset")
+    closed = {date.fromisoformat(d) for d in holidays}
+    if closed & sessions:
+        raise ValueError("Observed open session conflicts with holiday")
+    master = io.StringIO(newline="")
+    writer = csv.writer(master, lineterminator="\n")
+    writer.writerow([*INSTRUMENT_COLUMNS, "is_competition_eligible"])
+    for key, observations in sorted(mappings.items()):
+        observations.sort()
+        runs: list[tuple[date, str, str, str]] = []
+        for obs in observations:
+            if not runs or obs[1:] != runs[-1][1:]:
+                runs.append(obs)
+        for index, (start, isin, symbol, segment) in enumerate(runs):
+            end = runs[index + 1][0] - timedelta(days=1) if index + 1 < len(runs) else None
+            writer.writerow(
+                [
+                    key,
+                    isin,
+                    symbol,
+                    start,
+                    end or "",
+                    observations[0][0],
+                    "",
+                    segment,
+                    "TND",
+                    "official-bvmt-observed",
+                    segment != "surveillance",
+                ]
+            )
+    calendar = io.StringIO(newline="")
+    writer = csv.writer(calendar, lineterminator="\n")
+    writer.writerow(CALENDAR_COLUMNS)
+    for session in sorted(sessions | closed):
+        writer.writerow(
+            [
+                session,
+                session in sessions,
+                "observed_daily_unknown_hours" if session in sessions else "official_holiday",
+                "",
+                "",
+                "Africa/Tunis",
+                "official-bvmt-observed",
+            ]
+        )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    master_path, calendar_path = (
+        output_dir / "instrument_master.csv",
+        output_dir / "exchange_calendar.csv",
+    )
+    atomic_write_text(master_path, master.getvalue(), allow_identical=True)
+    atomic_write_text(calendar_path, calendar.getvalue(), allow_identical=True)
+    return master_path, calendar_path
