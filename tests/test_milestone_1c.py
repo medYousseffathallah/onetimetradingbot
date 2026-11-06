@@ -866,4 +866,3 @@ def test_g3_dataset_discovery_and_dashboard_freshness(tmp_path):
     )
     assert state.data_freshness_sessions_behind == 0
     assert len(state.valuation_history) >= 3
-

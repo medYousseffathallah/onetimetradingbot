@@ -463,7 +463,9 @@ def parse_account_holdings_csv(csv_text: str) -> list[AccountHoldingRecord]:
             or ""
         ).strip()
         if not shares_raw:
-            raise ValueError(f"Holdings CSV row {idx} for {inst_id} is missing total_shares/quantite")
+            raise ValueError(
+                f"Holdings CSV row {idx} for {inst_id} is missing total_shares/quantite"
+            )
         shares = int(shares_raw.replace(" ", ""))
         if shares < 0:
             raise ValueError(f"Holdings CSV row {idx} for {inst_id} has negative shares: {shares}")
@@ -552,9 +554,7 @@ def parse_account_transactions_csv(
             if fee_raw
             else compute_commission(gross, default_fee_rate)
         )
-        exec_at = (
-            row.get("executed_at") or row.get("date") or "2026-01-15T10:00:00+01:00"
-        ).strip()
+        exec_at = (row.get("executed_at") or row.get("date") or "2026-01-15T10:00:00+01:00").strip()
         records.append(
             AccountTransactionRecord(
                 transaction_id=tx_id,
@@ -603,9 +603,7 @@ def parse_account_pending_orders_csv(csv_text: str) -> list[AccountPendingOrderR
         requested = int(req_raw.replace(" ", ""))
         if requested <= 0:
             raise ValueError(f"Pending orders CSV row {idx} requires positive requested_shares")
-        filled_raw = (
-            row.get("filled_shares") or row.get("quantite_executee") or "0"
-        ).strip()
+        filled_raw = (row.get("filled_shares") or row.get("quantite_executee") or "0").strip()
         filled = int(filled_raw.replace(" ", ""))
         rem_raw = (row.get("remaining_shares") or row.get("quantite_restante") or "").strip()
         remaining = int(rem_raw.replace(" ", "")) if rem_raw else max(0, requested - filled)
@@ -629,9 +627,7 @@ def parse_account_pending_orders_csv(csv_text: str) -> list[AccountPendingOrderR
             if status_raw in OPEN_ORDER_STATUSES
             else ("PARTIALLY_FILLED" if filled > 0 else "PENDING")
         )
-        sub_at = (
-            row.get("submitted_at") or row.get("date") or "2026-01-15T09:00:00+01:00"
-        ).strip()
+        sub_at = (row.get("submitted_at") or row.get("date") or "2026-01-15T09:00:00+01:00").strip()
         records.append(
             AccountPendingOrderRecord(
                 order_id=order_id,
@@ -1360,7 +1356,11 @@ class PortfolioLedger:
                 for inst_id, sh in sorted(running_shares.items()):
                     if sh > 0:
                         cb = running_cost_basis.get(inst_id, Decimal("0.000"))
-                        fallback_px = quantize_tnd(cb / Decimal(sh)) if cb > Decimal("0") else Decimal("0.000")
+                        fallback_px = (
+                            quantize_tnd(cb / Decimal(sh))
+                            if cb > Decimal("0")
+                            else Decimal("0.000")
+                        )
                         px = latest_marks.get(inst_id, fallback_px)
                         pos_mv = quantize_tnd(Decimal(sh) * px)
                         mv = quantize_tnd(mv + pos_mv)
@@ -1368,7 +1368,9 @@ class PortfolioLedger:
 
                 eq = quantize_tnd(running_cash + mv)
                 ret_pct = (
-                    quantize_tnd(((eq - self.initial_cash_tnd) / self.initial_cash_tnd) * Decimal("100"))
+                    quantize_tnd(
+                        ((eq - self.initial_cash_tnd) / self.initial_cash_tnd) * Decimal("100")
+                    )
                     if self.initial_cash_tnd > Decimal("0")
                     else Decimal("0.000")
                 )
@@ -1572,7 +1574,9 @@ class PortfolioLedger:
                         order_id=tx.order_id,
                         local_value="Not recorded locally",
                         account_value=f"{tx.side} {tx.filled_shares} {tx.symbol} @ {tx_price} TND (fee {tx_fee} TND)",
-                        delta=f"{tx.filled_shares:+d} shares" if tx.side == "BUY" else f"-{tx.filled_shares} shares",
+                        delta=f"{tx.filled_shares:+d} shares"
+                        if tx.side == "BUY"
+                        else f"-{tx.filled_shares} shares",
                         explanation=(
                             f"Executed competition transaction '{tx.transaction_id}' ({tx.side} {tx.filled_shares} "
                             f"{tx.symbol} @ {tx_price} TND) is missing from the local ledger."
@@ -1607,9 +1611,7 @@ class PortfolioLedger:
 
         # 4. Share quantity discrepancies
         acct_holdings_by_inst = {h.instrument_id: h for h in snapshot.holdings}
-        all_holding_insts = sorted(
-            set(self.holdings.keys()) | set(acct_holdings_by_inst.keys())
-        )
+        all_holding_insts = sorted(set(self.holdings.keys()) | set(acct_holdings_by_inst.keys()))
         for inst_id in all_holding_insts:
             local_pos = self.holdings.get(inst_id)
             local_sh = local_pos.total_shares if local_pos is not None else 0
@@ -1683,10 +1685,9 @@ class PortfolioLedger:
                     )
                 )
             elif loc_o is not None and acc_o is not None:
-                if (
-                    loc_o.remaining_shares != acc_o.remaining_shares
-                    or quantize_tnd(loc_o.limit_price_tnd) != quantize_tnd(acc_o.limit_price_tnd)
-                ):
+                if loc_o.remaining_shares != acc_o.remaining_shares or quantize_tnd(
+                    loc_o.limit_price_tnd
+                ) != quantize_tnd(acc_o.limit_price_tnd):
                     discrepancies.append(
                         ReconciliationDiscrepancy(
                             discrepancy_type="unmatched_pending_order",
@@ -1788,7 +1789,9 @@ class PortfolioLedger:
                     status="EXECUTED" if existing_order.filled_shares > 0 else "CANCELLED",
                     submitted_at=existing_order.submitted_at,
                     updated_at=applied_at.isoformat(),
-                    notes=f"{existing_order.notes} | Closed during account reconciliation".strip(" |"),
+                    notes=f"{existing_order.notes} | Closed during account reconciliation".strip(
+                        " |"
+                    ),
                     fills=list(existing_order.fills),
                 )
 
@@ -1801,12 +1804,12 @@ class PortfolioLedger:
             fills: list[OrderExecutionFill] = []
             total_filled = 0
             for tx in tx_list:
-                gross = quantize_tnd(Decimal(tx.filled_shares) * quantize_tnd(tx.execution_price_tnd))
+                gross = quantize_tnd(
+                    Decimal(tx.filled_shares) * quantize_tnd(tx.execution_price_tnd)
+                )
                 fee = quantize_tnd(tx.fee_tnd)
                 net_impact = (
-                    -quantize_tnd(gross + fee)
-                    if tx.side == "BUY"
-                    else quantize_tnd(gross - fee)
+                    -quantize_tnd(gross + fee) if tx.side == "BUY" else quantize_tnd(gross - fee)
                 )
                 fills.append(
                     OrderExecutionFill(
@@ -1832,7 +1835,11 @@ class PortfolioLedger:
                 ord_status = pend_match.status
                 rem_gross = quantize_tnd(Decimal(rem_sh) * lim_px)
                 rem_fee = compute_commission(rem_gross, self.fee_rate)
-                res_cash = quantize_tnd(rem_gross + rem_fee) if pend_match.side == "BUY" else Decimal("0.000")
+                res_cash = (
+                    quantize_tnd(rem_gross + rem_fee)
+                    if pend_match.side == "BUY"
+                    else Decimal("0.000")
+                )
                 res_sh = rem_sh if pend_match.side == "SELL" else 0
             else:
                 req_sh = total_filled
@@ -1858,7 +1865,11 @@ class PortfolioLedger:
                 status=ord_status,
                 submitted_at=existing_rec.submitted_at if existing_rec else first_tx.executed_at,
                 updated_at=applied_at.isoformat(),
-                notes=(existing_rec.notes if existing_rec else "Imported via competition account reconciliation"),
+                notes=(
+                    existing_rec.notes
+                    if existing_rec
+                    else "Imported via competition account reconciliation"
+                ),
                 fills=fills,
             )
 
@@ -1869,9 +1880,7 @@ class PortfolioLedger:
                 rem_gross = quantize_tnd(Decimal(pend.remaining_shares) * lim_px)
                 rem_fee = compute_commission(rem_gross, self.fee_rate)
                 res_cash = (
-                    quantize_tnd(rem_gross + rem_fee)
-                    if pend.side == "BUY"
-                    else Decimal("0.000")
+                    quantize_tnd(rem_gross + rem_fee) if pend.side == "BUY" else Decimal("0.000")
                 )
                 res_sh = pend.remaining_shares if pend.side == "SELL" else 0
                 existing_rec = self.orders.get(oid)
@@ -1890,7 +1899,11 @@ class PortfolioLedger:
                     status=pend.status,
                     submitted_at=pend.submitted_at,
                     updated_at=applied_at.isoformat(),
-                    notes=(existing_rec.notes if existing_rec else "Imported pending order via reconciliation"),
+                    notes=(
+                        existing_rec.notes
+                        if existing_rec
+                        else "Imported pending order via reconciliation"
+                    ),
                     fills=list(existing_rec.fills) if existing_rec else [],
                 )
 

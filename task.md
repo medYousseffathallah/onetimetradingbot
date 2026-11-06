@@ -1,6 +1,6 @@
 # Task backlog
 
-Status: T01, T02, T03, R01/R02, Milestone 1A (Alibaba Budget-Gated Provider, Live HTTPS Transport, Document Index & Embedding Sidecar), Milestone 1B (T04 Session-Aware Quantitative Baseline), Milestone 1C (Manual Portfolio Ledger, 5-State Recommendation Engine, Local Alert Center, 6-Page Streamlit Dashboard & Windows Launcher), and GitHub Parallel-Agent Worktree Setup (`main`, `gemini/dashboard`, `codex/data-research`) COMPLETED; 91/91 unit, integration, and Streamlit AppTest UI tests passing with zero live API calls.
+Status: T01, T02, T03, R01/R02, Milestone 1A, Milestone 1B, Milestone 1C, and Parallel Multi-Agent Cycle (Codex Tasks C1–C3 + Gemini Tasks G1–G3) COMPLETED; 128/128 unit, integration, backtesting, reconciliation, and Streamlit AppTest UI tests passing with zero live API calls.
 
 ## T01 - Reproduce and verify rules [DONE]
 Run the locked quality gate and demo locally. Run the blocked rules check. Inspect official
@@ -45,12 +45,16 @@ recommendation generator with `recommendation_id` and 10% cap / `0.50%` fee chec
 (`tests/test_milestone_1c.py`).
 Evidence (2026-11-05): Passed 90/90 unit and integration tests and full quality gate.
 
-## T05 - Historical Backtesting Adapter (Backtrader / Multi-Session Simulation) [NEXT]
-Audit Backtrader defaults and license; connect `PortfolioLedger` to multi-session historical
-walk-forward simulation (`T06`) once official BVMT historical CSVs are imported into
-`data/processed/`.
+## T05 - Historical Backtesting Foundation & Competition Portfolio Reconciliation (Tasks C1–C3 & G1–G3) [DONE]
+Implemented in parallel across `codex/data-research` (`4ebfff1`) and `gemini/dashboard` (`d3f9bf8`) and merged into `main`:
+- **C1 (`src/bvmt/llm.py`)**: Regional DashScope endpoints, list-content chat parsing, DashScope error classification, and offline `check_readiness()`.
+- **C2 (`src/bvmt/data.py`)**: Official BVMT `histo_cotation` historical CSV adapter (`bvmt_histo_cotation`), zero-volume untraded bar normalization, `raw_source.csv` + `source_sha256` preservation, and expanded `DataQualityReport`.
+- **C3 (`src/bvmt/execution.py`)**: Deterministic research-only multi-session backtest engine (`run_historical_backtest`) with strict T+1 fills, shared volume participation caps, partial fills & order age expiration, `0.50%` fee accounting, cash and equal-weight benchmarks, and max drawdown.
+- **G1 & G2 (`src/bvmt/ledger.py`)**: Competition account CSV import/export (`parse_account_holdings_csv`, `parse_account_transactions_csv`, `parse_account_pending_orders_csv`), session-by-session `compute_valuation_history`, read-only `reconcile_with_snapshot` (detecting all 6 discrepancy categories), and confirmation-gated `apply_reconciliation_snapshot`.
+- **G3 (`src/bvmt/dashboard.py`)**: Dataset discovery (`discover_available_bar_datasets`), data freshness lag indicators, portfolio valuation history tab, competition account reconciliation UI, and transaction fill history.
+Evidence (2026-11-06): Passed 128/128 tests and full quality gate on `main`.
 
-## T06 - Walk-forward evaluation [TODO]
+## T06 - Walk-forward evaluation on imported official BVMT history [NEXT]
 Create cash/equal-weight/momentum benchmarks, purged chronological folds, frozen holdout,
 experiment registry, cost/liquidity sensitivity, and reproducible manifests. Gate: no
 performance claims without actual measured results and a disclosed sample.

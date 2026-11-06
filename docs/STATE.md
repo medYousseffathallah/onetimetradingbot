@@ -1,9 +1,9 @@
 # Working state
 
 ## Current checkpoint
-**Milestone 1C (Manual Portfolio Ledger, 5-State Recommendation Engine, Local Alert Center, 6-Page Streamlit Dashboard, Windows Launcher & Full-System Testing)** and **GitHub Baseline + Parallel Gemini/Codex Worktree Setup** completed on 2026-11-05 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`).
-All **91 automated unit, integration, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run python scripts/check.py`) pass with **zero live API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
-Central GitHub repository configured at `https://github.com/medYousseffathallah/onetimetradingbot.git` with isolated Git worktrees for `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+**Parallel Multi-Agent Development Cycle (Codex Tasks C1–C3 + Gemini Tasks G1–G3)** integrated on `main` on 2026-11-06 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `codex-cli 0.166.0`).
+All **128 automated unit, integration, backtesting, reconciliation, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run python scripts/check.py`) pass with **zero live API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
 
 ## Implemented
 - Agent instructions and skills; portable installation helper; real resolved `uv.lock` (including `streamlit 1.66.1` in the `dashboard` extra).
@@ -21,27 +21,26 @@ Central GitHub repository configured at `https://github.com/medYousseffathallah/
   - **5-State Recommendation Engine (`src/bvmt/recommendations.py`)**: `generate_recommendations` connects `rank_session_baseline` and verified corporate event citations to `PortfolioLedger` to emit `BUY CANDIDATE`, `HOLD`, `REDUCE`, `SELL CANDIDATE`, and `NO TRADE` cards (`RecommendationCard`) with deterministic `recommendation_id`, fee-adjusted sizing (`8.5%` target allocation buffer under the `10.0%` competition cap, `10%` of 20-session median turnover liquidity cap), pending-order conflict locks, and explicit blocked reasons.
   - **Local Notification & Catch-Up Center (`src/bvmt/notifications.py`)**: `NotificationCenter` evaluates, deduplicates, and persists alerts across 5 categories (`ALERT_SIGNAL_HIGH`, `ALERT_RISK_CONCENTRATION`, `ALERT_ORDER_EXPIRY`, `ALERT_DATA_STALE`, `ALERT_EVENT_MATERIAL`), including automatic startup catch-up detection when the computer was powered off across open exchange sessions.
   - **6-Page Local Streamlit Dashboard (`src/bvmt/dashboard.py`) & Windows Launcher (`start_bvmt.bat`)**: Renders `Overview`, `Stock Opportunities`, `Portfolio`, `Manual Order Journal`, `Research and Documents`, and `System Health` on `http://127.0.0.1:8501`, prominently distinguishing `SYNTHETIC DEMO MODE` and `COMPETITION RULES STATUS: BLOCKED`.
-  - **CLI (`src/bvmt/cli.py`)**: `demo`, `rules-check`, `validate-csv`, `import-csv`, `coverage-check`, `session-rank`, `llm-dry-run`, `portfolio-init`, `portfolio-status`, `order-submit`, `order-fill`, `order-close`, `recommend`, and `dashboard`.
+  - **CLI (`src/bvmt/cli.py`)**: `demo`, `rules-check`, `validate-csv`, `import-csv` (now supporting `--format bvmt_histo_cotation`), `coverage-check`, `session-rank`, `llm-dry-run`, `portfolio-init`, `portfolio-status`, `order-submit`, `order-fill`, `order-close`, `recommend`, and `dashboard`.
+- **Parallel Multi-Agent Cycle (`codex/data-research` + `gemini/dashboard`)**:
+  - **Codex C1 (`src/bvmt/llm.py`)**: Regional DashScope endpoints (`intl`, `us`, `cn`, workspace URL allowlist), list-content chat parsing, DashScope error classification (`FreeTierOnly`, `Throttling.RateQuota`, `Arrearage`), and `AlibabaModelStudioProvider.check_readiness()`.
+  - **Codex C2 (`src/bvmt/data.py`)**: Official BVMT historical quotation adapter (`bvmt_histo_cotation`), zero-volume untraded bar normalization (`untraded_or_suspended_count`), raw file preservation (`raw_source.csv`), and `DataQualityReport` SHA-256 provenance.
+  - **Codex C3 (`src/bvmt/execution.py`)**: `run_historical_backtest` deterministic T+1 simulation with shared liquidity participation caps, partial fills & order age expiration, `0.50%` fee accounting, cash and equal-weight benchmarks, and max drawdown metrics.
+  - **Gemini G1 & G2 (`src/bvmt/ledger.py`)**: Competition account CSV import/export (`parse_account_holdings_csv`, `parse_account_transactions_csv`, `parse_account_pending_orders_csv`), session-by-session `compute_valuation_history`, read-only `reconcile_with_snapshot` (detecting all 6 discrepancy categories), and confirmation-gated `apply_reconciliation_snapshot`.
+  - **Gemini G3 (`src/bvmt/dashboard.py`)**: Dataset discovery (`discover_available_bar_datasets`), data freshness lag indicators, portfolio valuation history tab, competition account reconciliation UI, and transaction fill history.
 
 ## Not implemented
-Live execution against DashScope (intentionally locked behind `network_enabled: false` and `BVMT_ALLOW_LIVE_LLM=1` until the user authorizes a live batch run); historical multi-session walk-forward backtest (`T06`, awaiting manual download of official BVMT historical CSVs into `data/staging/`).
+Live execution against DashScope (intentionally locked behind `network_enabled: false` and `BVMT_ALLOW_LIVE_LLM=1` until the user authorizes a controlled live test or batch run); multi-fold walk-forward evaluation (`T06`, awaiting manual download of official BVMT historical CSVs into `data/staging/`).
 
-## Handoff (Milestone 1C Implementation & Full-System Testing)
-- **Task ID**: Milestone 1C (Manual Portfolio Ledger, Recommendation Engine, Local Notifications, Streamlit Dashboard, Launcher & Full-System Testing)
-- **Files created and modified**:
-  - `src/bvmt/ledger.py` (new)
-  - `src/bvmt/recommendations.py` (new)
-  - `src/bvmt/notifications.py` (new)
-  - `src/bvmt/dashboard.py` (new)
-  - `start_bvmt.bat` (new)
-  - `tests/test_milestone_1c.py` (new)
-  - `src/bvmt/cli.py`, `src/bvmt/llm.py`, `tests/test_llm_budget.py`, `configs/llm_budget.example.json`
-  - `README.md`, `docs/USER_GUIDE.md`, `docs/MANUAL_TRADING_WORKFLOW.md`, `docs/NOTIFICATIONS.md`, `docs/SIGNAL_METHODOLOGY.md`, `docs/OPERATIONS.md`, `docs/ALIBABA_INTEGRATION_PLAN.md`, `task.md`, `docs/STATE.md`
-- **Commands actually run and exit codes**:
-  - `uv sync --locked --group dev --extra dashboard` -> exit `0` (installed `streamlit 1.66.1`)
-  - `.\.venv\Scripts\python.exe scripts/check.py` -> exit `0` (`ruff format --check` across 30 files, `ruff check`, `mypy src/bvmt` across 13 source files, `scripts/validate_skills.py`, `pytest -q` **91 passed in 9.16s**)
-  - Live Streamlit HTTP server smoke test on `http://127.0.0.1:8517/` and `/_stcore/health` -> exit `0` (`HTTP_STATUS: 200 HEALTH: ok HTML_BYTES: 6467`)
+## Handoff (Multi-Agent Orchestration: Codex C1–C3 + Gemini G1–G3)
+- **Branches merged into `main`**:
+  - `codex/data-research` (`4ebfff1`) — 9 owned files modified, `125 passed`
+  - `gemini/dashboard` (`d3f9bf8`) — 3 owned files modified, `94 passed`
+- **Integrated verification on `main`**:
+  - `uv run python scripts/check.py` -> exit `0` (`ruff format --check` across 30 files, `ruff check`, `mypy src/bvmt` across 13 source files, `scripts/validate_skills.py`, `pytest -q` **128 passed**)
+  - Live Streamlit dashboard startup smoke test -> exit `0`
 
 ## Next exact action
-1. Double-click `start_bvmt.bat` (or run `uv run bvmt dashboard`) to inspect the local 6-page decision-support terminal at `http://127.0.0.1:8501`.
-2. Download official BVMT historical CSVs and CMF company disclosures into `data/staging/` (per `docs/BVMT_DATA_SOURCES.md` Section 5), import them via `uv run bvmt import-csv`, and—when ready—authorize the batch `qwen3.7-text-embedding` and `qwen3.8-2.4t-a95b` / `deepseek-v4-pro-0813` extraction pilot before the November 8 and November 11–12 free-quota expirations.
+1. Download official BVMT historical quotation files (`histo_cotation_2022.csv` .. `histo_cotation_2026.csv`) into `data/staging/` and import them via `uv run bvmt import-csv <path> --format bvmt_histo_cotation ...`.
+2. Export or enter your current `tunisbourse-challenge.com` holdings, cash, transactions, and pending orders in the **Portfolio -> Competition Account CSV Import & Reconciliation** tab to synchronize your local ledger.
+3. Authorize a controlled live smoke test for `qwen3.7-text-embedding` before its November 8, 2026 expiration if semantic vector indexing is desired alongside the local BM25 engine.

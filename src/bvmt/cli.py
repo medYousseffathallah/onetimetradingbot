@@ -56,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     imp.add_argument(
         "--format",
         dest="input_format",
-        choices=("canonical", "french_bvmt"),
+        choices=("canonical", "french_bvmt", "bvmt_histo_cotation"),
         default="canonical",
         help="Explicit input CSV format (default: canonical)",
     )
