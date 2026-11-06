@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
@@ -198,6 +198,52 @@ class BacktestResult:
     orders: tuple[BacktestOrderRecord, ...]
     session_snapshots: tuple[BacktestSessionSnapshot, ...]
     zero_volume_blocked_fill_attempts: int = 0
+    liquidated_final_equity_tnd: Decimal = Decimal("0.000")
+    liquidated_total_return_pct: Decimal = Decimal("0.000")
+    unrealized_liquidation_fee_tnd: Decimal = Decimal("0.000")
+    data_sufficiency_warning: str = ""
+
+
+@dataclass(frozen=True)
+class WalkForwardFold:
+    fold_index: int
+    train_start: date
+    train_end: date
+    test_start: date
+    test_end: date
+    train_sessions: int
+    test_sessions: int
+    strategy_return_pct: Decimal
+    liquidated_return_pct: Decimal
+    benchmark_return_pct: Decimal
+    excess_return_pct: Decimal
+    fill_count: int
+    fees_tnd: Decimal
+
+
+@dataclass(frozen=True)
+class WalkForwardResult:
+    folds: tuple[WalkForwardFold, ...]
+    mean_fold_return_pct: Decimal
+    mean_liquidated_return_pct: Decimal
+    mean_benchmark_return_pct: Decimal
+    mean_excess_return_pct: Decimal
+    positive_fold_ratio: Decimal
+    total_folds: int
+    is_statistically_conclusive: bool
+    audit_conclusion: str
+
+
+@dataclass(frozen=True)
+class SensitivityScenario:
+    commission_bps: Decimal
+    max_volume_participation: Decimal
+    slippage_bps: Decimal
+    total_return_pct: Decimal
+    liquidated_return_pct: Decimal
+    total_fees_tnd: Decimal
+    fill_count: int
+
 
 
 @dataclass(frozen=True)
@@ -433,6 +479,18 @@ def run_historical_backtest(
     benchmark_return = (
         final.equal_weight_benchmark_equity_tnd / config.initial_cash_tnd - 1
     ) * Decimal(100)
+    unrealized_liquidation_fee = _money(final.holdings_value_tnd * fee_rate)
+    liquidated_final_equity = final.total_equity_tnd - unrealized_liquidation_fee
+    liquidated_total_return = (
+        (liquidated_final_equity / config.initial_cash_tnd - 1) * Decimal(100)
+    )
+    warning = ""
+    if len(sessions) < 120:
+        warning = (
+            f"Sample size warning: dataset contains only {len(sessions)} sessions (minimum recommended: "
+            f"250+ sessions for equity strategies). 2022-2025 multi-year data strictly required before "
+            f"concluding positive strategy edge."
+        )
     canonical = json.dumps(asdict(config), default=str, sort_keys=True, separators=(",", ":"))
     return BacktestResult(
         config,
@@ -457,4 +515,141 @@ def run_historical_backtest(
         tuple(records),
         tuple(snapshots),
         zero_volume_blocked,
+        liquidated_final_equity,
+        liquidated_total_return,
+        unrealized_liquidation_fee,
+        warning,
     )
+
+
+def run_sensitivity_analysis(
+    bars: Sequence[DailyBar],
+    signals: Sequence[BacktestSignal],
+    *,
+    base_config: BacktestConfig = DEFAULT_BACKTEST_CONFIG,
+    commission_bps_grid: tuple[Decimal, ...] = (Decimal("30"), Decimal("50"), Decimal("70")),
+    volume_participation_grid: tuple[Decimal, ...] = (Decimal("0.05"), Decimal("0.10"), Decimal("0.20")),
+    slippage_bps_grid: tuple[Decimal, ...] = (Decimal("5"), Decimal("10"), Decimal("20")),
+) -> tuple[SensitivityScenario, ...]:
+    """Audit strategy robustness across commission rates, participation caps, and slippage."""
+    scenarios: list[SensitivityScenario] = []
+    for comm in commission_bps_grid:
+        for vol in volume_participation_grid:
+            for slip in slippage_bps_grid:
+                cfg = replace(
+                    base_config,
+                    commission_bps=comm,
+                    max_volume_participation=vol,
+                    slippage_bps=slip,
+                )
+                res = run_historical_backtest(bars, signals, config=cfg)
+                scenarios.append(
+                    SensitivityScenario(
+                        commission_bps=comm,
+                        max_volume_participation=vol,
+                        slippage_bps=slip,
+                        total_return_pct=res.total_return_pct,
+                        liquidated_return_pct=res.liquidated_total_return_pct,
+                        total_fees_tnd=res.total_fees_tnd,
+                        fill_count=len(res.fills),
+                    )
+                )
+    return tuple(scenarios)
+
+
+def run_walk_forward_evaluation(
+    bars: Sequence[DailyBar],
+    signal_builder: Callable[[Sequence[DailyBar], date], Sequence[BacktestSignal]],
+    *,
+    config: BacktestConfig = DEFAULT_BACKTEST_CONFIG,
+    train_window_sessions: int = 30,
+    test_window_sessions: int = 10,
+    step_sessions: int = 10,
+) -> WalkForwardResult:
+    """Rigorous chronological walk-forward evaluation without lookahead bias.
+    
+    Splits observed sessions into rolling train/test windows. Tests out-of-sample forward
+    performance. Discloses whether sample size is statistically conclusive.
+    """
+    checked = validate_bars(bars)
+    sessions = sorted({b.session_date for b in checked})
+    min_required = train_window_sessions + test_window_sessions
+    if len(sessions) < min_required:
+        raise ValueError(
+            f"Insufficient sessions ({len(sessions)}) for walk-forward with "
+            f"train={train_window_sessions} and test={test_window_sessions}"
+        )
+
+    folds: list[WalkForwardFold] = []
+    fold_idx = 1
+    cursor = 0
+    while cursor + min_required <= len(sessions):
+        train_sessions = sessions[cursor : cursor + train_window_sessions]
+        test_sessions = sessions[
+            cursor + train_window_sessions : cursor + train_window_sessions + test_window_sessions
+        ]
+        decision_session = train_sessions[-1]
+        
+        # Point-in-time bars up to decision session strictly for signals
+        train_bars = [b for b in checked if b.session_date <= decision_session]
+        signals = signal_builder(train_bars, decision_session)
+
+        # Simulation runs over the out-of-sample forward test window
+        test_bars = [
+            b for b in checked if test_sessions[0] <= b.session_date <= test_sessions[-1]
+        ]
+        if test_bars:
+            fold_res = run_historical_backtest(
+                test_bars,
+                signals,
+                config=config,
+            )
+            folds.append(
+                WalkForwardFold(
+                    fold_index=fold_idx,
+                    train_start=train_sessions[0],
+                    train_end=train_sessions[-1],
+                    test_start=test_sessions[0],
+                    test_end=test_sessions[-1],
+                    train_sessions=len(train_sessions),
+                    test_sessions=len(test_sessions),
+                    strategy_return_pct=fold_res.total_return_pct,
+                    liquidated_return_pct=fold_res.liquidated_total_return_pct,
+                    benchmark_return_pct=fold_res.equal_weight_benchmark_return_pct,
+                    excess_return_pct=fold_res.excess_return_vs_equal_weight_pct,
+                    fill_count=len(fold_res.fills),
+                    fees_tnd=fold_res.total_fees_tnd,
+                )
+            )
+            fold_idx += 1
+        cursor += step_sessions
+
+    if not folds:
+        raise ValueError("No valid folds generated")
+
+    mean_ret = sum((f.strategy_return_pct for f in folds), Decimal(0)) / Decimal(len(folds))
+    mean_liq = sum((f.liquidated_return_pct for f in folds), Decimal(0)) / Decimal(len(folds))
+    mean_bench = sum((f.benchmark_return_pct for f in folds), Decimal(0)) / Decimal(len(folds))
+    mean_excess = sum((f.excess_return_pct for f in folds), Decimal(0)) / Decimal(len(folds))
+    pos_folds = sum(1 for f in folds if f.strategy_return_pct > 0)
+    pos_ratio = Decimal(pos_folds) / Decimal(len(folds))
+    
+    is_conclusive = len(folds) >= 10 and len(sessions) >= 250
+    conclusion = (
+        f"Statistically conclusive: {is_conclusive}. Folds tested: {len(folds)}. "
+        f"Mean liquidated return: {mean_liq:.4f}%, Mean excess vs benchmark: {mean_excess:.4f}%. "
+        f"{'Sample size insufficient to certify alpha; 2022-2025 multi-year data requested.' if not is_conclusive else 'Certified.'}"
+    )
+
+    return WalkForwardResult(
+        folds=tuple(folds),
+        mean_fold_return_pct=mean_ret.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
+        mean_liquidated_return_pct=mean_liq.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
+        mean_benchmark_return_pct=mean_bench.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
+        mean_excess_return_pct=mean_excess.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
+        positive_fold_ratio=pos_ratio.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
+        total_folds=len(folds),
+        is_statistically_conclusive=is_conclusive,
+        audit_conclusion=conclusion,
+    )
+

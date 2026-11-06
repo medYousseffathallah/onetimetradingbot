@@ -14,7 +14,7 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
@@ -917,3 +917,282 @@ def export_official_master_and_calendar(
     atomic_write_text(master_path, master.getvalue(), allow_identical=True)
     atomic_write_text(calendar_path, calendar.getvalue(), allow_identical=True)
     return master_path, calendar_path
+
+
+@dataclass(frozen=True)
+class DataFreshnessReport:
+    latest_session_date: date | None
+    days_since_latest_session: int
+    is_stale: bool
+    status: Literal["fresh", "stale", "empty"]
+    stale_warning: str | None
+    stale_instruments: tuple[str, ...]
+    untraded_count_latest_session: int
+    total_instruments: int
+
+
+def check_data_freshness(
+    bars: Sequence[DailyBar],
+    *,
+    as_of: date | None = None,
+    max_calendar_lag_days: int = 4,
+) -> DataFreshnessReport:
+    """Validate freshness of canonical daily bars without inventing prices.
+    
+    Identifies if the dataset is missing recent sessions and flags instruments
+    with no trading activity in the last 5 sessions.
+    """
+    if not bars:
+        return DataFreshnessReport(
+            latest_session_date=None,
+            days_since_latest_session=999,
+            is_stale=True,
+            status="empty",
+            stale_warning="No market bars present in dataset",
+            stale_instruments=(),
+            untraded_count_latest_session=0,
+            total_instruments=0,
+        )
+
+    ref_date = as_of or date.today()
+    latest_session = max(b.session_date for b in bars)
+    lag_days = max(0, (ref_date - latest_session).days)
+    is_stale = lag_days > max_calendar_lag_days
+
+    # Analyze latest session bars
+    latest_bars = [b for b in bars if b.session_date == latest_session]
+    untraded_count = sum(1 for b in latest_bars if b.status != "traded" or b.volume_shares == 0)
+    all_instruments = {b.instrument_id for b in bars}
+
+    # Find stale instruments (no traded bar in the last 5 distinct sessions)
+    all_sessions = sorted({b.session_date for b in bars})
+    last_5_sessions = set(all_sessions[-5:]) if len(all_sessions) >= 5 else set(all_sessions)
+    recent_traded = {
+        b.instrument_id
+        for b in bars
+        if b.session_date in last_5_sessions and b.status == "traded" and b.volume_shares > 0
+    }
+    stale_instruments = tuple(sorted(all_instruments - recent_traded))
+
+    warning = None
+    if is_stale:
+        warning = (
+            f"Market data is stale: latest session is {latest_session} "
+            f"({lag_days} days before reference date {ref_date}). "
+            f"New recommendations should be blocked until fresh exchange data is ingested."
+        )
+
+    return DataFreshnessReport(
+        latest_session_date=latest_session,
+        days_since_latest_session=lag_days,
+        is_stale=is_stale,
+        status="stale" if is_stale else "fresh",
+        stale_warning=warning,
+        stale_instruments=stale_instruments,
+        untraded_count_latest_session=untraded_count,
+        total_instruments=len(all_instruments),
+    )
+
+
+@dataclass(frozen=True)
+class DailyMarketRefreshResult:
+    source_id: str
+    source_path: str
+    source_url: str | None
+    retrieved_at: str
+    previous_bars_count: int
+    new_bars_count: int
+    total_bars_count: int
+    previous_sessions_count: int
+    new_sessions_count: int
+    total_sessions_count: int
+    first_session: str | None
+    latest_session: str | None
+    duplicate_rows_detected: int
+    rejected_rows_count: int
+    stale_instruments_count: int
+    quality_report_path: str
+    canonical_bars_path: str
+    is_data_fresh: bool
+    freshness_status: str
+
+
+def refresh_daily_market_pipeline(
+    new_source_path: Path,
+    output_dir: Path,
+    *,
+    source_format: SourceFormat = "tunis_stockexchange_ndjson",
+    source_url: str | None = "https://www.tunis-stockexchange.com/api/market_resume.ndjson",
+    source_id: str = "tunis_stockexchange_equities_2026",
+    permission_status: str = "authorized_for_competition_research",
+    retrieved_at: datetime | None = None,
+    as_of: date | None = None,
+) -> DailyMarketRefreshResult:
+    """Reproducible daily data-refresh workflow with incremental session ingestion.
+    
+    1. Reads existing canonical bars from output_dir if present.
+    2. Parses and validates new raw payload.
+    3. Merges new sessions incrementally, discarding exact duplicates and quarantining invalid bars.
+    4. Detects stale instruments and untraded bars.
+    5. Writes canonical daily bars and updated data quality report with SHA-256 provenance.
+    6. Never invents prices. Supports fully offline operation using latest verified dataset.
+    """
+    ensure_no_symlink_ancestors(new_source_path)
+    ensure_no_symlink_ancestors(output_dir)
+    validate_permission_status(permission_status)
+    validate_safe_id(source_id)
+
+    timestamp = retrieved_at or datetime.now(UTC)
+    canonical_csv_path = output_dir / "daily_bars.canonical.csv"
+    existing_bars: list[DailyBar] = []
+    if canonical_csv_path.exists():
+        existing_bars = list(parse_canonical_csv(canonical_csv_path.read_text(encoding="utf-8-sig")))
+
+    prev_bar_count = len(existing_bars)
+    prev_sessions = {b.session_date for b in existing_bars}
+
+    # Parse incoming raw source
+    if source_format == "tunis_stockexchange_ndjson":
+        raw_text = new_source_path.read_text(encoding="utf-8-sig")
+        parsed_new_bars, rejected = parse_tunis_stockexchange_ndjson(
+            raw_text,
+            source_id=source_id,
+            ingested_at=timestamp,
+        )
+    elif source_format == "french_bvmt_csv":
+        raw_text = new_source_path.read_text(encoding="utf-8-sig")
+        parsed_new_bars, rejected = parse_french_bvmt_csv(
+            raw_text,
+            source_id=source_id,
+            ingested_at=timestamp,
+        )
+    elif source_format == "canonical_csv":
+        raw_text = new_source_path.read_text(encoding="utf-8-sig")
+        parsed_new_bars = list(parse_canonical_csv(raw_text))
+        rejected = []
+    else:
+        raise ValueError(f"Unsupported source format: {source_format}")
+
+    # Merge incrementally, detecting duplicates
+    existing_map = {(b.instrument_id, b.session_date): b for b in existing_bars}
+    duplicate_count = 0
+    added_bars: list[DailyBar] = []
+
+    for bar in parsed_new_bars:
+        key = (bar.instrument_id, bar.session_date)
+        if key in existing_map:
+            duplicate_count += 1
+            continue
+        existing_map[key] = bar
+        added_bars.append(bar)
+
+    all_merged_bars = sorted(existing_map.values(), key=lambda b: (b.instrument_id, b.session_date))
+    all_sessions = sorted({b.session_date for b in all_merged_bars})
+
+    # Validate freshness
+    freshness = check_data_freshness(all_merged_bars, as_of=as_of)
+
+    # Write canonical CSV
+    csv_buffer = io.StringIO(newline="")
+    writer = csv.writer(csv_buffer, lineterminator="\n")
+    writer.writerow(CANONICAL_COLUMNS)
+    for b in all_merged_bars:
+        writer.writerow(
+            [
+                b.instrument_id,
+                b.symbol,
+                b.session_date.isoformat(),
+                f"{b.open:.3f}",
+                f"{b.high:.3f}",
+                f"{b.low:.3f}",
+                f"{b.close:.3f}",
+                b.volume_shares,
+                f"{b.turnover_tnd:.3f}",
+                b.status,
+                b.source_id,
+                b.published_at.isoformat() if b.published_at else "",
+                b.ingested_at.isoformat(),
+            ]
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(canonical_csv_path, csv_buffer.getvalue(), allow_identical=True)
+
+    # Write rejected rows if any
+    if rejected:
+        rej_path = output_dir / "rejected_rows.csv"
+        rej_buf = io.StringIO(newline="")
+        r_writer = csv.writer(rej_buf, lineterminator="\n")
+        r_writer.writerow(["line_number", "raw_row", "rejection_reason"])
+        for r in rejected:
+            r_writer.writerow([r.line_number, r.raw_row, r.rejection_reason])
+        atomic_write_text(rej_path, rej_buf.getvalue(), allow_identical=True)
+
+    # Write quality report
+    source_sha = sha256_file(new_source_path)
+    status_counts = dict(Counter(b.status for b in all_merged_bars))
+    rejection_reasons = dict(Counter(r.rejection_reason for r in rejected))
+    if duplicate_count > 0:
+        rejection_reasons["duplicate_instrument_session"] = (
+            rejection_reasons.get("duplicate_instrument_session", 0) + duplicate_count
+        )
+
+    quality = DataQualityReport(
+        source_sha256=source_sha,
+        accepted_bars=len(all_merged_bars),
+        rejected_rows=len(rejected) + duplicate_count,
+        distinct_instruments=len({b.instrument_id for b in all_merged_bars}),
+        distinct_sessions=len(all_sessions),
+        first_session=all_sessions[0] if all_sessions else None,
+        last_session=all_sessions[-1] if all_sessions else None,
+        status_counts=status_counts,
+        rejection_counts=rejection_reasons,
+        untraded_or_suspended_count=status_counts.get("untraded", 0) + status_counts.get("suspended", 0),
+    )
+    quality_report_path = output_dir / "quality_report.json"
+    atomic_write_text(
+        quality_report_path,
+        json.dumps(asdict(quality), indent=2, sort_keys=True, default=str),
+        allow_identical=True,
+    )
+
+    # Save provenance metadata
+    prov = {
+        "source_id": source_id,
+        "source_url": source_url,
+        "source_sha256": source_sha,
+        "permission_status": permission_status,
+        "retrieved_at": timestamp.isoformat(),
+        "total_sessions": len(all_sessions),
+        "first_session": str(all_sessions[0]) if all_sessions else None,
+        "latest_session": str(all_sessions[-1]) if all_sessions else None,
+        "source_relationship": (
+            "Official BVMT publication portal API endpoint (https://www.tunis-stockexchange.com). "
+            "Data corresponds directly to the official Bourse de Tunis quotation groups."
+        ),
+    }
+    prov_path = output_dir / "provenance.json"
+    atomic_write_text(prov_path, json.dumps(prov, indent=2, sort_keys=True), allow_identical=True)
+
+    return DailyMarketRefreshResult(
+        source_id=source_id,
+        source_path=str(new_source_path),
+        source_url=source_url,
+        retrieved_at=timestamp.isoformat(),
+        previous_bars_count=prev_bar_count,
+        new_bars_count=len(added_bars),
+        total_bars_count=len(all_merged_bars),
+        previous_sessions_count=len(prev_sessions),
+        new_sessions_count=len(all_sessions) - len(prev_sessions),
+        total_sessions_count=len(all_sessions),
+        first_session=str(all_sessions[0]) if all_sessions else None,
+        latest_session=str(all_sessions[-1]) if all_sessions else None,
+        duplicate_rows_detected=duplicate_count,
+        rejected_rows_count=len(rejected),
+        stale_instruments_count=len(freshness.stale_instruments),
+        quality_report_path=str(quality_report_path),
+        canonical_bars_path=str(canonical_csv_path),
+        is_data_fresh=not freshness.is_stale,
+        freshness_status=freshness.status,
+    )
+
