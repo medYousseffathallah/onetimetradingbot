@@ -1,3 +1,4 @@
+import hashlib
 import json
 from dataclasses import replace
 from datetime import date, datetime
@@ -7,8 +8,10 @@ from pathlib import Path
 import pytest
 
 from bvmt.data import (
+    _parse_csv_lines,
     aware_timestamp,
     import_local_csv,
+    import_market_csv,
     parse_french_bvmt_csv,
     parse_french_decimal,
     parse_french_session_date,
@@ -235,3 +238,123 @@ def test_unsafe_source_id_and_permission_rejected(tmp_path):
             raw_dir=tmp_path / "raw",
             output_dir=tmp_path / "out",
         )
+
+
+@pytest.mark.parametrize("delimiter", [";", ","])
+def test_official_historical_csv(tmp_path, delimiter):
+    import csv
+    import io
+
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream, delimiter=delimiter, lineterminator="\r\n")
+    writer.writerow(
+        [
+            " SEANCE ",
+            "GROUPE",
+            "CODE",
+            " VALEUR ",
+            "OUVERTURE",
+            "CLOTURE",
+            "PLUS_BAS",
+            "PLUS_HAUT",
+            "QUANTITE_NEGOCIEE",
+            "NB_TRANSACTION",
+            "CAPITAUX",
+            "IND_RES",
+        ]
+    )
+    writer.writerows(
+        [
+            [
+                " 05/01/2026 ",
+                "11",
+                " TN0001000010 ",
+                " Demo A ",
+                "10,0",
+                "10,5",
+                "9,5",
+                "11,0",
+                "100",
+                "1",
+                "1050",
+                "",
+            ],
+            [
+                "2026-01-06",
+                "11",
+                "TN0001000010",
+                "Demo A",
+                "0",
+                "10,5",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "",
+            ],
+            [
+                "2026-01-06",
+                "11",
+                "TN0001000010",
+                "Demo A",
+                "0",
+                "10,5",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "",
+            ],
+            [
+                "2026-01-07",
+                "11",
+                "TN0001000010",
+                "Demo A",
+                "10",
+                "10",
+                "12",
+                "9",
+                "10",
+                "1",
+                "100",
+                "",
+            ],
+        ]
+    )
+    path = tmp_path / "histo_cotation_sample.csv"
+    path.write_bytes(stream.getvalue().encode("utf-8-sig"))
+    accepted, rejected = _parse_csv_lines(
+        stream.getvalue(),
+        input_format="bvmt_histo_cotation",
+        source_id="official",
+        ingested_at=STAMP,
+    )
+    assert accepted[0].instrument_id == "DEMO_A"
+    assert accepted[0].isin == "TN0001000010"
+    assert accepted[1].open == accepted[1].high == accepted[1].low == Decimal("10.5")
+    assert accepted[1].status == "no_trade"
+    assert "Duplicate" in rejected[0].reason
+    assert "OHLC bounds" in rejected[1].reason
+    out = tmp_path / "out"
+    summary = import_market_csv(
+        path,
+        source_id="official",
+        input_format="bvmt_histo_cotation",
+        permission_status="authorized_local_import",
+        retrieved_at=STAMP,
+        raw_dir=tmp_path / "raw",
+        output_dir=out,
+    )
+    assert summary.accepted_rows == 2 and summary.rejected_rows == 2
+    assert (out / "raw_source.csv").read_bytes() == path.read_bytes()
+    quality = json.loads((out / "quality_report.json").read_text())
+    assert quality == {
+        "untraded_or_suspended_count": 1,
+        "distinct_instruments": 1,
+        "first_session": "2026-01-05",
+        "last_session": "2026-01-06",
+        "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+    assert json.loads((out / "instrument_codes.json").read_text()) == {"DEMO_A": "TN0001000010"}
