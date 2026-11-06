@@ -69,6 +69,7 @@ class InstrumentRecord:
     market_segment: str
     currency: str
     source_document_id: str
+    is_competition_eligible: bool = True
 
 
 @dataclass(frozen=True)
@@ -257,6 +258,15 @@ def _instrument_from_mapping(row: dict[str, object]) -> InstrumentRecord:
         currency=str(row.get("currency") or "").strip(),
         source_document_id=str(row.get("source_document_id") or "").strip(),
     )
+    if "is_competition_eligible" in row:
+        from dataclasses import replace
+
+        record = replace(
+            record,
+            is_competition_eligible=_parse_bool(
+                row["is_competition_eligible"], "is_competition_eligible"
+            ),
+        )
     validate_instrument_record(record)
     return record
 
@@ -271,7 +281,10 @@ def read_instrument_master(path: Path) -> list[InstrumentRecord]:
         for idx, item in enumerate(payload, start=1):
             if not isinstance(item, dict):
                 raise ValueError(f"Instrument master item {idx} must be an object")
-            if set(item.keys()) != set(INSTRUMENT_COLUMNS):
+            if set(item.keys()) not in (
+                set(INSTRUMENT_COLUMNS),
+                set(INSTRUMENT_COLUMNS) | {"is_competition_eligible"},
+            ):
                 raise ValueError(
                     f"Expected instrument master keys {sorted(INSTRUMENT_COLUMNS)}, "
                     f"got {sorted(item.keys())}"
@@ -282,7 +295,10 @@ def read_instrument_master(path: Path) -> list[InstrumentRecord]:
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
         header = reader.fieldnames or []
-        if len(header) != len(set(header)) or set(header) != set(INSTRUMENT_COLUMNS):
+        if len(header) != len(set(header)) or set(header) not in (
+            set(INSTRUMENT_COLUMNS),
+            set(INSTRUMENT_COLUMNS) | {"is_competition_eligible"},
+        ):
             raise ValueError(
                 f"Expected unique instrument master columns: {sorted(INSTRUMENT_COLUMNS)}"
             )
@@ -321,6 +337,12 @@ def validate_exchange_session(session: ExchangeSession) -> None:
         raise ValueError("Exchange session schedule_type is required")
     validate_safe_id(session.source_document_id, "source_document_id")
     if session.is_open:
+        if (
+            session.schedule_type == "observed_daily_unknown_hours"
+            and session.opens_at is None
+            and session.closes_at is None
+        ):
+            return
         if session.opens_at is None or session.closes_at is None:
             raise ValueError(
                 f"Open exchange session {session.session_date} requires explicit "
@@ -646,7 +668,7 @@ def evaluate_coverage(
                         ),
                     )
                 )
-            elif obs_bar.status == "no_trade":
+            elif obs_bar.status in {"no_trade", "untraded"}:
                 consecutive_no_trade += 1
                 if consecutive_no_trade >= stale_after_open_sessions:
                     unexplained_stale_quotes.append(

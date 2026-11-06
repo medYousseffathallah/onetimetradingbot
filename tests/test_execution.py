@@ -274,3 +274,24 @@ def test_next_typical_uses_next_session_bar(bars):
     result = run_historical_backtest(series, [sig], config=settings(fill_price_mode="next_typical"))
     assert result.fills[0].price_tnd == Decimal("11")
     assert result.fills[0].session_date == series[1].session_date
+
+
+def test_shared_turnover_cap_and_blocked_zero_volume(bars):
+    series = history(bars, volumes=(1000, 0, 1000, 1000))
+    # At the next tradable session: 100 TND capacity / 10 TND = 10 shares,
+    # tighter than the 100-share volume cap; duplicate orders must share it.
+    series = [replace(b, turnover_tnd=Decimal("1000")) if b.volume_shares else b for b in series]
+    sig = BacktestSignal(series[0].session_date, series[0].instrument_id, OrderSide.BUY, 20)
+    result = run_historical_backtest(
+        series, [sig, sig], config=settings(max_turnover_participation=Decimal("0.10"))
+    )
+    assert [f.quantity for f in result.fills] == [10, 10]
+    assert result.zero_volume_blocked_fill_attempts == 2
+    assert all(f.session_date > sig.signal_session for f in result.fills)
+    assert result.orders[1].filled_quantity == 0
+
+
+@pytest.mark.parametrize("rate", [Decimal("0"), Decimal("NaN"), Decimal("1.1"), 0.1])
+def test_bad_turnover_participation_rejected(rate):
+    with pytest.raises(ValueError, match="max_turnover_participation"):
+        BacktestConfig(max_turnover_participation=rate)
