@@ -1,5 +1,6 @@
 import json
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from bvmt.cli import main
 from bvmt.data import aware_timestamp
 from bvmt.llm import (
+    AlibabaModelStudioProvider,
     DashScopeOpenAICompatibleTransport,
     LLMQuotaExhaustedOrForbiddenError,
     LLMRateLimitError,
@@ -19,6 +21,7 @@ from bvmt.llm import (
     load_llm_budget_config,
     load_usage_ledger,
     record_usage_tokens,
+    resolve_dashscope_base_url,
     save_document_index,
     search_document_index,
 )
@@ -377,3 +380,164 @@ def test_dashscope_transport_error_classification_and_url_guard():
             '{"error":{"code":"FreeQuotaExhausted","message":"Stop on exhaustion triggered"}}',
             "qwen3.7-text-embedding",
         )
+
+
+@pytest.mark.parametrize(
+    "region,host", [("intl", "dashscope-intl"), ("us", "dashscope-us"), ("cn", "dashscope")]
+)
+def test_regional_endpoint(monkeypatch, region, host):
+    monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
+    monkeypatch.setenv("DASHSCOPE_REGION", region)
+    transport = DashScopeOpenAICompatibleTransport()
+    assert transport.base_url == f"https://{host}.aliyuncs.com/compatible-mode/v1"
+
+
+def test_custom_official_workspace_endpoint(monkeypatch):
+    url = "https://workspace123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", url)
+    assert resolve_dashscope_base_url() == url
+    monkeypatch.setenv(
+        "DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com.evil.example/compatible-mode/v1"
+    )
+    with pytest.raises(ValueError, match="Untrusted"):
+        resolve_dashscope_base_url()
+
+
+def test_list_content_and_usage_fallback(monkeypatch):
+    monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
+    transport = DashScopeOpenAICompatibleTransport()
+    monkeypatch.setattr(
+        transport,
+        "_post_json",
+        lambda **kw: {
+            "choices": [
+                {
+                    "message": {
+                        "content": [
+                            {"type": "text", "text": '{"ok":'},
+                            {"type": "text", "text": "true}"},
+                        ]
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 8},
+        },
+    )
+    assert transport.create_chat_completion(
+        base_url=transport.base_url,
+        api_key="mock",
+        api_model_id="mock",
+        system_prompt="test",
+        user_prompt="test",
+        max_completion_tokens=10,
+        temperature=0,
+        timeout_seconds=1,
+    ) == ({"ok": True}, 12, 8, 20)
+
+
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        ("FreeTierOnly", LLMQuotaExhaustedOrForbiddenError),
+        ("AllocationQuota.FreeTierOnly", LLMQuotaExhaustedOrForbiddenError),
+        ("QuotaExhausted", LLMQuotaExhaustedOrForbiddenError),
+        ("Arrearage", LLMQuotaExhaustedOrForbiddenError),
+        ("AccessDenied", LLMQuotaExhaustedOrForbiddenError),
+        ("InvalidApiKey", LLMQuotaExhaustedOrForbiddenError),
+        ("Throttling.RateQuota", LLMRateLimitError),
+        ("LimitRequests", LLMRateLimitError),
+    ],
+)
+def test_dashscope_error_codes(code, expected):
+    with pytest.raises(expected):
+        _classify_and_raise_http_error(400, json.dumps({"error": {"code": code}}), "mock")
+
+
+def test_embedding_dimensions_and_validation(monkeypatch):
+    transport = DashScopeOpenAICompatibleTransport()
+    sent = []
+
+    def fake(**kwargs):
+        sent.append(kwargs["payload"])
+        return {"data": [{"embedding": [0.1, 0.2]}], "usage": {"total_tokens": 4}}
+
+    monkeypatch.setattr(transport, "_post_json", fake)
+    kwargs = dict(
+        base_url=transport.base_url,
+        api_key="mock",
+        api_model_id="mock",
+        texts=["test"],
+        timeout_seconds=1,
+        dimensions=2,
+    )
+    assert transport.create_embeddings(**kwargs) == ([[0.1, 0.2]], 4)
+    assert sent[0]["dimensions"] == 2 and sent[0]["encoding_format"] == "float"
+    for vector in ([], ["0.1"], [True], [float("nan")], [float("inf")]):
+        monkeypatch.setattr(
+            transport, "_post_json", lambda vector=vector, **kw: {"data": [{"embedding": vector}]}
+        )
+        with pytest.raises(ValueError):
+            transport.create_embeddings(**kwargs)
+
+
+def test_readiness_without_network(monkeypatch):
+    monkeypatch.setenv("BVMT_ALLOW_LIVE_LLM", "0")
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_REGION", raising=False)
+    monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
+    provider = AlibabaModelStudioProvider(load_llm_budget_config(CONFIG_PATH))
+    report = provider.check_readiness(date(2026, 11, 6))
+    assert (
+        report.offline_mode_active and not report.live_env_enabled and not report.api_key_configured
+    )
+    assert report.console_free_quota_only_verified
+    assert "qwen3.7-text-embedding" in report.active_models
+    assert (
+        report.verification_notes["qwen3.7-text-embedding"]
+        == "verified_from_docs_requires_controlled_live_test"
+    )
+    assert report.verification_notes["wan3.0-video-prime"] == "offline_only"
+    assert "qwen3.7-text-embedding" in provider.check_readiness(date(2026, 11, 8)).expired_models
+    assert "qwen3.7-text-embedding" not in provider.check_readiness(date(2026, 11, 7)).active_models
+
+
+@pytest.mark.parametrize("payload", [{"error": {"code": "FreeTierOnly"}}, {"code": "FreeTierOnly"}])
+def test_successful_http_error_payload(monkeypatch, payload):
+    import io
+
+    from bvmt.llm import urllib_request
+
+    monkeypatch.setattr(
+        urllib_request, "urlopen", lambda *args, **kw: io.BytesIO(json.dumps(payload).encode())
+    )
+    transport = DashScopeOpenAICompatibleTransport()
+    with pytest.raises(LLMQuotaExhaustedOrForbiddenError):
+        transport._post_json(
+            url=transport.base_url + "/chat/completions",
+            api_key="mock",
+            payload={},
+            timeout_seconds=1,
+            model_id="mock",
+        )
+
+
+@pytest.mark.parametrize("region", ["intl", "us", "cn"])
+def test_region_used_by_actual_request(monkeypatch, region):
+    monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
+    monkeypatch.setenv("DASHSCOPE_REGION", region)
+    transport = DashScopeOpenAICompatibleTransport()
+    sent = []
+
+    def fake(**kwargs):
+        sent.append(kwargs["url"])
+        return {"data": [{"embedding": [0.1]}], "usage": {"total_tokens": 1}}
+
+    monkeypatch.setattr(transport, "_post_json", fake)
+    transport.embed(
+        base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        api_key="mock",
+        api_model_id="mock",
+        texts=["test"],
+        timeout_seconds=1,
+    )
+    assert sent == [transport.base_url + "/embeddings"]

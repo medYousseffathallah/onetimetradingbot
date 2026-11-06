@@ -15,11 +15,12 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Protocol
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import urlsplit
 
 from bvmt.data import aware_timestamp
 from bvmt.snapshots import (
@@ -32,6 +33,7 @@ ALLOWED_BASE_URLS = frozenset(
     {
         "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
     }
 )
 
@@ -180,13 +182,21 @@ class LLMQuotaExhaustedOrForbiddenError(RuntimeError):
 
 def _classify_and_raise_http_error(status_code: int, body_text: str, model_id: str) -> None:
     lower_body = body_text.lower()
-    if status_code == 429 or "throttling" in lower_body or "rate limit" in lower_body:
+    if (
+        status_code == 429
+        or "throttling" in lower_body
+        or "rate limit" in lower_body
+        or "limitrequests" in lower_body
+    ):
         raise LLMRateLimitError(
             f"Alibaba Model Studio rate limit (HTTP {status_code}) for '{model_id}'; "
             f"max_retries=0 enforced to protect quota: {body_text[:240]}"
         )
     if (
-        status_code in {402, 403}
+        status_code in {401, 402, 403}
+        or "freetieronly" in lower_body
+        or "accessdenied" in lower_body
+        or "invalidapikey" in lower_body
         or "freequota" in lower_body
         or "quota" in lower_body
         or "arrearage" in lower_body
@@ -208,6 +218,9 @@ class DashScopeOpenAICompatibleTransport:
     retries and explicit rate-limit (429) and free-quota exhaustion (402/403) error classification.
     """
 
+    def __init__(self, *, region: str | None = None, base_url: str | None = None) -> None:
+        self.base_url = resolve_dashscope_base_url(base_url=base_url, region=region)
+
     def _post_json(
         self,
         *,
@@ -217,7 +230,8 @@ class DashScopeOpenAICompatibleTransport:
         timeout_seconds: float,
         model_id: str,
     ) -> dict[str, object]:
-        if not any(url.startswith(prefix) for prefix in ALLOWED_BASE_URLS):
+        base = url.removesuffix("/chat/completions").removesuffix("/embeddings")
+        if base == url or not _trusted_dashscope_url(base):
             raise ValueError(f"Refusing to send request to untrusted URL: '{url}'")
         if not api_key or not api_key.strip():
             raise ValueError("Missing API key for DashScope transport")
@@ -249,14 +263,14 @@ class DashScopeOpenAICompatibleTransport:
         decoded = json.loads(raw_bytes.decode("utf-8"))
         if not isinstance(decoded, dict):
             raise ValueError("DashScope response must be a JSON object")
-        if "error" in decoded and decoded["error"]:
-            _classify_and_raise_http_error(400, json.dumps(decoded["error"]), model_id)
+        if decoded.get("error") or decoded.get("code"):
+            _classify_and_raise_http_error(400, json.dumps(decoded), model_id)
         return decoded
 
     def create_chat_completion(
         self,
         *,
-        base_url: str,
+        base_url: str | None = None,
         api_key: str,
         api_model_id: str,
         system_prompt: str,
@@ -265,7 +279,7 @@ class DashScopeOpenAICompatibleTransport:
         temperature: float,
         timeout_seconds: float,
     ) -> tuple[dict[str, object], int, int, int]:
-        url = f"{base_url.rstrip('/')}/chat/completions"
+        url = f"{resolve_dashscope_base_url(base_url=(base_url or self.base_url) if not os.environ.get('DASHSCOPE_REGION') else None)}/chat/completions"
         payload: dict[str, object] = {
             "model": api_model_id,
             "messages": [
@@ -289,7 +303,18 @@ class DashScopeOpenAICompatibleTransport:
         first = choices[0]
         if not isinstance(first, dict) or not isinstance(first.get("message"), dict):
             raise ValueError("Malformed choice message in DashScope response")
-        content = str(first["message"].get("content") or "").strip()
+        content = first["message"].get("content")
+        if isinstance(content, list):
+            if any(
+                not isinstance(block, dict)
+                or block.get("type") != "text"
+                or not isinstance(block.get("text"), str)
+                for block in content
+            ):
+                raise ValueError("Unsupported chat content block")
+            content = "".join(block["text"] for block in content)
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Missing text content in DashScope response")
         parsed_json = json.loads(content)
         if not isinstance(parsed_json, dict):
             raise ValueError("Extracted model content must be a JSON object")
@@ -300,23 +325,38 @@ class DashScopeOpenAICompatibleTransport:
         if isinstance(usage, dict):
             prompt_tok = int(str(usage.get("prompt_tokens", 0) or 0))
             comp_tok = int(str(usage.get("completion_tokens", 0) or 0))
-            total_tok = int(str(usage.get("total_tokens", prompt_tok + comp_tok) or 0))
+            total_tok = int(
+                str(
+                    usage.get("total_tokens")
+                    if usage.get("total_tokens") is not None
+                    else prompt_tok + comp_tok
+                )
+            )
         return parsed_json, prompt_tok, comp_tok, total_tok
 
     def create_embeddings(
         self,
         *,
-        base_url: str,
+        base_url: str | None = None,
         api_key: str,
         api_model_id: str,
         texts: Sequence[str],
         timeout_seconds: float,
+        dimensions: int | None = None,
+        encoding_format: str = "float",
     ) -> tuple[list[list[float]], int]:
-        url = f"{base_url.rstrip('/')}/embeddings"
+        if encoding_format != "float" or (
+            dimensions is not None and (type(dimensions) is not int or dimensions <= 0)
+        ):
+            raise ValueError("Expected float encoding and positive dimensions")
+        url = f"{resolve_dashscope_base_url(base_url=(base_url or self.base_url) if not os.environ.get('DASHSCOPE_REGION') else None)}/embeddings"
         payload: dict[str, object] = {
             "model": api_model_id,
             "input": list(texts),
+            "encoding_format": encoding_format,
         }
+        if dimensions is not None:
+            payload["dimensions"] = dimensions
         resp = self._post_json(
             url=url,
             api_key=api_key,
@@ -331,12 +371,25 @@ class DashScopeOpenAICompatibleTransport:
         for item in data_list:
             if not isinstance(item, dict) or not isinstance(item.get("embedding"), list):
                 raise ValueError("Missing embedding vector in DashScope response item")
-            vectors.append([float(x) for x in item["embedding"]])
+            vector = item["embedding"]
+            if not vector or any(
+                type(x) not in {int, float} or not math.isfinite(x) for x in vector
+            ):
+                raise ValueError("Embedding must be a non-empty finite numeric vector")
+            if dimensions is not None and len(vector) != dimensions:
+                raise ValueError("Unexpected embedding dimensions")
+            if vectors and len(vector) != len(vectors[0]):
+                raise ValueError("Inconsistent embedding dimensions")
+            vectors.append([float(x) for x in vector])
         usage = resp.get("usage")
         total_tok = 0
         if isinstance(usage, dict):
             total_tok = int(str(usage.get("total_tokens", usage.get("prompt_tokens", 0)) or 0))
         return vectors, total_tok
+
+    # Additive names used by provider integrations; original protocol remains intact.
+    generate = create_chat_completion
+    embed = create_embeddings
 
 
 def estimate_tokens(text: str) -> int:
@@ -987,3 +1040,110 @@ def search_document_index(
             )
     bm25_hits.sort(key=lambda h: (-h.score, h.chunk_id))
     return bm25_hits[:top_k]
+
+
+REGIONAL_BASE_URLS = {
+    "intl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "us": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+    "cn": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+}
+
+
+def _trusted_dashscope_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    return (
+        parsed.scheme == "https"
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.port in {None, 443}
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.path == "/compatible-mode/v1"
+        and (
+            url in ALLOWED_BASE_URLS
+            or bool(
+                re.fullmatch(
+                    r"[A-Za-z0-9-]+\.(?:ap-southeast-1|us-east-1|cn-beijing)\.maas\.aliyuncs\.com",
+                    parsed.hostname or "",
+                )
+            )
+        )
+    )
+
+
+def resolve_dashscope_base_url(*, base_url: str | None = None, region: str | None = None) -> str:
+    """Environment URL > explicit URL > environment/explicit region > intl default.
+
+    Only official regional and workspace HTTPS hosts may receive credentials.
+    """
+    selected_region = region or os.environ.get("DASHSCOPE_REGION", "intl")
+    selected = os.environ.get("DASHSCOPE_BASE_URL") or base_url
+    if not selected:
+        if selected_region not in REGIONAL_BASE_URLS:
+            raise ValueError("DASHSCOPE_REGION must be intl, us or cn")
+        selected = REGIONAL_BASE_URLS[selected_region]
+    selected = selected.rstrip("/")
+    if not _trusted_dashscope_url(selected):
+        raise ValueError("Untrusted DashScope base URL")
+    return selected
+
+
+# Documentation evidence is deliberately independent of config verification flags.
+DOC_VERIFIED_MODEL_IDS = frozenset(
+    {
+        "qwen3.7-text-embedding",
+        "qwen3.8-2.4t-a95b",
+        "deepseek-v4-pro-0813",
+        "qwen3.8-flash",
+        "kimi-k3",
+        "text-embedding-v3",
+        "text-embedding-v4",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ProviderReadinessReport:
+    offline_mode_active: bool
+    live_env_enabled: bool
+    api_key_configured: bool
+    resolved_base_url: str
+    console_free_quota_only_verified: bool
+    active_models: tuple[str, ...]
+    expired_models: tuple[str, ...]
+    verification_notes: dict[str, str]
+
+
+class AlibabaModelStudioProvider:
+    """Read-only readiness facade; never probes the API or exposes credentials."""
+
+    def __init__(self, config: LLMBudgetConfig) -> None:
+        self.config = config
+
+    def check_readiness(self, as_of: date) -> ProviderReadinessReport:
+        # Date-only audits use end-of-day UTC: a cutoff later that day is not safely active.
+        cutoff = datetime.combine(as_of, time.max, tzinfo=UTC)
+        models = tuple(self.config.models.values())
+        return ProviderReadinessReport(
+            offline_mode_active=not self.config.network_enabled,
+            live_env_enabled=os.environ.get(self.config.live_opt_in_env_var) == "1",
+            api_key_configured=bool(os.environ.get(self.config.api_key_env_var, "").strip()),
+            resolved_base_url=resolve_dashscope_base_url(
+                base_url=self.config.base_url if not os.environ.get("DASHSCOPE_REGION") else None
+            ),
+            console_free_quota_only_verified=self.config.console_free_quota_only_verified,
+            active_models=tuple(
+                sorted(
+                    m.api_model_id for m in models if m.enabled and cutoff < m.effective_cutoff_utc
+                )
+            ),
+            expired_models=tuple(
+                sorted(m.api_model_id for m in models if cutoff >= m.effective_cutoff_utc)
+            ),
+            verification_notes={
+                m.api_model_id: "verified_from_docs_requires_controlled_live_test"
+                if m.api_model_id in DOC_VERIFIED_MODEL_IDS
+                else "offline_only"
+                for m in models
+            },
+        )

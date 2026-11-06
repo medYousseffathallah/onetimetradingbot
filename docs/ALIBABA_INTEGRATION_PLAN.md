@@ -96,7 +96,7 @@ Vector embeddings from `qwen3.7-text-embedding` live in a model-specific vector 
    - Because Alibaba Cloud's server-side billing gate now automatically stops requests when a model's free quota reaches `0`, we have **removed the artificial 15% (`150,000`-token) local safety reserve** and raised the local `hard_limit` to the **full `1,000,000` tokens** (`safety_reserve: 0`) for all active research models, while raising `max_input_chars` to `80,000` and `max_completion_tokens` to `4,000` so full multi-page Tunisian financial filings and annual report sections can be processed without artificial truncation.
    - Furthermore, when the DashScope API returns exact `usage.total_tokens` in the response, the local ledger charges the **actual API-reported tokens** rather than the pre-call upper-bound estimate.
 2. **Does "Stop on Exhaustion / Free Quota Only" Apply to All Models and Endpoints? (Important Verification Notes)**:
-   - **OpenAI-Compatible Endpoints (`/compatible-mode/v1/chat/completions` & `/compatible-mode/v1/embeddings`)**: Yes — Alibaba Cloud Model Studio shares the same underlying workspace quota pool and "Free Quota Only" circuit breaker across both native DashScope endpoints and `/compatible-mode/v1` endpoints, **provided** you call the exact `api_model_id` string associated with the free-quota grant in the same region (`dashscope-intl.aliyuncs.com` vs `dashscope-us.aliyuncs.com`).
+   - **OpenAI-Compatible Endpoints**: Unverified for this account. The console toggle is user-reported; model, region, workspace and endpoint coverage require explicitly authorized controlled testing and console evidence before reliance.
    - **Critical Edge Cases Requiring Local Protection (Why We Retain Basic Local Guards)**:
      - **Model ID Mismatch Risk**: If a request accidentally specifies a model alias or snapshot ID that is *not* part of the free-tier grant (for example, calling a commercial pay-as-you-go variant whose name differs by a date suffix), the console's free-quota toggle for the free model will **not** cover the ungranted model ID, or will immediately reject it. Therefore, `api_model_id_verified` remains a per-model check in `configs/llm_budget.example.json`.
      - **Expiration Date vs. Exhaustion**: In Alibaba Cloud Model Studio, "Stop on Exhaustion" prevents over-quota billing *while the free quota voucher is active*, but once the calendar **Expiration Date** (`expires_at`) passes, the free voucher disappears. Depending on workspace billing settings, calling a model *after* its voucher expires can either fail or fall back to pay-as-you-go. Therefore, we strictly retain the **local `-12h` UTC expiration cutoff (`effective_cutoff_utc`)** in `evaluate_dry_run` so the system never calls a model after its free window expires.
@@ -113,3 +113,82 @@ Vector embeddings from `qwen3.7-text-embedding` live in a model-specific vector 
    - Independent per-model usage ledger (`data/processed/llm_usage_ledger.json`) with full `1,000,000`-token ceiling.
    - Strict UTC expiration cutoff (`expires_at - 12 hours`).
    - Post-response JSON schema + verbatim substring grounding check (`verify_verbatim_evidence_quotes`).
+
+
+## C1 offline audit (2026-11-06)
+
+This audit supersedes earlier claims of blanket endpoint/quota coverage. No live
+inference request was made. Configuration remains `network_enabled: false`,
+`BVMT_ALLOW_LIVE_LLM=0`, and all 25 `api_model_id_verified` flags remain false.
+Documentation presence is independent of a free grant, account entitlement,
+regional availability, JSON-mode support, or successful inference.
+
+### Endpoint evidence
+
+The official [base URL overview](https://www.alibabacloud.com/help/en/model-studio/base-url)
+documents these legacy regional domains and recommends workspace domains.
+
+| Region | Resolved default base URL | Audit status |
+|---|---|---|
+| intl / Singapore | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Documentation verified; live test required |
+| us / Virginia | `https://dashscope-us.aliyuncs.com/compatible-mode/v1` | Documentation verified; live test required |
+| cn / Beijing | `https://dashscope.aliyuncs.com/compatible-mode/v1` | Documentation verified; live test required |
+| Explicit workspace | `https://<workspace>.<region>.maas.aliyuncs.com/compatible-mode/v1` | Supported for ap-southeast-1, us-east-1, cn-beijing; account test required |
+
+`DASHSCOPE_BASE_URL` overrides region/config; `DASHSCOPE_REGION` overrides the
+configured region default. Without either, the existing configured base URL is
+used (intl in the example). Custom URLs must use the listed official HTTPS hosts;
+arbitrary proxies and URL-prefix lookalikes are rejected before credentials leave.
+API keys must match the region and workspace. Chat uses `/chat/completions`;
+embeddings use `/embeddings`, float encoding, and optional positive `dimensions`.
+Dimensions and endpoint/model compatibility still need per-model confirmation.
+
+### Model evidence
+
+E: official [embedding catalog](https://www.alibabacloud.com/help/en/model-studio/embedding).
+R: official [rate-limit inventory](https://www.alibabacloud.com/help/en/model-studio/rate-limit).
+These sources verify listed IDs, not a successful request in this workspace.
+The [compatible embedding reference](https://www.alibabacloud.com/help/en/model-studio/embedding-interfaces-compatible-with-openai)
+also documents `text-embedding-v3` / `text-embedding-v4`; neither replaces the
+configured grant automatically.
+
+| Configured API model ID | Documentation evidence in this audit | Readiness note |
+|---|---|---|
+| `qwen3.7-text-embedding` | E | `verified_from_docs_requires_controlled_live_test` |
+| `qwen3.8-2.4t-a95b` | R | `verified_from_docs_requires_controlled_live_test` |
+| `deepseek-v4-pro-0813` | R | `verified_from_docs_requires_controlled_live_test` |
+| `qwen3.8-27b` | Not independently confirmed in this audit | `offline_only` |
+| `kimi-k3` | R | `verified_from_docs_requires_controlled_live_test` |
+| `glm-5.3` | Not independently confirmed in this audit | `offline_only` |
+| `qwen3.8-flash` | R | `verified_from_docs_requires_controlled_live_test` |
+| `qwen3.8-max-0902` | Not independently confirmed in this audit | `offline_only` |
+| `deepseek-v4.1-flash` | Not independently confirmed in this audit | `offline_only` |
+| `qwen3.8-omni-flash` | Not independently confirmed in this audit | `offline_only` |
+| `deepseek-v4.1-flash-1017` | Not independently confirmed in this audit | `offline_only` |
+| `kimi-k3.1-pro` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-mt-image-2.0` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-audio-3.1-asr-flash-filetrans` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-audio-3.1-asr-flash` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-audio-3.1-asr-flash-message` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-audio-3.1-asr-flash-streaming` | Not independently confirmed in this audit | `offline_only` |
+| `qwen3.8-livetranslate-flash-realtime` | Not independently confirmed in this audit | `offline_only` |
+| `qwen3.8-omni-flash-realtime` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-audio-3.1-tts-plus` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-audio-3.1-tts-flash` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-audio-3.1-tts-next` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-image-2.1-pro` | Not independently confirmed in this audit | `offline_only` |
+| `qwen-image-2.1-turbo` | Not independently confirmed in this audit | `offline_only` |
+| `wan3.0-video-prime` | Not independently confirmed in this audit | `offline_only` |
+
+`AlibabaModelStudioProvider(config).check_readiness(as_of)` reads only config and
+environment. Model activity means enabled and before the local safety cutoff,
+not production-ready. A date-only audit uses end-of-day UTC conservatively;
+`expired_models` includes grants past the safety cutoff, even before actual expiry.
+Disabled models remain excluded from active models. No key value is returned.
+
+Before production reliance, obtain explicit approval for a minimal live smoke test
+with the exact model ID, region, workspace, expected JSON/vector shape, usage count,
+quota decrement and console protection evidence. Do not deliberately exhaust a
+quota to test billing. Stop on quota/forbidden or throttling codes with no retries.
+Mocked tests exercise both HTTP errors and successful-HTTP error payloads; they
+cannot establish billing guarantees or model output accuracy.

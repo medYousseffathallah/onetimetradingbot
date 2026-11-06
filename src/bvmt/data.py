@@ -13,7 +13,7 @@ import json
 import re
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -21,6 +21,7 @@ from typing import Literal
 
 from bvmt import __version__
 from bvmt.snapshots import (
+    atomic_write_bytes,
     atomic_write_text,
     ensure_no_symlink_ancestors,
     sha256_file,
@@ -94,6 +95,7 @@ class DailyBar:
     source_id: str
     published_at: datetime | None
     ingested_at: datetime
+    isin: str | None = None
 
 
 @dataclass(frozen=True)
@@ -354,7 +356,7 @@ def parse_french_bvmt_csv(
 def _parse_csv_lines(
     text: str,
     *,
-    input_format: Literal["canonical", "french_bvmt"],
+    input_format: Literal["canonical", "french_bvmt", "bvmt_histo_cotation"],
     source_id: str,
     ingested_at: datetime,
 ) -> tuple[list[DailyBar], list[RejectedRow]]:
@@ -364,10 +366,13 @@ def _parse_csv_lines(
     if not lines:
         raise ValueError("CSV file is empty")
     header_line = lines[0]
-    delimiter = ";" if (input_format == "french_bvmt" and ";" in header_line) else ","
+    delimiter = ";" if (input_format != "canonical" and ";" in header_line) else ","
     header_reader = csv.reader([header_line], delimiter=delimiter)
     raw_header = next(header_reader, [])
-    header = [col.strip() for col in raw_header]
+    header = [
+        col.strip().lower() if input_format == "bvmt_histo_cotation" else col.strip()
+        for col in raw_header
+    ]
     if len(header) != len(set(header)) or any(not col for col in header):
         raise ValueError(f"CSV header contains duplicate or empty column names: {header}")
     if input_format == "canonical":
@@ -384,6 +389,23 @@ def _parse_csv_lines(
                 f"Unsupported or ambiguous columns in french_bvmt CSV: {unknown}. "
                 "Use explicit 'quantite_negociee' (shares) and 'capitaux_tnd' (TND)."
             )
+    elif input_format == "bvmt_histo_cotation":
+        required = {
+            "seance",
+            "ouverture",
+            "cloture",
+            "plus_bas",
+            "plus_haut",
+            "quantite_negociee",
+            "capitaux",
+        }
+        if not required.issubset(header) or not {
+            "valeur",
+            "symbole",
+            "ticker",
+            "code",
+        }.intersection(header):
+            raise ValueError("Missing required bvmt_histo_cotation columns")
     else:
         raise ValueError(f"Unsupported input_format '{input_format}'")
 
@@ -411,6 +433,8 @@ def _parse_csv_lines(
                 bar = _parse_canonical_row(
                     row_dict, default_source_id=source_id, default_ingested_at=ingested_at
                 )
+            elif input_format == "bvmt_histo_cotation":
+                bar = _parse_official_row(row_dict, source_id=source_id, ingested_at=ingested_at)
             else:
                 bar = _parse_french_bvmt_row(row_dict, source_id=source_id, ingested_at=ingested_at)
             key = (bar.instrument_id, bar.session_date)
@@ -459,7 +483,7 @@ def import_local_csv(
     source_path: Path,
     *,
     source_id: str,
-    input_format: Literal["canonical", "french_bvmt"],
+    input_format: Literal["canonical", "french_bvmt", "bvmt_histo_cotation"],
     permission_status: str,
     retrieved_at: datetime,
     raw_dir: Path,
@@ -468,7 +492,7 @@ def import_local_csv(
     """Ingest a local CSV file, snapshot raw bytes, validate rows, and write deterministic artifacts."""
     validate_safe_id(source_id, "source identifier")
     validate_permission_status(permission_status)
-    if input_format not in {"canonical", "french_bvmt"}:
+    if input_format not in {"canonical", "french_bvmt", "bvmt_histo_cotation"}:
         raise ValueError(f"Unsupported input_format '{input_format}'")
     if retrieved_at.tzinfo is None or retrieved_at.utcoffset() is None:
         raise ValueError("Retrieval time must be timezone-aware")
@@ -477,7 +501,13 @@ def import_local_csv(
     ensure_no_symlink_ancestors(output_dir)
 
     parser_version = (
-        CANONICAL_PARSER_VERSION if input_format == "canonical" else FRENCH_BVMT_PARSER_VERSION
+        CANONICAL_PARSER_VERSION
+        if input_format == "canonical"
+        else (
+            "bvmt_histo_cotation_v1"
+            if input_format == "bvmt_histo_cotation"
+            else FRENCH_BVMT_PARSER_VERSION
+        )
     )
     snapshot_path = snapshot_local_file(
         source_path,
@@ -498,6 +528,26 @@ def import_local_csv(
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    atomic_write_bytes(
+        output_dir / "raw_source.csv", snapshot_path.read_bytes(), allow_identical=True
+    )
+    quality = DataQualityReport(
+        untraded_or_suspended_count=sum(b.volume_shares == 0 for b in accepted),
+        distinct_instruments=len({b.instrument_id for b in accepted}),
+        first_session=min((b.session_date.isoformat() for b in accepted), default=None),
+        last_session=max((b.session_date.isoformat() for b in accepted), default=None),
+        source_sha256=raw_sha256,
+    )
+    atomic_write_text(
+        output_dir / "quality_report.json",
+        json.dumps(asdict(quality), sort_keys=True, indent=2) + "\n",
+    )
+    # Preserve source identifiers independently of the unchanged canonical CSV contract.
+    atomic_write_text(
+        output_dir / "instrument_codes.json",
+        json.dumps({b.instrument_id: b.isin for b in accepted if b.isin}, sort_keys=True, indent=2)
+        + "\n",
+    )
     canonical_csv_path = output_dir / "daily_bars.canonical.csv"
     rejections_path = output_dir / "rejections.json"
     manifest_path = output_dir / "manifest.json"
@@ -596,3 +646,55 @@ def import_local_csv(
         status_counts=status_counts,
         missing_published_at_rows=missing_published,
     )
+
+
+@dataclass(frozen=True)
+class DataQualityReport:
+    untraded_or_suspended_count: int = 0
+    distinct_instruments: int = 0
+    first_session: str | None = None
+    last_session: str | None = None
+    source_sha256: str | None = None
+
+
+def _parse_official_row(
+    row: dict[str | None, str | None], *, source_id: str, ingested_at: datetime
+) -> DailyBar:
+    name = next(
+        (
+            (row.get(k) or "").strip()
+            for k in ("valeur", "symbole", "ticker", "code")
+            if (row.get(k) or "").strip()
+        ),
+        "",
+    )
+    instrument = re.sub(r"[^A-Z0-9._-]+", "_", name.upper()).strip("_")
+    volume = parse_french_int(row.get("quantite_negociee") or "")
+    close = parse_french_decimal(row.get("cloture") or "")
+    prices = [
+        parse_french_decimal(row.get(k) or "") for k in ("ouverture", "plus_haut", "plus_bas")
+    ]
+    if volume == 0 and close > 0:
+        prices = [close if price == 0 else price for price in prices]
+    bar = DailyBar(
+        instrument_id=instrument,
+        symbol=name.upper(),
+        session_date=parse_french_session_date(row.get("seance") or ""),
+        open=prices[0],
+        high=prices[1],
+        low=prices[2],
+        close=close,
+        volume_shares=volume,
+        turnover_tnd=parse_french_decimal(row.get("capitaux") or ""),
+        status="no_trade" if volume == 0 else "traded",
+        source_id=source_id,
+        published_at=None,
+        ingested_at=ingested_at,
+        isin=(row.get("code") or "").strip() or None,
+    )
+    validate_bar(bar)
+    return bar
+
+
+# Additive API; retains the established provenance and permission arguments.
+import_market_csv = import_local_csv
