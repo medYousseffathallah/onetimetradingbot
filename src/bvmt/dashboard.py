@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -221,6 +222,41 @@ def build_dashboard_state(
             effective_long = 60
 
     cutoff = aware_timestamp(effective_cutoff_str)
+
+    # For official imported datasets where calendar hours and point-in-time publication timestamps
+    # are not provided in daily snapshot archives, prepare research-assumed replay bounds
+    # (session close 16:00 Africa/Tunis, publication 16:00 Africa/Tunis):
+    if any(s.is_open and s.closes_at is None for s in calendar):
+        calendar = [
+            replace(
+                s,
+                opens_at=datetime.fromisoformat(f"{s.session_date}T09:00:00+01:00"),
+                closes_at=datetime.fromisoformat(f"{s.session_date}T16:00:00+01:00"),
+                schedule_type="research_assumed_daily_bounds",
+            )
+            if s.is_open and s.closes_at is None
+            else s
+            for s in calendar
+        ]
+    if any(b.published_at is None for b in bars) or any(b.ingested_at > cutoff for b in bars):
+
+        def _replay_dt(day: date) -> datetime:
+            return datetime.fromisoformat(f"{day.isoformat()}T16:00:00+01:00")
+
+        bars = [
+            replace(
+                b,
+                published_at=_replay_dt(b.session_date)
+                if b.published_at is None
+                else b.published_at,
+                ingested_at=(
+                    _replay_dt(b.session_date)
+                    if (b.ingested_at is None or b.ingested_at > cutoff)
+                    else b.ingested_at
+                ),
+            )
+            for b in bars
+        ]
     account_snapshot: CompetitionScreenshotSnapshot | None = None
     existing_recon_report: ReconciliationReport | None = None
 
