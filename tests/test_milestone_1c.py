@@ -14,13 +14,17 @@ from bvmt.features import rank_session_baseline
 from bvmt.ledger import (
     CompetitionAccountSnapshot,
     PortfolioLedger,
+    build_verified_user_screenshot_snapshot,
     compute_commission,
+    compute_screenshot_price_drift,
     export_ledger_holdings_csv,
     export_ledger_transactions_csv,
+    load_screenshot_snapshot,
     parse_account_holdings_csv,
     parse_account_pending_orders_csv,
     parse_account_transactions_csv,
     quantize_tnd,
+    save_screenshot_snapshot,
 )
 from bvmt.llm import evaluate_dry_run, load_llm_budget_config
 from bvmt.notifications import NotificationCenter
@@ -866,3 +870,166 @@ def test_g3_dataset_discovery_and_dashboard_freshness(tmp_path):
     )
     assert state.data_freshness_sessions_behind == 0
     assert len(state.valuation_history) >= 3
+
+
+def test_g1_g2_real_competition_screenshot_snapshot_and_reconciliation(tmp_path):
+    """Tasks G1 & G2: Verify real Tunis Bourse Challenge screenshot snapshot, opening-snapshot ledger initialization, and read-only reconciliation."""
+    snap = build_verified_user_screenshot_snapshot()
+    assert snap.portfolio_total_tnd == Decimal("49998.050")
+    assert snap.available_cash_tnd == Decimal("49608.050")
+    assert snap.implied_initial_cash_tnd == Decimal("50000.000")
+    assert snap.competition_rank == 4813
+    assert snap.competition_participants == 14530
+    assert snap.competition_ranking_display == "4,813 / 14,530"
+    assert snap.displayed_overall_performance_pct == Decimal("0.000")
+    assert snap.displayed_total_pnl_tnd == Decimal("-1.950")
+    assert snap.capture_timestamp is None
+    assert snap.last_price_timestamp is None
+    assert snap.transactions_imported is False
+    assert snap.pending_orders_verified is False
+    assert snap.acquisition_fee_inclusion_verified is False
+    assert snap.live_synchronized is False
+
+    assert len(snap.holdings) == 1
+    bh = snap.holdings[0]
+    assert bh.instrument_id == "BH_BANK"
+    assert bh.symbol == "BH BANK"
+    assert bh.isin == "TN0001900604"
+    assert bh.quantity == 30
+    assert bh.displayed_acquisition_price_tnd == Decimal("13.065")
+    assert bh.displayed_acquisition_amount_tnd == Decimal("391.950")
+    assert bh.displayed_last_price_tnd == Decimal("13.000")
+    assert bh.current_market_value_tnd == Decimal("390.000")
+    assert bh.displayed_unrealized_pnl_tnd == Decimal("-1.950")
+    assert bh.displayed_unrealized_return_pct == Decimal("-0.500")
+    assert bh.portfolio_allocation_pct == Decimal("0.780")
+    assert snap.available_cash_tnd + bh.current_market_value_tnd == snap.portfolio_total_tnd
+
+    # Round-trip save/load of screenshot snapshot
+    snap_path = tmp_path / "real_account_snapshot.json"
+    save_screenshot_snapshot(snap, snap_path)
+    loaded_snap = load_screenshot_snapshot(snap_path)
+    assert loaded_snap == snap
+
+    # Require explicit confirmation before initializing opening snapshot ledger
+    init_dt = aware_timestamp("2026-11-05T17:00:00+01:00")
+    with pytest.raises(ValueError, match="Explicit user confirmation"):
+        PortfolioLedger.from_opening_snapshot(
+            snap,
+            confirmed_by_user=False,
+            initialized_at=init_dt,
+        )
+
+    real_ledger = PortfolioLedger.from_opening_snapshot(
+        snap,
+        confirmed_by_user=True,
+        initialized_at=init_dt,
+    )
+    assert real_ledger.portfolio_mode == "REAL_COMPETITION"
+    assert real_ledger.settled_cash_tnd == Decimal("49608.050")
+    assert real_ledger.available_cash_tnd == Decimal("49608.050")
+    assert real_ledger.initial_cash_tnd == Decimal("50000.000")
+    assert real_ledger.transactions_imported is False
+    assert real_ledger.pending_orders_verified is False
+    assert len(real_ledger.orders) == 0  # Zero fake executed transactions
+    assert real_ledger.holdings["BH_BANK"].total_shares == 30
+    assert real_ledger.holdings["BH_BANK"].cost_basis_tnd == Decimal("391.950")
+
+    # Never fabricate session-by-session historical equity curves from a single snapshot
+    bars = read_bars_csv(BARS_PATH)
+    assert real_ledger.compute_valuation_history(bars) == []
+
+    # Persist and reload real competition ledger
+    real_ledger_path = tmp_path / "real_competition_ledger.json"
+    real_ledger.save(real_ledger_path)
+    reloaded_real = PortfolioLedger.load(real_ledger_path)
+    assert reloaded_real.portfolio_mode == "REAL_COMPETITION"
+    assert reloaded_real.transactions_imported is False
+    assert reloaded_real.pending_orders_verified is False
+    assert reloaded_real.opening_snapshot == snap
+    assert len(reloaded_real.snapshot_history) == 1
+
+    # Read-only comparison against existing 100,000 TND demo ledger
+    demo_ledger = PortfolioLedger(initial_cash_tnd=Decimal("100000.000"), created_at=init_dt)
+    recon = demo_ledger.reconcile_with_snapshot(
+        snap.to_competition_account_snapshot(as_of=init_dt.isoformat()),
+        evaluated_at=init_dt,
+    )
+    assert recon.is_reconciled is False
+    assert recon.cash_delta_tnd == Decimal("-50391.950")
+    assert any(d.discrepancy_type == "cash_mismatch" for d in recon.discrepancies)
+    assert any(
+        d.discrepancy_type == "share_quantity_mismatch" and d.instrument_id == "BH_BANK"
+        for d in recon.discrepancies
+    )
+    # Demo ledger remains untouched
+    assert demo_ledger.settled_cash_tnd == Decimal("100000.000")
+    assert len(demo_ledger.holdings) == 0
+
+
+def test_g3_g4_real_competition_dashboard_and_price_drift(tmp_path):
+    """Tasks G3 & G4: Verify price-drift calculation against verified BVMT price (13.500 TND) and real portfolio dashboard rendering."""
+    snap = build_verified_user_screenshot_snapshot()
+    # Official BVMT latest traded price for BH BANK (TN0001900604) on 2026-11-04 / 2026-11-05 is 13.500 TND
+    drift = compute_screenshot_price_drift(
+        snap,
+        {"BH_BANK": Decimal("13.500")},
+        verified_session_date="2026-11-05",
+    )
+    assert drift.screenshot_total_equity_tnd == Decimal("49998.050")
+    assert drift.screenshot_cash_tnd == Decimal("49608.050")
+    assert drift.screenshot_holdings_value_tnd == Decimal("390.000")
+    assert drift.screenshot_holdings_weight_pct == Decimal("0.780")
+    assert drift.screenshot_cash_weight_pct == Decimal("99.220")
+    assert drift.screenshot_displayed_overall_performance_pct == Decimal("0.000")
+    assert drift.local_calculated_return_at_screenshot_pct == Decimal("-0.004")
+
+    assert drift.marked_holdings_value_tnd == Decimal("405.000")
+    assert drift.marked_total_equity_tnd == Decimal("50013.050")
+    assert drift.total_equity_drift_tnd == Decimal("15.000")
+    assert drift.marked_unrealized_pnl_tnd == Decimal("13.050")
+    assert drift.local_calculated_return_at_marked_pct == Decimal("0.026")
+
+    bh_drift = drift.holdings_drift[0]
+    assert bh_drift.price_has_verified_quote is True
+    assert bh_drift.verified_market_price_tnd == Decimal("13.500")
+    assert bh_drift.price_drift_tnd == Decimal("0.500")
+    assert bh_drift.price_drift_pct == Decimal("3.846")
+    assert bh_drift.market_value_drift_tnd == Decimal("15.000")
+    assert bh_drift.marked_unrealized_pnl_tnd == Decimal("13.050")
+    assert bh_drift.marked_unrealized_return_pct == Decimal("3.330")
+    assert bh_drift.exceeds_concentration_cap is False
+    assert bh_drift.remaining_concentration_room_tnd == Decimal("4596.305")
+
+    # Build dashboard state in REAL_COMPETITION mode
+    real_state = build_dashboard_state(
+        ledger_path=tmp_path / "real_competition_ledger.json",
+        alerts_path=tmp_path / "alerts.json",
+        portfolio_mode="REAL_COMPETITION",
+        real_snapshot_path=tmp_path / "real_account_snapshot.json",
+    )
+    assert real_state.portfolio_mode == "REAL_COMPETITION"
+    assert real_state.account_snapshot is not None
+    assert real_state.ledger.settled_cash_tnd == Decimal("49608.050")
+    assert real_state.ledger.holdings["BH_BANK"].total_shares == 30
+    assert real_state.valuation_history == []
+
+    # Verify Streamlit AppTest displays real account snapshot values and warnings
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(ROOT / "src/bvmt/dashboard.py"), default_timeout=30)
+    at.run()
+    assert not at.exception
+    metric_vals = [m.value for m in at.metric]
+    assert "49,998.05" in metric_vals
+    assert "49,608.05" in metric_vals
+    assert "4,813 / 14,530" in metric_vals
+    assert "+0.00%" in metric_vals
+    assert "30 shares" in metric_vals
+    assert "390.00 TND" in metric_vals
+    assert "-1.95 TND" in metric_vals
+    info_vals = [i.value for i in at.info]
+    warn_vals = [w.value for w in at.warning]
+    assert any("NOT LIVE-SYNCHRONIZED" in v for v in info_vals)
+    assert any("Transaction history not yet imported" in v for v in warn_vals)
+    assert any("Pending orders not verified" in v for v in warn_vals)

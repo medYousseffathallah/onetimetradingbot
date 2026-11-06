@@ -406,6 +406,507 @@ class ReconciliationReport:
         }
 
 
+@dataclass(frozen=True)
+class ScreenshotHoldingSnapshot:
+    instrument_id: str
+    symbol: str
+    isin: str | None
+    quantity: int
+    displayed_acquisition_price_tnd: Decimal
+    displayed_acquisition_amount_tnd: Decimal
+    displayed_last_price_tnd: Decimal
+    current_market_value_tnd: Decimal
+    displayed_unrealized_pnl_tnd: Decimal
+    displayed_unrealized_return_pct: Decimal
+    portfolio_allocation_pct: Decimal
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "current_market_value_tnd": str(quantize_tnd(self.current_market_value_tnd)),
+            "displayed_acquisition_amount_tnd": str(
+                quantize_tnd(self.displayed_acquisition_amount_tnd)
+            ),
+            "displayed_acquisition_price_tnd": str(
+                quantize_tnd(self.displayed_acquisition_price_tnd)
+            ),
+            "displayed_last_price_tnd": str(quantize_tnd(self.displayed_last_price_tnd)),
+            "displayed_unrealized_pnl_tnd": str(quantize_tnd(self.displayed_unrealized_pnl_tnd)),
+            "displayed_unrealized_return_pct": str(
+                quantize_tnd(self.displayed_unrealized_return_pct)
+            ),
+            "instrument_id": self.instrument_id,
+            "isin": self.isin,
+            "portfolio_allocation_pct": str(quantize_tnd(self.portfolio_allocation_pct)),
+            "quantity": self.quantity,
+            "symbol": self.symbol,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, object]) -> ScreenshotHoldingSnapshot:
+        return cls(
+            instrument_id=str(raw["instrument_id"]),
+            symbol=str(raw["symbol"]),
+            isin=str(raw["isin"]) if raw.get("isin") is not None else None,
+            quantity=int(str(raw["quantity"])),
+            displayed_acquisition_price_tnd=quantize_tnd(
+                str(raw["displayed_acquisition_price_tnd"])
+            ),
+            displayed_acquisition_amount_tnd=quantize_tnd(
+                str(raw["displayed_acquisition_amount_tnd"])
+            ),
+            displayed_last_price_tnd=quantize_tnd(str(raw["displayed_last_price_tnd"])),
+            current_market_value_tnd=quantize_tnd(str(raw["current_market_value_tnd"])),
+            displayed_unrealized_pnl_tnd=quantize_tnd(str(raw["displayed_unrealized_pnl_tnd"])),
+            displayed_unrealized_return_pct=quantize_tnd(
+                str(raw["displayed_unrealized_return_pct"])
+            ),
+            portfolio_allocation_pct=quantize_tnd(str(raw["portfolio_allocation_pct"])),
+        )
+
+
+@dataclass(frozen=True)
+class CompetitionScreenshotSnapshot:
+    snapshot_id: str
+    provenance: str
+    competition_window: str
+    capture_timestamp: str | None  # None when unknown; never invented
+    last_price_timestamp: str | None  # None when unknown; never invented
+    portfolio_total_tnd: Decimal
+    available_cash_tnd: Decimal
+    implied_initial_cash_tnd: Decimal
+    competition_rank: int | None
+    competition_participants: int | None
+    displayed_overall_performance_pct: Decimal
+    displayed_total_pnl_tnd: Decimal
+    holdings: list[ScreenshotHoldingSnapshot] = field(default_factory=list)
+    transactions_imported: bool = False
+    pending_orders_verified: bool = False
+    acquisition_fee_inclusion_verified: bool = False
+    live_synchronized: bool = False
+    limitations: list[str] = field(default_factory=list)
+
+    @property
+    def competition_ranking_display(self) -> str:
+        if self.competition_rank is not None and self.competition_participants is not None:
+            return f"{self.competition_rank:,} / {self.competition_participants:,}"
+        return "Unverified"
+
+    @property
+    def pending_orders_status_label(self) -> str:
+        return (
+            "Verified (0 open)" if self.pending_orders_verified else "Pending orders not verified"
+        )
+
+    @property
+    def transactions_status_label(self) -> str:
+        return "Imported" if self.transactions_imported else "Transaction history not yet imported"
+
+    def to_competition_account_snapshot(self, *, as_of: str) -> CompetitionAccountSnapshot:
+        return CompetitionAccountSnapshot(
+            as_of=as_of,
+            settled_cash_tnd=self.available_cash_tnd,
+            available_cash_tnd=self.available_cash_tnd,
+            initial_cash_tnd=self.implied_initial_cash_tnd,
+            holdings=[
+                AccountHoldingRecord(
+                    instrument_id=h.instrument_id,
+                    symbol=h.symbol,
+                    total_shares=h.quantity,
+                    average_cost_tnd=h.displayed_acquisition_price_tnd,
+                    realized_pnl_tnd=Decimal("0.000"),
+                    total_fees_paid_tnd=Decimal("0.000"),
+                )
+                for h in self.holdings
+            ],
+            transactions=[],
+            pending_orders=[],
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "acquisition_fee_inclusion_verified": self.acquisition_fee_inclusion_verified,
+            "available_cash_tnd": str(quantize_tnd(self.available_cash_tnd)),
+            "capture_timestamp": self.capture_timestamp,
+            "competition_participants": self.competition_participants,
+            "competition_rank": self.competition_rank,
+            "competition_window": self.competition_window,
+            "displayed_overall_performance_pct": str(
+                quantize_tnd(self.displayed_overall_performance_pct)
+            ),
+            "displayed_total_pnl_tnd": str(quantize_tnd(self.displayed_total_pnl_tnd)),
+            "holdings": [h.to_dict() for h in self.holdings],
+            "implied_initial_cash_tnd": str(quantize_tnd(self.implied_initial_cash_tnd)),
+            "last_price_timestamp": self.last_price_timestamp,
+            "limitations": list(self.limitations),
+            "live_synchronized": self.live_synchronized,
+            "pending_orders_verified": self.pending_orders_verified,
+            "portfolio_total_tnd": str(quantize_tnd(self.portfolio_total_tnd)),
+            "provenance": self.provenance,
+            "snapshot_id": self.snapshot_id,
+            "transactions_imported": self.transactions_imported,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, object]) -> CompetitionScreenshotSnapshot:
+        raw_holdings = raw.get("holdings", [])
+        holdings_list = (
+            [ScreenshotHoldingSnapshot.from_dict(h) for h in raw_holdings if isinstance(h, Mapping)]
+            if isinstance(raw_holdings, list)
+            else []
+        )
+        raw_lims = raw.get("limitations", [])
+        lims_list = [str(x) for x in raw_lims] if isinstance(raw_lims, list) else []
+        return cls(
+            snapshot_id=str(raw["snapshot_id"]),
+            provenance=str(raw.get("provenance", "user_supplied_competition_screenshot")),
+            competition_window=str(raw.get("competition_window", "2026-10-01 to 2027-05-31")),
+            capture_timestamp=(
+                str(raw["capture_timestamp"]) if raw.get("capture_timestamp") is not None else None
+            ),
+            last_price_timestamp=(
+                str(raw["last_price_timestamp"])
+                if raw.get("last_price_timestamp") is not None
+                else None
+            ),
+            portfolio_total_tnd=quantize_tnd(str(raw["portfolio_total_tnd"])),
+            available_cash_tnd=quantize_tnd(str(raw["available_cash_tnd"])),
+            implied_initial_cash_tnd=quantize_tnd(
+                str(raw.get("implied_initial_cash_tnd", "50000.000"))
+            ),
+            competition_rank=(
+                int(str(raw["competition_rank"]))
+                if raw.get("competition_rank") is not None
+                else None
+            ),
+            competition_participants=(
+                int(str(raw["competition_participants"]))
+                if raw.get("competition_participants") is not None
+                else None
+            ),
+            displayed_overall_performance_pct=quantize_tnd(
+                str(raw["displayed_overall_performance_pct"])
+            ),
+            displayed_total_pnl_tnd=quantize_tnd(str(raw.get("displayed_total_pnl_tnd", "-1.950"))),
+            holdings=holdings_list,
+            transactions_imported=bool(raw.get("transactions_imported", False)),
+            pending_orders_verified=bool(raw.get("pending_orders_verified", False)),
+            acquisition_fee_inclusion_verified=bool(
+                raw.get("acquisition_fee_inclusion_verified", False)
+            ),
+            live_synchronized=bool(raw.get("live_synchronized", False)),
+            limitations=lims_list,
+        )
+
+
+@dataclass(frozen=True)
+class HoldingPriceDrift:
+    instrument_id: str
+    symbol: str
+    isin: str | None
+    quantity: int
+    acquisition_price_tnd: Decimal
+    acquisition_amount_tnd: Decimal
+    screenshot_price_tnd: Decimal
+    screenshot_market_value_tnd: Decimal
+    screenshot_unrealized_pnl_tnd: Decimal
+    screenshot_unrealized_return_pct: Decimal
+    screenshot_weight_pct: Decimal
+    verified_market_price_tnd: Decimal
+    price_has_verified_quote: bool
+    price_drift_tnd: Decimal
+    price_drift_pct: Decimal
+    marked_market_value_tnd: Decimal
+    market_value_drift_tnd: Decimal
+    marked_unrealized_pnl_tnd: Decimal
+    marked_unrealized_return_pct: Decimal
+    marked_weight_pct: Decimal
+    concentration_cap_pct: Decimal
+    remaining_concentration_room_tnd: Decimal
+    exceeds_concentration_cap: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "acquisition_amount_tnd": str(quantize_tnd(self.acquisition_amount_tnd)),
+            "acquisition_price_tnd": str(quantize_tnd(self.acquisition_price_tnd)),
+            "concentration_cap_pct": str(quantize_tnd(self.concentration_cap_pct)),
+            "exceeds_concentration_cap": self.exceeds_concentration_cap,
+            "instrument_id": self.instrument_id,
+            "isin": self.isin,
+            "marked_market_value_tnd": str(quantize_tnd(self.marked_market_value_tnd)),
+            "marked_unrealized_pnl_tnd": str(quantize_tnd(self.marked_unrealized_pnl_tnd)),
+            "marked_unrealized_return_pct": str(quantize_tnd(self.marked_unrealized_return_pct)),
+            "marked_weight_pct": str(quantize_tnd(self.marked_weight_pct)),
+            "market_value_drift_tnd": str(quantize_tnd(self.market_value_drift_tnd)),
+            "price_drift_pct": str(quantize_tnd(self.price_drift_pct)),
+            "price_drift_tnd": str(quantize_tnd(self.price_drift_tnd)),
+            "price_has_verified_quote": self.price_has_verified_quote,
+            "quantity": self.quantity,
+            "remaining_concentration_room_tnd": str(
+                quantize_tnd(self.remaining_concentration_room_tnd)
+            ),
+            "screenshot_market_value_tnd": str(quantize_tnd(self.screenshot_market_value_tnd)),
+            "screenshot_price_tnd": str(quantize_tnd(self.screenshot_price_tnd)),
+            "screenshot_unrealized_pnl_tnd": str(quantize_tnd(self.screenshot_unrealized_pnl_tnd)),
+            "screenshot_unrealized_return_pct": str(
+                quantize_tnd(self.screenshot_unrealized_return_pct)
+            ),
+            "screenshot_weight_pct": str(quantize_tnd(self.screenshot_weight_pct)),
+            "symbol": self.symbol,
+            "verified_market_price_tnd": str(quantize_tnd(self.verified_market_price_tnd)),
+        }
+
+
+@dataclass(frozen=True)
+class PortfolioPriceDriftReport:
+    snapshot_id: str
+    verified_session_date: str | None
+    screenshot_total_equity_tnd: Decimal
+    screenshot_cash_tnd: Decimal
+    screenshot_holdings_value_tnd: Decimal
+    screenshot_cash_weight_pct: Decimal
+    screenshot_holdings_weight_pct: Decimal
+    screenshot_displayed_overall_performance_pct: Decimal
+    local_calculated_return_at_screenshot_pct: Decimal
+    marked_total_equity_tnd: Decimal
+    marked_holdings_value_tnd: Decimal
+    total_equity_drift_tnd: Decimal
+    marked_unrealized_pnl_tnd: Decimal
+    local_calculated_return_at_marked_pct: Decimal
+    holdings_drift: list[HoldingPriceDrift]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "holdings_drift": [h.to_dict() for h in self.holdings_drift],
+            "local_calculated_return_at_marked_pct": str(
+                quantize_tnd(self.local_calculated_return_at_marked_pct)
+            ),
+            "local_calculated_return_at_screenshot_pct": str(
+                quantize_tnd(self.local_calculated_return_at_screenshot_pct)
+            ),
+            "marked_holdings_value_tnd": str(quantize_tnd(self.marked_holdings_value_tnd)),
+            "marked_total_equity_tnd": str(quantize_tnd(self.marked_total_equity_tnd)),
+            "marked_unrealized_pnl_tnd": str(quantize_tnd(self.marked_unrealized_pnl_tnd)),
+            "screenshot_cash_tnd": str(quantize_tnd(self.screenshot_cash_tnd)),
+            "screenshot_cash_weight_pct": str(quantize_tnd(self.screenshot_cash_weight_pct)),
+            "screenshot_displayed_overall_performance_pct": str(
+                quantize_tnd(self.screenshot_displayed_overall_performance_pct)
+            ),
+            "screenshot_holdings_value_tnd": str(quantize_tnd(self.screenshot_holdings_value_tnd)),
+            "screenshot_holdings_weight_pct": str(
+                quantize_tnd(self.screenshot_holdings_weight_pct)
+            ),
+            "screenshot_total_equity_tnd": str(quantize_tnd(self.screenshot_total_equity_tnd)),
+            "snapshot_id": self.snapshot_id,
+            "total_equity_drift_tnd": str(quantize_tnd(self.total_equity_drift_tnd)),
+            "verified_session_date": self.verified_session_date,
+        }
+
+
+def build_verified_user_screenshot_snapshot() -> CompetitionScreenshotSnapshot:
+    """Return the user-supplied Tunis Bourse Challenge account snapshot without fabricating missing fields."""
+    return CompetitionScreenshotSnapshot(
+        snapshot_id="SNAP-TBC-USER-001",
+        provenance="user_supplied_competition_screenshot",
+        competition_window="2026-10-01 to 2027-05-31",
+        capture_timestamp=None,
+        last_price_timestamp=None,
+        portfolio_total_tnd=Decimal("49998.050"),
+        available_cash_tnd=Decimal("49608.050"),
+        implied_initial_cash_tnd=Decimal("50000.000"),
+        competition_rank=4813,
+        competition_participants=14530,
+        displayed_overall_performance_pct=Decimal("0.000"),
+        displayed_total_pnl_tnd=Decimal("-1.950"),
+        holdings=[
+            ScreenshotHoldingSnapshot(
+                instrument_id="BH_BANK",
+                symbol="BH BANK",
+                isin="TN0001900604",
+                quantity=30,
+                displayed_acquisition_price_tnd=Decimal("13.065"),
+                displayed_acquisition_amount_tnd=Decimal("391.950"),
+                displayed_last_price_tnd=Decimal("13.000"),
+                current_market_value_tnd=Decimal("390.000"),
+                displayed_unrealized_pnl_tnd=Decimal("-1.950"),
+                displayed_unrealized_return_pct=Decimal("-0.500"),
+                portfolio_allocation_pct=Decimal("0.780"),
+            )
+        ],
+        transactions_imported=False,
+        pending_orders_verified=False,
+        acquisition_fee_inclusion_verified=False,
+        live_synchronized=False,
+        limitations=[
+            "Complete executed transaction history is not provided in the screenshot.",
+            "Pending orders are not shown and not proven to be zero ('Pending orders not verified').",
+            "Exact capture timestamp and timestamp of the displayed last price (13.00 TND) are unknown.",
+            "Whether the displayed acquisition amount (391.95 TND = 30 * 13.065 TND) includes 0.50% fees is not independently proven by the screenshot alone.",
+            "Displayed overall performance (+0.00%) is preserved as reported alongside local calculation (-1.95 TND on 50,000.00 TND = -0.004%).",
+        ],
+    )
+
+
+def save_screenshot_snapshot(snapshot: CompetitionScreenshotSnapshot, path: Path) -> None:
+    """Persist a user-supplied competition screenshot snapshot locally (gitignored)."""
+    ensure_no_symlink_ancestors(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(snapshot.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n"
+    if path.exists():
+        path.unlink()
+    atomic_write_text(path, text, allow_identical=True)
+
+
+def load_screenshot_snapshot(path: Path) -> CompetitionScreenshotSnapshot:
+    """Load a persisted competition screenshot snapshot from disk."""
+    ensure_no_symlink_ancestors(path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("Invalid competition screenshot snapshot JSON")
+    return CompetitionScreenshotSnapshot.from_dict(raw)
+
+
+def compute_screenshot_price_drift(
+    snapshot: CompetitionScreenshotSnapshot,
+    verified_market_prices: Mapping[str, Decimal | str],
+    *,
+    verified_session_date: str | None = None,
+    concentration_cap_ratio: Decimal = MAX_CONCENTRATION_RATIO,
+) -> PortfolioPriceDriftReport:
+    """Compare screenshot holding valuation against later verified BVMT market prices."""
+    cash = quantize_tnd(snapshot.available_cash_tnd)
+    sc_total = quantize_tnd(snapshot.portfolio_total_tnd)
+    sc_hold_val = quantize_tnd(
+        sum((h.current_market_value_tnd for h in snapshot.holdings), Decimal("0.000"))
+    )
+
+    marked_mv_by_inst: dict[str, Decimal] = {}
+    verified_px_by_inst: dict[str, tuple[Decimal, bool]] = {}
+    for h in snapshot.holdings:
+        raw_px = verified_market_prices.get(h.instrument_id)
+        if raw_px is None and h.isin:
+            raw_px = verified_market_prices.get(h.isin)
+        if raw_px is None:
+            raw_px = verified_market_prices.get(h.symbol)
+        if raw_px is not None:
+            v_px = quantize_tnd(raw_px)
+            has_q = True
+        else:
+            v_px = quantize_tnd(h.displayed_last_price_tnd)
+            has_q = False
+        verified_px_by_inst[h.instrument_id] = (v_px, has_q)
+        marked_mv_by_inst[h.instrument_id] = quantize_tnd(Decimal(h.quantity) * v_px)
+
+    marked_hold_val = quantize_tnd(sum(marked_mv_by_inst.values(), Decimal("0.000")))
+    marked_total = quantize_tnd(cash + marked_hold_val)
+    cap_pct = quantize_tnd(concentration_cap_ratio * Decimal("100"))
+
+    holdings_drift: list[HoldingPriceDrift] = []
+    total_marked_unreal = Decimal("0.000")
+    for h in snapshot.holdings:
+        v_px, has_q = verified_px_by_inst[h.instrument_id]
+        m_mv = marked_mv_by_inst[h.instrument_id]
+        sc_px = quantize_tnd(h.displayed_last_price_tnd)
+        sc_mv = quantize_tnd(h.current_market_value_tnd)
+        acq_amt = quantize_tnd(h.displayed_acquisition_amount_tnd)
+
+        px_drift = quantize_tnd(v_px - sc_px)
+        px_drift_pct = (
+            quantize_tnd((px_drift / sc_px) * Decimal("100"))
+            if sc_px > Decimal("0")
+            else Decimal("0.000")
+        )
+        mv_drift = quantize_tnd(m_mv - sc_mv)
+        m_unreal = quantize_tnd(m_mv - acq_amt)
+        total_marked_unreal = quantize_tnd(total_marked_unreal + m_unreal)
+        m_unreal_pct = (
+            quantize_tnd((m_unreal / acq_amt) * Decimal("100"))
+            if acq_amt > Decimal("0")
+            else Decimal("0.000")
+        )
+        sc_w = (
+            quantize_tnd((sc_mv / sc_total) * Decimal("100"))
+            if sc_total > Decimal("0")
+            else Decimal("0.000")
+        )
+        m_w = (
+            quantize_tnd((m_mv / marked_total) * Decimal("100"))
+            if marked_total > Decimal("0")
+            else Decimal("0.000")
+        )
+        max_pos_tnd = quantize_tnd(marked_total * concentration_cap_ratio)
+        rem_room = quantize_tnd(max_pos_tnd - m_mv)
+
+        holdings_drift.append(
+            HoldingPriceDrift(
+                instrument_id=h.instrument_id,
+                symbol=h.symbol,
+                isin=h.isin,
+                quantity=h.quantity,
+                acquisition_price_tnd=quantize_tnd(h.displayed_acquisition_price_tnd),
+                acquisition_amount_tnd=acq_amt,
+                screenshot_price_tnd=sc_px,
+                screenshot_market_value_tnd=sc_mv,
+                screenshot_unrealized_pnl_tnd=quantize_tnd(h.displayed_unrealized_pnl_tnd),
+                screenshot_unrealized_return_pct=quantize_tnd(h.displayed_unrealized_return_pct),
+                screenshot_weight_pct=sc_w,
+                verified_market_price_tnd=v_px,
+                price_has_verified_quote=has_q,
+                price_drift_tnd=px_drift,
+                price_drift_pct=px_drift_pct,
+                marked_market_value_tnd=m_mv,
+                market_value_drift_tnd=mv_drift,
+                marked_unrealized_pnl_tnd=m_unreal,
+                marked_unrealized_return_pct=m_unreal_pct,
+                marked_weight_pct=m_w,
+                concentration_cap_pct=cap_pct,
+                remaining_concentration_room_tnd=rem_room,
+                exceeds_concentration_cap=m_mv > max_pos_tnd,
+            )
+        )
+
+    sc_cash_w = (
+        quantize_tnd((cash / sc_total) * Decimal("100"))
+        if sc_total > Decimal("0")
+        else Decimal("0.000")
+    )
+    sc_hold_w = (
+        quantize_tnd((sc_hold_val / sc_total) * Decimal("100"))
+        if sc_total > Decimal("0")
+        else Decimal("0.000")
+    )
+    init_cap = quantize_tnd(snapshot.implied_initial_cash_tnd)
+    local_ret_sc = (
+        quantize_tnd(((sc_total - init_cap) / init_cap) * Decimal("100"))
+        if init_cap > Decimal("0")
+        else Decimal("0.000")
+    )
+    local_ret_marked = (
+        quantize_tnd(((marked_total - init_cap) / init_cap) * Decimal("100"))
+        if init_cap > Decimal("0")
+        else Decimal("0.000")
+    )
+
+    return PortfolioPriceDriftReport(
+        snapshot_id=snapshot.snapshot_id,
+        verified_session_date=verified_session_date,
+        screenshot_total_equity_tnd=sc_total,
+        screenshot_cash_tnd=cash,
+        screenshot_holdings_value_tnd=sc_hold_val,
+        screenshot_cash_weight_pct=sc_cash_w,
+        screenshot_holdings_weight_pct=sc_hold_w,
+        screenshot_displayed_overall_performance_pct=quantize_tnd(
+            snapshot.displayed_overall_performance_pct
+        ),
+        local_calculated_return_at_screenshot_pct=local_ret_sc,
+        marked_total_equity_tnd=marked_total,
+        marked_holdings_value_tnd=marked_hold_val,
+        total_equity_drift_tnd=quantize_tnd(marked_total - sc_total),
+        marked_unrealized_pnl_tnd=total_marked_unreal,
+        local_calculated_return_at_marked_pct=local_ret_marked,
+        holdings_drift=holdings_drift,
+    )
+
+
 def _normalize_csv_decimal(raw_val: str) -> Decimal:
     cleaned = raw_val.strip().replace("\u00a0", "").replace(" ", "").replace(",", ".")
     return quantize_tnd(cleaned)
@@ -764,6 +1265,11 @@ class PortfolioLedger:
         self.holdings: dict[str, HoldingPosition] = {}
         self.orders: dict[str, ManualOrderRecord] = {}
         self.audit_log: list[LedgerAuditEntry] = []
+        self.portfolio_mode: str = "SYNTHETIC_DEMO"
+        self.transactions_imported: bool = True
+        self.pending_orders_verified: bool = True
+        self.opening_snapshot: CompetitionScreenshotSnapshot | None = None
+        self.snapshot_history: list[CompetitionScreenshotSnapshot] = []
 
         self._append_audit(
             timestamp=created_at,
@@ -1387,6 +1893,9 @@ class PortfolioLedger:
                     )
                 )
         else:
+            # Never fabricate historical performance curves from a single opening snapshot
+            if self.portfolio_mode == "REAL_COMPETITION" and not self.transactions_imported:
+                return []
             # Value current holdings snapshot across historical session marks
             for sess in sessions:
                 sess_iso = sess.isoformat()
@@ -1405,6 +1914,121 @@ class PortfolioLedger:
                     )
                 )
         return history
+
+    @classmethod
+    def from_opening_snapshot(
+        cls,
+        snapshot: CompetitionScreenshotSnapshot,
+        *,
+        confirmed_by_user: bool,
+        initialized_at: datetime,
+        fee_rate: Decimal | str = DEFAULT_FEE_RATE,
+        max_concentration_ratio: Decimal | str = MAX_CONCENTRATION_RATIO,
+    ) -> PortfolioLedger:
+        """Initialize a clean REAL_COMPETITION ledger from an audited opening snapshot without inventing transactions."""
+        if confirmed_by_user is not True:
+            raise ValueError(
+                "Explicit user confirmation (confirmed_by_user=True) is required before initializing from an opening snapshot"
+            )
+        if initialized_at.tzinfo is None or initialized_at.utcoffset() is None:
+            raise ValueError("initialized_at must be timezone-aware")
+
+        ledger = cls(
+            initial_cash_tnd=snapshot.implied_initial_cash_tnd,
+            fee_rate=fee_rate,
+            max_concentration_ratio=max_concentration_ratio,
+            created_at=initialized_at,
+        )
+        ledger.portfolio_mode = "REAL_COMPETITION"
+        ledger.settled_cash_tnd = quantize_tnd(snapshot.available_cash_tnd)
+        ledger.reserved_cash_tnd = Decimal("0.000")
+        ledger.transactions_imported = snapshot.transactions_imported
+        ledger.pending_orders_verified = snapshot.pending_orders_verified
+        ledger.opening_snapshot = snapshot
+        ledger.snapshot_history = [snapshot]
+        ledger.holdings = {}
+        for h in snapshot.holdings:
+            ledger.holdings[h.instrument_id] = HoldingPosition(
+                instrument_id=h.instrument_id,
+                symbol=h.symbol,
+                total_shares=h.quantity,
+                reserved_sell_shares=0,
+                average_cost_tnd=quantize_tnd(h.displayed_acquisition_price_tnd),
+                cost_basis_tnd=quantize_tnd(h.displayed_acquisition_amount_tnd),
+                realized_pnl_tnd=Decimal("0.000"),
+                total_fees_paid_tnd=Decimal("0.000"),
+            )
+        ledger.orders = {}
+        ledger.audit_log = []
+        ledger._append_audit(
+            timestamp=initialized_at,
+            event_type="OPENING_SNAPSHOT_INITIALIZED",
+            order_id=None,
+            instrument_id=None,
+            summary=(
+                f"Initialized REAL_COMPETITION ledger from audited opening snapshot '{snapshot.snapshot_id}' "
+                f"(provenance: {snapshot.provenance}, cash: {ledger.settled_cash_tnd} TND, "
+                f"holdings: {len(ledger.holdings)}, transactions_imported: {ledger.transactions_imported}, "
+                f"pending_orders_verified: {ledger.pending_orders_verified})"
+            ),
+            payload=snapshot.to_dict(),
+        )
+        return ledger
+
+    def record_account_snapshot(
+        self,
+        snapshot: CompetitionScreenshotSnapshot,
+        *,
+        confirmed_by_user: bool,
+        recorded_at: datetime,
+        sync_holdings_and_cash: bool = True,
+    ) -> CompetitionScreenshotSnapshot:
+        """Append an additional user-supplied competition account snapshot to snapshot_history."""
+        if confirmed_by_user is not True:
+            raise ValueError(
+                "Explicit user confirmation (confirmed_by_user=True) is required before recording an account snapshot"
+            )
+        if recorded_at.tzinfo is None or recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must be timezone-aware")
+
+        if self.opening_snapshot is None:
+            self.opening_snapshot = snapshot
+        self.snapshot_history.append(snapshot)
+        if sync_holdings_and_cash:
+            self.settled_cash_tnd = quantize_tnd(snapshot.available_cash_tnd)
+            self.transactions_imported = snapshot.transactions_imported
+            self.pending_orders_verified = snapshot.pending_orders_verified
+            new_holdings: dict[str, HoldingPosition] = {}
+            for h in snapshot.holdings:
+                existing = self.holdings.get(h.instrument_id)
+                new_holdings[h.instrument_id] = HoldingPosition(
+                    instrument_id=h.instrument_id,
+                    symbol=h.symbol,
+                    total_shares=h.quantity,
+                    reserved_sell_shares=existing.reserved_sell_shares if existing else 0,
+                    average_cost_tnd=quantize_tnd(h.displayed_acquisition_price_tnd),
+                    cost_basis_tnd=quantize_tnd(h.displayed_acquisition_amount_tnd),
+                    realized_pnl_tnd=existing.realized_pnl_tnd if existing else Decimal("0.000"),
+                    total_fees_paid_tnd=existing.total_fees_paid_tnd
+                    if existing
+                    else Decimal("0.000"),
+                )
+            self.holdings = new_holdings
+            self._reconcile_reservations()
+
+        self._append_audit(
+            timestamp=recorded_at,
+            event_type="ACCOUNT_SNAPSHOT_RECORDED",
+            order_id=None,
+            instrument_id=None,
+            summary=(
+                f"Recorded competition account snapshot '{snapshot.snapshot_id}' "
+                f"(portfolio total: {snapshot.portfolio_total_tnd} TND, cash: {snapshot.available_cash_tnd} TND, "
+                f"rank: {snapshot.competition_ranking_display})"
+            ),
+            payload=snapshot.to_dict(),
+        )
+        return snapshot
 
     def reconcile_with_snapshot(
         self, snapshot: CompetitionAccountSnapshot, *, evaluated_at: datetime
@@ -1935,10 +2559,17 @@ class PortfolioLedger:
             "holdings": {k: v.to_dict() for k, v in sorted(self.holdings.items())},
             "initial_cash_tnd": str(self.initial_cash_tnd),
             "max_concentration_ratio": str(self.max_concentration_ratio),
+            "opening_snapshot": (
+                self.opening_snapshot.to_dict() if self.opening_snapshot is not None else None
+            ),
             "orders": {k: v.to_dict() for k, v in sorted(self.orders.items())},
+            "pending_orders_verified": self.pending_orders_verified,
+            "portfolio_mode": self.portfolio_mode,
             "reserved_cash_tnd": str(self.reserved_cash_tnd),
             "schema_version": 1,
             "settled_cash_tnd": str(self.settled_cash_tnd),
+            "snapshot_history": [s.to_dict() for s in self.snapshot_history],
+            "transactions_imported": self.transactions_imported,
             "updated_at": self.updated_at,
         }
 
@@ -1967,6 +2598,19 @@ class PortfolioLedger:
         ledger.settled_cash_tnd = quantize_tnd(str(raw["settled_cash_tnd"]))
         ledger.reserved_cash_tnd = quantize_tnd(str(raw["reserved_cash_tnd"]))
         ledger.updated_at = str(raw["updated_at"])
+        ledger.portfolio_mode = str(raw.get("portfolio_mode", "SYNTHETIC_DEMO"))
+        ledger.transactions_imported = bool(raw.get("transactions_imported", True))
+        ledger.pending_orders_verified = bool(raw.get("pending_orders_verified", True))
+        raw_opening = raw.get("opening_snapshot")
+        if isinstance(raw_opening, Mapping):
+            ledger.opening_snapshot = CompetitionScreenshotSnapshot.from_dict(raw_opening)
+        raw_snap_hist = raw.get("snapshot_history", [])
+        if isinstance(raw_snap_hist, list):
+            ledger.snapshot_history = [
+                CompetitionScreenshotSnapshot.from_dict(s)
+                for s in raw_snap_hist
+                if isinstance(s, Mapping)
+            ]
 
         raw_holdings = raw.get("holdings", {})
         if not isinstance(raw_holdings, dict):

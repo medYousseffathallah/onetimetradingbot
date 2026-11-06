@@ -32,14 +32,21 @@ from bvmt.features import rank_session_baseline
 from bvmt.ledger import (
     OPEN_ORDER_STATUSES,
     CompetitionAccountSnapshot,
+    CompetitionScreenshotSnapshot,
     PortfolioHistoryPoint,
     PortfolioLedger,
+    PortfolioPriceDriftReport,
+    ReconciliationReport,
+    build_verified_user_screenshot_snapshot,
+    compute_screenshot_price_drift,
     export_ledger_holdings_csv,
     export_ledger_transactions_csv,
+    load_screenshot_snapshot,
     parse_account_holdings_csv,
     parse_account_pending_orders_csv,
     parse_account_transactions_csv,
     quantize_tnd,
+    save_screenshot_snapshot,
 )
 from bvmt.llm import (
     DocumentChunk,
@@ -58,6 +65,8 @@ from bvmt.recommendations import (
 from bvmt.rules import competition_blockers
 
 DEFAULT_LEDGER_PATH = Path("data/portfolio/ledger.json")
+DEFAULT_REAL_LEDGER_PATH = Path("data/portfolio/real_competition_ledger.json")
+DEFAULT_REAL_SNAPSHOT_PATH = Path("data/portfolio/real_account_snapshot.json")
 DEFAULT_ALERTS_PATH = Path("artifacts/alerts/state.json")
 DEFAULT_BARS_PATH = Path("tests/fixtures/daily_bars.csv")
 DEFAULT_CALENDAR_PATH = Path("tests/fixtures/exchange_calendar.csv")
@@ -126,12 +135,13 @@ def discover_available_bar_datasets(
     default_bars_path: Path = DEFAULT_BARS_PATH,
 ) -> dict[str, Path]:
     """Discover imported canonical BVMT bar datasets alongside the synthetic demo fixture."""
-    datasets: dict[str, Path] = {}
+    datasets: dict[str, Path] = {
+        f"SYNTHETIC DEMO: {default_bars_path.as_posix()}": default_bars_path,
+    }
     if processed_root.is_dir():
         for csv_path in sorted(processed_root.glob("*/daily_bars.canonical.csv")):
             source_name = csv_path.parent.name
             datasets[f"VERIFIED IMPORT: {source_name} ({csv_path.as_posix()})"] = csv_path
-    datasets[f"SYNTHETIC DEMO: {default_bars_path.as_posix()}"] = default_bars_path
     return datasets
 
 
@@ -153,6 +163,11 @@ class DashboardAppState:
     valuation_history: list[PortfolioHistoryPoint] = field(default_factory=list)
     data_freshness_sessions_behind: int = 0
     active_bars_path: str = str(DEFAULT_BARS_PATH)
+    portfolio_mode: str = "SYNTHETIC_DEMO"
+    account_snapshot: CompetitionScreenshotSnapshot | None = None
+    price_drift_report: PortfolioPriceDriftReport | None = None
+    existing_ledger_reconciliation_report: ReconciliationReport | None = None
+    real_snapshot_path: Path = DEFAULT_REAL_SNAPSHOT_PATH
 
 
 def build_dashboard_state(
@@ -169,26 +184,104 @@ def build_dashboard_state(
     short_lookback: int = 2,
     long_lookback: int = 3,
     min_turnover_tnd: Decimal = Decimal("5000"),
+    portfolio_mode: str = "SYNTHETIC_DEMO",
+    real_snapshot_path: Path = DEFAULT_REAL_SNAPSHOT_PATH,
 ) -> DashboardAppState:
     """Load or initialize persistent ledger, notifications, recommendations, and system health state."""
-    cutoff = aware_timestamp(cutoff_str)
-    if ledger_path.is_file():
-        ledger = PortfolioLedger.load(ledger_path)
+    # Auto-detect sibling instrument_master.csv and exchange_calendar.csv when using an imported official dataset
+    effective_calendar_path = calendar_path
+    effective_instruments_path = instruments_path
+    if (
+        calendar_path == DEFAULT_CALENDAR_PATH
+        and (bars_path.parent / "exchange_calendar.csv").is_file()
+    ):
+        effective_calendar_path = bars_path.parent / "exchange_calendar.csv"
+    if (
+        instruments_path == DEFAULT_INSTRUMENTS_PATH
+        and (bars_path.parent / "instrument_master.csv").is_file()
+    ):
+        effective_instruments_path = bars_path.parent / "instrument_master.csv"
+
+    instruments = read_instrument_master(effective_instruments_path)
+    calendar = read_exchange_calendar(effective_calendar_path)
+    bars = read_bars_csv(bars_path)
+
+    all_bar_dates = sorted({b.session_date for b in bars})
+    effective_cutoff_str = cutoff_str
+    effective_short = short_lookback
+    effective_long = long_lookback
+    if (
+        effective_calendar_path != DEFAULT_CALENDAR_PATH
+        and len(all_bar_dates) >= 61
+        and cutoff_str == "2026-01-09T17:00:00+00:00"
+    ):
+        effective_cutoff_str = f"{all_bar_dates[-1].isoformat()}T17:00:00+01:00"
+        if short_lookback == 2 and long_lookback == 3:
+            effective_short = 20
+            effective_long = 60
+
+    cutoff = aware_timestamp(effective_cutoff_str)
+    account_snapshot: CompetitionScreenshotSnapshot | None = None
+    existing_recon_report: ReconciliationReport | None = None
+
+    if portfolio_mode == "REAL_COMPETITION":
+        if real_snapshot_path.is_file():
+            account_snapshot = load_screenshot_snapshot(real_snapshot_path)
+        else:
+            account_snapshot = build_verified_user_screenshot_snapshot()
+            save_screenshot_snapshot(account_snapshot, real_snapshot_path)
+
+        # Compare existing demo/local ledger (if present) against the real account snapshot without mutating it
+        demo_check_path = DEFAULT_LEDGER_PATH
+        if demo_check_path.is_file():
+            existing_demo = PortfolioLedger.load(demo_check_path)
+            existing_recon_report = existing_demo.reconcile_with_snapshot(
+                account_snapshot.to_competition_account_snapshot(as_of=cutoff.isoformat()),
+                evaluated_at=cutoff,
+            )
+
+        if ledger_path.is_file():
+            loaded = PortfolioLedger.load(ledger_path)
+            if loaded.portfolio_mode == "REAL_COMPETITION":
+                ledger = loaded
+                if ledger.opening_snapshot is not None:
+                    account_snapshot = (
+                        ledger.snapshot_history[-1]
+                        if ledger.snapshot_history
+                        else ledger.opening_snapshot
+                    )
+            else:
+                # Never mix synthetic demo ledger with real competition portfolio
+                if existing_recon_report is None:
+                    existing_recon_report = loaded.reconcile_with_snapshot(
+                        account_snapshot.to_competition_account_snapshot(as_of=cutoff.isoformat()),
+                        evaluated_at=cutoff,
+                    )
+                ledger = PortfolioLedger.from_opening_snapshot(
+                    account_snapshot,
+                    confirmed_by_user=True,
+                    initialized_at=cutoff,
+                )
+        else:
+            ledger = PortfolioLedger.from_opening_snapshot(
+                account_snapshot,
+                confirmed_by_user=True,
+                initialized_at=cutoff,
+            )
     else:
-        ledger = PortfolioLedger(
-            initial_cash_tnd=Decimal("100000.000"),
-            created_at=cutoff,
-        )
-        ledger.save(ledger_path)
+        if ledger_path.is_file():
+            ledger = PortfolioLedger.load(ledger_path)
+        else:
+            ledger = PortfolioLedger(
+                initial_cash_tnd=Decimal("100000.000"),
+                created_at=cutoff,
+            )
+            ledger.save(ledger_path)
 
     notifications = NotificationCenter.load(alerts_path)
 
     comp_doc = json.loads(competition_config_path.read_text(encoding="utf-8"))
     rule_blockers = competition_blockers(comp_doc)
-
-    instruments = read_instrument_master(instruments_path)
-    calendar = read_exchange_calendar(calendar_path)
-    bars = read_bars_csv(bars_path)
 
     data_is_synthetic = any("synthetic" in b.source_id.lower() for b in bars)
     sim_profile = "SYNTHETIC_DEMO" if data_is_synthetic else "RESEARCH_CONSERVATIVE"
@@ -199,8 +292,8 @@ def build_dashboard_state(
         calendar,
         bars,
         cutoff,
-        short_lookback=short_lookback,
-        long_lookback=long_lookback,
+        short_lookback=effective_short,
+        long_lookback=effective_long,
         min_trade_frequency=0.60,
         min_median_turnover_tnd=min_turnover_tnd,
     )
@@ -214,6 +307,10 @@ def build_dashboard_state(
 
     eligible_bars = [b for b in bars if b.session_date <= cutoff.date()]
     price_map: dict[str, Decimal] = {}
+    # Seed real competition holdings with screenshot displayed price as baseline fallback if market data is synthetic
+    if account_snapshot is not None:
+        for h_snap in account_snapshot.holdings:
+            price_map[h_snap.instrument_id] = quantize_tnd(h_snap.displayed_last_price_tnd)
     for b in sorted(eligible_bars, key=lambda x: x.session_date):
         if b.status == "traded":
             price_map[b.instrument_id] = quantize_tnd(b.close)
@@ -238,6 +335,19 @@ def build_dashboard_state(
         sessions_behind = sum(1 for d in open_up_to_cutoff if d > latest_bar_date)
 
     val_history = ledger.compute_valuation_history(eligible_bars)
+
+    price_drift_report: PortfolioPriceDriftReport | None = None
+    if account_snapshot is not None:
+        # Only pass verified non-synthetic market prices to drift comparison so synthetic fixtures never masquerade as real quotes
+        verified_quotes = {} if data_is_synthetic else price_map
+        price_drift_report = compute_screenshot_price_drift(
+            account_snapshot,
+            verified_quotes,
+            verified_session_date=(
+                latest_bar_date.isoformat() if (latest_bar_date and not data_is_synthetic) else None
+            ),
+            concentration_cap_ratio=ledger.max_concentration_ratio,
+        )
 
     notifications.evaluate(
         now=cutoff,
@@ -298,6 +408,11 @@ def build_dashboard_state(
         valuation_history=val_history,
         data_freshness_sessions_behind=sessions_behind,
         active_bars_path=bars_path.as_posix(),
+        portfolio_mode=portfolio_mode,
+        account_snapshot=account_snapshot,
+        price_drift_report=price_drift_report,
+        existing_ledger_reconciliation_report=existing_recon_report,
+        real_snapshot_path=real_snapshot_path,
     )
 
 
@@ -338,12 +453,31 @@ def _inject_terminal_css(st: Any) -> None:
 
 
 def _render_top_banners(st: Any, state: DashboardAppState) -> None:
+    if state.portfolio_mode == "REAL_COMPETITION" and state.account_snapshot is not None:
+        acct = state.account_snapshot
+        cap_ts = acct.capture_timestamp or "unknown (user-supplied screenshot)"
+        px_ts = acct.last_price_timestamp or "unknown (displayed on screenshot)"
+        st.info(
+            f"**[REAL COMPETITION PORTFOLIO — TUNIS BOURSE CHALLENGE SNAPSHOT]**  \n"
+            f"**Provenance:** `{acct.provenance}` (`{acct.snapshot_id}`) | "
+            f"**Competition Window:** `{acct.competition_window}` | "
+            f"**Capture Timestamp:** `{cap_ts}` | **Displayed Price Timestamp:** `{px_ts}`  \n"
+            f"**Synchronization Status:** `NOT LIVE-SYNCHRONIZED` (manual snapshot tracking only) | "
+            f"**Transactions:** `{acct.transactions_status_label}` | "
+            f"**Pending Orders:** `{acct.pending_orders_status_label}`"
+        )
+    else:
+        st.warning(
+            "**[SYNTHETIC DEMO PORTFOLIO]** Currently viewing the isolated synthetic demo ledger (`100,000.000 TND`). "
+            "Switch **Portfolio Environment** in the sidebar to **REAL COMPETITION PORTFOLIO** to view your Tunis Bourse Challenge account (`49,998.05 TND`)."
+        )
+
     if state.data_is_synthetic:
         st.markdown(
             "<div class='bvmt-banner-synthetic'>"
             "<strong>[SYNTHETIC DEMO MODE]</strong> Currently displaying labeled synthetic fixture bars "
             "(<code>tests/fixtures/daily_bars.csv</code>). Do NOT use synthetic scores for real competition trading. "
-            "Import official BVMT daily CSVs into <code>data/processed/</code> for real research."
+            "Select an imported <code>VERIFIED IMPORT</code> dataset in the sidebar for real BVMT market prices."
             "</div>",
             unsafe_allow_html=True,
         )
@@ -375,21 +509,97 @@ def _render_overview_page(st: Any, state: DashboardAppState) -> None:
     st.subheader("1. Portfolio & Market Overview")
     snap = state.ledger.valuate(state.price_map)
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(
-        "Total Portfolio Equity (TND)",
-        f"{snap.total_equity_tnd:,.3f}",
-        f"{snap.total_return_pct:+.3f}%",
-    )
-    c2.metric("Available Cash (TND)", f"{snap.available_cash_tnd:,.3f}")
-    c3.metric("Reserved Cash (Pending BUY)", f"{snap.reserved_cash_tnd:,.3f}")
-    c4.metric("Holdings Market Value (TND)", f"{snap.holdings_market_value_tnd:,.3f}")
+    if state.portfolio_mode == "REAL_COMPETITION" and state.account_snapshot is not None:
+        acct = state.account_snapshot
+        st.markdown("#### Verified Tunis Bourse Challenge Account Snapshot (`Mon portefeuille`)")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(
+            "Portfolio Total at Snapshot (TND)",
+            f"{acct.portfolio_total_tnd:,.2f}",
+            f"{acct.displayed_overall_performance_pct:+.2f}% (displayed)",
+        )
+        m2.metric("Available Cash / Liquidités (TND)", f"{acct.available_cash_tnd:,.2f}")
+        m3.metric("Competition Ranking", acct.competition_ranking_display)
+        m4.metric(
+            "Displayed Overall Performance",
+            f"{acct.displayed_overall_performance_pct:+.2f}%",
+            f"{acct.displayed_total_pnl_tnd:+,.2f} TND",
+        )
 
-    c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Settled Cash (TND)", f"{snap.settled_cash_tnd:,.3f}")
-    c6.metric("Unrealized P&L (TND)", f"{snap.total_unrealized_pnl_tnd:+,.3f}")
-    c7.metric("Realized P&L (TND)", f"{snap.total_realized_pnl_tnd:+,.3f}")
-    c8.metric("Total Fees Paid (0.50%)", f"{snap.total_fees_paid_tnd:,.3f}")
+        if acct.holdings:
+            bh = acct.holdings[0]
+            h1, h2, h3, h4 = st.columns(4)
+            h1.metric(
+                f"Holding: {bh.symbol}",
+                f"{bh.quantity} shares",
+                f"Allocation: {bh.portfolio_allocation_pct:.2f}%",
+            )
+            h2.metric(
+                "Acquisition Price / Amount",
+                f"{bh.displayed_acquisition_price_tnd:,.3f} TND",
+                f"Montant: {bh.displayed_acquisition_amount_tnd:,.2f} TND",
+            )
+            h3.metric(
+                "Holding Value at Snapshot",
+                f"{bh.current_market_value_tnd:,.2f} TND",
+                f"Dernier: {bh.displayed_last_price_tnd:,.2f} TND",
+            )
+            h4.metric(
+                "Unrealized P&L at Snapshot",
+                f"{bh.displayed_unrealized_pnl_tnd:+,.2f} TND",
+                f"{bh.displayed_unrealized_return_pct:+.2f}%",
+            )
+
+        s1, s2 = st.columns(2)
+        s1.warning(f"**Transaction History Status:** {acct.transactions_status_label}")
+        s2.warning(f"**Pending Orders Status:** {acct.pending_orders_status_label}")
+
+        if state.price_drift_report is not None:
+            dr = state.price_drift_report
+            st.markdown(
+                f"#### Mark-to-Market Valuation & Price Drift vs. Latest Verified BVMT Market Data (`{dr.verified_session_date or 'Snapshot Baseline'}`)"
+            )
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric(
+                "Marked Total Portfolio Equity (TND)",
+                f"{dr.marked_total_equity_tnd:,.3f}",
+                f"{dr.total_equity_drift_tnd:+,.3f} TND vs snapshot",
+            )
+            d2.metric(
+                "Marked Holdings Value (TND)",
+                f"{dr.marked_holdings_value_tnd:,.3f}",
+                f"Snapshot: {dr.screenshot_holdings_value_tnd:,.2f} TND",
+            )
+            d3.metric(
+                "Marked Unrealized P&L (TND)",
+                f"{dr.marked_unrealized_pnl_tnd:+,.3f}",
+                f"Local Return: {dr.local_calculated_return_at_marked_pct:+.3f}%",
+            )
+            d4.metric(
+                "Cash Available for New Orders",
+                f"{snap.available_cash_tnd:,.2f} TND",
+                "Pending orders not verified",
+            )
+            st.dataframe(
+                [h.to_dict() for h in dr.holdings_drift],
+                use_container_width=True,
+            )
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(
+            "Total Portfolio Equity (TND)",
+            f"{snap.total_equity_tnd:,.3f}",
+            f"{snap.total_return_pct:+.3f}%",
+        )
+        c2.metric("Available Cash (TND)", f"{snap.available_cash_tnd:,.3f}")
+        c3.metric("Reserved Cash (Pending BUY)", f"{snap.reserved_cash_tnd:,.3f}")
+        c4.metric("Holdings Market Value (TND)", f"{snap.holdings_market_value_tnd:,.3f}")
+
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("Settled Cash (TND)", f"{snap.settled_cash_tnd:,.3f}")
+        c6.metric("Unrealized P&L (TND)", f"{snap.total_unrealized_pnl_tnd:+,.3f}")
+        c7.metric("Realized P&L (TND)", f"{snap.total_realized_pnl_tnd:+,.3f}")
+        c8.metric("Total Fees Paid (0.50%)", f"{snap.total_fees_paid_tnd:,.3f}")
 
     st.markdown("---")
     col_left, col_right = st.columns(2)
@@ -406,6 +616,11 @@ def _render_overview_page(st: Any, state: DashboardAppState) -> None:
         ]
         if open_orders:
             st.dataframe(open_orders, use_container_width=True)
+        elif not state.ledger.pending_orders_verified:
+            st.warning(
+                "**Pending orders not verified**: The user-supplied screenshot does not include the open orders table. "
+                "Verify open orders on `tunisbourse-challenge.com` and record any active orders in the Manual Order Journal."
+            )
         else:
             st.info("No open PENDING or PARTIALLY_FILLED orders.")
 
@@ -524,10 +739,51 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
     c3.metric("Total Unrealized P&L (TND)", f"{snap.total_unrealized_pnl_tnd:+,.3f}")
     c4.metric("Total Realized P&L (TND)", f"{snap.total_realized_pnl_tnd:+,.3f}")
 
+    if state.portfolio_mode == "REAL_COMPETITION" and state.account_snapshot is not None:
+        acct = state.account_snapshot
+        st.markdown(
+            "#### Real Competition Portfolio Monitoring: Allocation, 10% Concentration Check & Price Drift"
+        )
+        if state.price_drift_report is not None:
+            dr = state.price_drift_report
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric(
+                "Holdings Allocation (Snapshot)",
+                f"{dr.screenshot_holdings_weight_pct:.2f}%",
+                f"{dr.screenshot_holdings_value_tnd:,.2f} TND",
+            )
+            m2.metric(
+                "Cash Allocation (Snapshot)",
+                f"{dr.screenshot_cash_weight_pct:.2f}%",
+                f"{dr.screenshot_cash_tnd:,.2f} TND",
+            )
+            m3.metric(
+                "10.0% Concentration Cap Check",
+                "PASS (All <= 10.0%)"
+                if not any(h.exceeds_concentration_cap for h in dr.holdings_drift)
+                else "CAP EXCEEDED",
+            )
+            m4.metric(
+                "Displayed vs Local Return",
+                f"{dr.screenshot_displayed_overall_performance_pct:+.2f}% (displayed)",
+                f"Local: {dr.local_calculated_return_at_screenshot_pct:+.3f}%",
+            )
+            st.dataframe([h.to_dict() for h in dr.holdings_drift], use_container_width=True)
+
+        with st.expander("Explicit Data Limitations & Provenance Disclosures", expanded=True):
+            st.caption(
+                f"Snapshot ID: `{acct.snapshot_id}` | Provenance: `{acct.provenance}` | "
+                f"Capture Timestamp: `{acct.capture_timestamp or 'unknown'}` | "
+                f"Displayed Last Price Timestamp: `{acct.last_price_timestamp or 'unknown'}` | "
+                f"Live Synchronized: `{acct.live_synchronized}`"
+            )
+            for lim in acct.limitations:
+                st.markdown(f"- {lim}")
+
     tab_holdings, tab_val_history, tab_reconcile = st.tabs(
         [
             "1. Active Holdings & CSV Export",
-            "2. Historical Portfolio Valuation",
+            "2. Historical Portfolio Valuation & Snapshot History",
             "3. Competition Account CSV Import & Reconciliation",
         ]
     )
@@ -555,17 +811,67 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
             st.code(export_ledger_transactions_csv(state.ledger), language="csv")
 
     with tab_val_history:
+        st.markdown("#### Recorded Competition Account Snapshot History")
+        if state.ledger.snapshot_history:
+            st.dataframe(
+                [s.to_dict() for s in state.ledger.snapshot_history],
+                use_container_width=True,
+            )
+        else:
+            st.caption("No competition account snapshots recorded in this ledger yet.")
+
         st.markdown("#### Session-by-Session Portfolio Valuation History")
         st.caption(
             f"Data Source: `{state.active_bars_path}` | "
             f"Data Freshness: `{state.data_freshness_sessions_behind}` open session(s) behind cutoff"
         )
-        if state.valuation_history:
+        if state.portfolio_mode == "REAL_COMPETITION" and not state.ledger.transactions_imported:
+            st.warning(
+                "**Transaction history not yet imported**: Session-by-session historical equity curves are not fabricated "
+                "from a single opening snapshot. Only verified account snapshots (above) and current mark-to-market price drift are shown until historical transactions are imported."
+            )
+        elif state.valuation_history:
             st.dataframe([pt.to_dict() for pt in state.valuation_history], use_container_width=True)
         else:
             st.info("No session valuation history available for the current dataset.")
 
     with tab_reconcile:
+        if state.existing_ledger_reconciliation_report is not None:
+            ex_rep = state.existing_ledger_reconciliation_report
+            with st.expander(
+                "Read-Only Comparison: Existing Local Demo Ledger (`data/portfolio/ledger.json`) vs. Real Competition Snapshot",
+                expanded=True,
+            ):
+                st.info(
+                    f"Existing local demo ledger (`{ex_rep.local_settled_cash_tnd} TND` cash) differs from your real "
+                    f"Tunis Bourse Challenge snapshot (`{ex_rep.account_settled_cash_tnd} TND` cash; delta `{ex_rep.cash_delta_tnd:+.3f} TND`, "
+                    f"`{len(ex_rep.discrepancies)}` discrepancy(ies)). Synthetic demo data is kept strictly separate in "
+                    f"`data/portfolio/ledger.json` while your real competition ledger is tracked in `data/portfolio/real_competition_ledger.json`."
+                )
+                st.dataframe([d.to_dict() for d in ex_rep.discrepancies], use_container_width=True)
+
+        if state.portfolio_mode == "REAL_COMPETITION" and state.account_snapshot is not None:
+            st.markdown("#### Persist Audited Opening Snapshot to Real Competition Ledger")
+            confirm_init_real = st.checkbox(
+                "I confirm initializing / updating my local REAL COMPETITION PORTFOLIO (`data/portfolio/real_competition_ledger.json`) from this audited opening snapshot without fabricating transactions",
+                value=False,
+                key="chk_confirm_opening_snapshot",
+            )
+            if st.button(
+                "Save Audited Opening Snapshot to Real Competition Ledger",
+                key="btn_save_opening_snapshot",
+            ):
+                if not confirm_init_real:
+                    st.error(
+                        "Explicit user confirmation is required before saving the real competition ledger."
+                    )
+                else:
+                    state.ledger.save(state.ledger_path)
+                    st.success(
+                        f"Saved audited real competition ledger to `{state.ledger_path.as_posix()}` (gitignored)."
+                    )
+                    st.rerun()
+            st.markdown("---")
         st.markdown("#### Safe Competition Account CSV Import & Explicit Reconciliation")
         st.info(
             "**No-Silent-Mutation Guarantee**: Running a reconciliation check only compares your local "
@@ -938,9 +1244,14 @@ def _render_system_health_page(st: Any, state: DashboardAppState) -> None:
         else f"STALE ({state.data_freshness_sessions_behind} sessions behind)",
     )
     c6.metric("Audit Log Events", str(len(state.ledger.audit_log)))
+    open_pend_count = sum(
+        1 for o in state.ledger.orders.values() if o.status in OPEN_ORDER_STATUSES
+    )
     c7.metric(
         "Open Pending Orders",
-        str(sum(1 for o in state.ledger.orders.values() if o.status in OPEN_ORDER_STATUSES)),
+        str(open_pend_count)
+        if (state.ledger.pending_orders_verified or open_pend_count > 0)
+        else "Pending orders not verified",
     )
     c8.metric(
         "Ledger Reservation Check",
@@ -984,6 +1295,19 @@ def render_streamlit_app(state: DashboardAppState | None = None) -> DashboardApp
     st.sidebar.title("BVMT Trading Terminal")
     st.sidebar.caption(f"v{__version__} | Local Decision-Support Only")
 
+    env_options = [
+        "REAL COMPETITION PORTFOLIO (Tunis Bourse Challenge)",
+        "SYNTHETIC DEMO PORTFOLIO (100,000 TND Demo)",
+    ]
+    selected_env_label = st.sidebar.selectbox(
+        "Portfolio Environment",
+        env_options,
+        index=0,
+    )
+    is_real_env = selected_env_label.startswith("REAL COMPETITION")
+    selected_portfolio_mode = "REAL_COMPETITION" if is_real_env else "SYNTHETIC_DEMO"
+    selected_ledger_path = DEFAULT_REAL_LEDGER_PATH if is_real_env else DEFAULT_LEDGER_PATH
+
     available_datasets = discover_available_bar_datasets()
     dataset_labels = list(available_datasets.keys())
     selected_dataset_label = st.sidebar.selectbox(
@@ -993,10 +1317,15 @@ def render_streamlit_app(state: DashboardAppState | None = None) -> DashboardApp
     )
     selected_bars_path = available_datasets.get(selected_dataset_label, DEFAULT_BARS_PATH)
 
-    app_state = state or build_dashboard_state(bars_path=selected_bars_path)
+    app_state = state or build_dashboard_state(
+        ledger_path=selected_ledger_path,
+        bars_path=selected_bars_path,
+        portfolio_mode=selected_portfolio_mode,
+    )
 
     st.sidebar.markdown(
-        f"**Mode:** `{'SYNTHETIC DEMO' if app_state.data_is_synthetic else 'VERIFIED LOCAL'}`\n\n"
+        f"**Portfolio:** `{'REAL COMPETITION' if app_state.portfolio_mode == 'REAL_COMPETITION' else 'SYNTHETIC DEMO'}`\n\n"
+        f"**Market Data:** `{'SYNTHETIC DEMO' if app_state.data_is_synthetic else 'VERIFIED LOCAL'}`\n\n"
         f"**Latest Session:** `{app_state.latest_bar_session_str}`\n\n"
         f"**Freshness:** `{app_state.data_freshness_sessions_behind} session(s) behind`\n\n"
         f"**Active Alerts:** `{len(app_state.notifications.active_alerts())}`"
