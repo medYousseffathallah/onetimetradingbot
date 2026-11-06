@@ -8,10 +8,20 @@ import pytest
 
 from bvmt.calendar import read_exchange_calendar, read_instrument_master
 from bvmt.cli import main
-from bvmt.dashboard import build_dashboard_state
+from bvmt.dashboard import build_dashboard_state, discover_available_bar_datasets
 from bvmt.data import aware_timestamp, read_bars_csv
 from bvmt.features import rank_session_baseline
-from bvmt.ledger import PortfolioLedger, compute_commission, quantize_tnd
+from bvmt.ledger import (
+    CompetitionAccountSnapshot,
+    PortfolioLedger,
+    compute_commission,
+    export_ledger_holdings_csv,
+    export_ledger_transactions_csv,
+    parse_account_holdings_csv,
+    parse_account_pending_orders_csv,
+    parse_account_transactions_csv,
+    quantize_tnd,
+)
 from bvmt.llm import evaluate_dry_run, load_llm_budget_config
 from bvmt.notifications import NotificationCenter
 from bvmt.recommendations import (
@@ -542,6 +552,7 @@ def test_dashboard_all_six_pages_render_without_exception(tmp_path):
             self.markdowns: list[str] = []
             self.subheaders: list[str] = []
             self.dataframes: list[object] = []
+            self.session_state: dict[str, object] = {}
 
         def markdown(self, text: str, **kwargs) -> None:
             self.markdowns.append(text)
@@ -553,6 +564,9 @@ def test_dashboard_all_six_pages_render_without_exception(tmp_path):
             return None
 
         def write(self, obj: object) -> None:
+            return None
+
+        def code(self, text: str, **kwargs) -> None:
             return None
 
         def info(self, text: str) -> None:
@@ -588,10 +602,16 @@ def test_dashboard_all_six_pages_render_without_exception(tmp_path):
         def button(self, label: str, **kwargs) -> bool:
             return False
 
+        def checkbox(self, label: str, value: bool = False, **kwargs) -> bool:
+            return value
+
         def form_submit_button(self, label: str) -> bool:
             return False
 
         def text_input(self, label: str, value: str = "", **kwargs) -> str:
+            return value
+
+        def text_area(self, label: str, value: str = "", **kwargs) -> str:
             return value
 
         def selectbox(self, label: str, options: list[str], **kwargs) -> str:
@@ -649,3 +669,201 @@ def test_streamlit_apptest_full_navigation_and_order_forms():
         assert any(expected_subheader in s.value for s in at.subheader), (
             f"Missing subheader '{expected_subheader}' on page '{page_label}'"
         )
+
+
+def test_g1_competition_csv_import_export_and_valuation_history():
+    """Task G1: Verify CSV import/export (English & French conventions) and historical portfolio valuation series."""
+    t0 = aware_timestamp("2026-01-05T09:00:00+00:00")
+    ledger = PortfolioLedger(initial_cash_tnd=Decimal("100000.000"), created_at=t0)
+
+    # Parse French semicolon holdings CSV with comma decimals
+    french_holdings_csv = (
+        "valeur;libelle;quantite;cmp;plus_value_realisee;frais_totaux\n"
+        "DEMO_A;DEMO_A;100;10,854;0,000;5,400\n"
+    )
+    holdings = parse_account_holdings_csv(french_holdings_csv)
+    assert len(holdings) == 1
+    assert holdings[0].instrument_id == "DEMO_A"
+    assert holdings[0].total_shares == 100
+    assert holdings[0].average_cost_tnd == Decimal("10.854")
+    assert holdings[0].total_fees_paid_tnd == Decimal("5.400")
+
+    # Parse executed transactions CSV (with automatic 0.50% fee when fee column is empty)
+    tx_csv = (
+        "transaction_id,order_id,instrument_id,symbol,side,filled_shares,execution_price_tnd,fee_tnd,executed_at\n"
+        "TX-101,ORD-101,DEMO_A,DEMO_A,BUY,100,10.800,,2026-01-06T10:30:00+00:00\n"
+    )
+    txs = parse_account_transactions_csv(tx_csv)
+    assert len(txs) == 1
+    assert txs[0].fee_tnd == Decimal("5.400")
+
+    # Parse pending orders CSV (including partial fill status inference)
+    pend_csv = (
+        "order_id,instrument_id,symbol,side,requested_shares,filled_shares,remaining_shares,limit_price_tnd,submitted_at\n"
+        "ORD-102,DEMO_B,DEMO_B,BUY,80,30,50,20.000,2026-01-08T11:00:00+00:00\n"
+    )
+    pends = parse_account_pending_orders_csv(pend_csv)
+    assert len(pends) == 1
+    assert pends[0].status == "PARTIALLY_FILLED"
+    assert pends[0].remaining_shares == 50
+
+    # Record a dated trade and verify historical portfolio valuation across fixture bars
+    ledger.record_pending_order(
+        order_id="ORD-HIST-1",
+        instrument_id="DEMO_A",
+        symbol="DEMO_A",
+        side="BUY",
+        quantity=100,
+        limit_price_tnd=Decimal("10.000"),
+        submitted_at=aware_timestamp("2026-01-05T10:00:00+00:00"),
+    )
+    ledger.record_execution_fill(
+        order_id="ORD-HIST-1",
+        filled_shares=100,
+        execution_price_tnd=Decimal("10.000"),
+        executed_at=aware_timestamp("2026-01-05T11:00:00+00:00"),
+    )
+
+    bars = read_bars_csv(BARS_PATH)
+    history = ledger.compute_valuation_history(bars)
+    assert len(history) >= 3
+    assert history[0].session_date == "2026-01-05"
+    assert history[-1].session_date == "2026-01-09"
+    # On 2026-01-09 DEMO_A closes at 10.800 -> 100 shares = 1080.000 MV; cost basis = 1005.000 -> unrealized = +75.000
+    assert history[-1].holdings_market_value_tnd == Decimal("1080.000")
+    assert history[-1].unrealized_pnl_tnd == Decimal("75.000")
+    assert history[-1].cumulative_fees_tnd == Decimal("5.000")
+
+    holdings_export = export_ledger_holdings_csv(ledger, {"DEMO_A": Decimal("10.800")})
+    tx_export = export_ledger_transactions_csv(ledger)
+    assert "DEMO_A,DEMO_A,100" in holdings_export
+    assert "ORD-HIST-1-F01,ORD-HIST-1,DEMO_A" in tx_export
+
+
+def test_g2_reconciliation_detects_all_six_discrepancy_types_and_requires_confirmation():
+    """Task G2: Verify detection of all 6 discrepancy categories and enforce explicit user confirmation before mutating ledger."""
+    t0 = aware_timestamp("2026-01-05T09:00:00+00:00")
+    ledger = PortfolioLedger(initial_cash_tnd=Decimal("100000.000"), created_at=t0)
+
+    # Local state: 1 open order on DEMO_B (ORD-LOCAL-ONLY) and 50 shares of DEMO_A
+    ledger.record_pending_order(
+        order_id="ORD-LOCAL-A",
+        instrument_id="DEMO_A",
+        symbol="DEMO_A",
+        side="BUY",
+        quantity=50,
+        limit_price_tnd=Decimal("10.000"),
+        submitted_at=t0,
+    )
+    ledger.record_execution_fill(
+        order_id="ORD-LOCAL-A",
+        filled_shares=50,
+        execution_price_tnd=Decimal("10.000"),
+        executed_at=t0,
+    )
+    ledger.record_pending_order(
+        order_id="ORD-LOCAL-ONLY",
+        instrument_id="DEMO_B",
+        symbol="DEMO_B",
+        side="BUY",
+        quantity=10,
+        limit_price_tnd=Decimal("20.000"),
+        submitted_at=t0,
+    )
+
+    cash_before = ledger.settled_cash_tnd
+    audit_len_before = len(ledger.audit_log)
+
+    # Construct a competition snapshot containing all 6 discrepancy types:
+    # 1. cash_mismatch: settled cash is 98900.000 instead of 99497.500
+    # 2. missing_transaction: TX-NEW-1 (50 more shares of DEMO_A)
+    # 3. duplicate_transaction: TX-DUP-1 appears twice in snapshot.transactions
+    # 4. share_quantity_mismatch: DEMO_A has 100 shares in snapshot vs 50 locally
+    # 5. unmatched_pending_order: ORD-LOCAL-ONLY is missing in snapshot, and ORD-ACCT-PEND is new in snapshot
+    # 6. fee_mismatch: TX-NEW-1 reports 3.500 TND fee instead of 0.50% (2.500 TND)
+    snapshot = CompetitionAccountSnapshot(
+        as_of="2026-01-09T16:00:00+00:00",
+        settled_cash_tnd=Decimal("98900.000"),
+        available_cash_tnd=Decimal("98400.000"),
+        holdings=parse_account_holdings_csv(
+            "instrument_id,symbol,total_shares,average_cost_tnd,realized_pnl_tnd,total_fees_paid_tnd\n"
+            "DEMO_A,DEMO_A,100,10.060,0.000,6.000\n"
+        ),
+        transactions=parse_account_transactions_csv(
+            "transaction_id,order_id,instrument_id,symbol,side,filled_shares,execution_price_tnd,fee_tnd,executed_at\n"
+            "ORD-LOCAL-A-F01,ORD-LOCAL-A,DEMO_A,DEMO_A,BUY,50,10.000,2.500,2026-01-05T09:00:00+00:00\n"
+            "TX-NEW-1,ORD-ACCT-2,DEMO_A,DEMO_A,BUY,50,10.000,3.500,2026-01-06T10:00:00+00:00\n"
+            "TX-NEW-1,ORD-ACCT-2,DEMO_A,DEMO_A,BUY,50,10.000,3.500,2026-01-06T10:00:00+00:00\n"
+        ),
+        pending_orders=parse_account_pending_orders_csv(
+            "order_id,instrument_id,symbol,side,requested_shares,filled_shares,remaining_shares,limit_price_tnd,status,submitted_at\n"
+            "ORD-ACCT-PEND,DEMO_C,DEMO_C,BUY,25,0,25,19.000,PENDING,2026-01-09T11:00:00+00:00\n"
+        ),
+    )
+
+    eval_dt = aware_timestamp("2026-01-09T17:00:00+00:00")
+    report = ledger.reconcile_with_snapshot(snapshot, evaluated_at=eval_dt)
+    assert report.is_reconciled is False
+    assert report.requires_user_confirmation is True
+
+    found_types = {d.discrepancy_type for d in report.discrepancies}
+    assert "cash_mismatch" in found_types
+    assert "missing_transaction" in found_types
+    assert "duplicate_transaction" in found_types
+    assert "share_quantity_mismatch" in found_types
+    assert "unmatched_pending_order" in found_types
+    assert "fee_mismatch" in found_types
+
+    # Verify read-only guarantee: ledger was NOT mutated by reconcile_with_snapshot
+    assert ledger.settled_cash_tnd == cash_before
+    assert ledger.holdings["DEMO_A"].total_shares == 50
+    assert len(ledger.audit_log) == audit_len_before
+
+    # Verify applying without explicit confirmation raises ValueError and does NOT mutate ledger
+    with pytest.raises(ValueError, match="Explicit user confirmation"):
+        ledger.apply_reconciliation_snapshot(
+            snapshot,
+            confirmed_by_user=False,
+            applied_at=eval_dt,
+        )
+    assert ledger.settled_cash_tnd == cash_before
+    assert ledger.holdings["DEMO_A"].total_shares == 50
+
+    # Verify applying WITH explicit user confirmation updates ledger and logs audit entry
+    applied = ledger.apply_reconciliation_snapshot(
+        snapshot,
+        confirmed_by_user=True,
+        applied_at=eval_dt,
+        notes="Confirmed sync with competition portal",
+    )
+    assert len(applied.discrepancies) >= 6
+    assert ledger.settled_cash_tnd == Decimal("98900.000")
+    assert ledger.holdings["DEMO_A"].total_shares == 100
+    assert ledger.orders["ORD-ACCT-PEND"].status == "PENDING"
+    assert ledger.orders["ORD-LOCAL-ONLY"].status == "CANCELLED"
+    assert ledger.audit_log[-1].event_type == "RECONCILIATION_ADJUSTMENT_APPLIED"
+
+
+def test_g3_dataset_discovery_and_dashboard_freshness(tmp_path):
+    """Task G3: Verify dataset discovery for imported canonical CSVs and dashboard freshness/valuation state."""
+    proc_dir = tmp_path / "processed" / "bvmt_official_2026"
+    proc_dir.mkdir(parents=True)
+    imported_csv = proc_dir / "daily_bars.canonical.csv"
+    imported_csv.write_text(BARS_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+
+    discovered = discover_available_bar_datasets(
+        processed_root=tmp_path / "processed",
+        default_bars_path=BARS_PATH,
+    )
+    assert len(discovered) == 2
+    assert any("VERIFIED IMPORT: bvmt_official_2026" in k for k in discovered)
+    assert any("SYNTHETIC DEMO:" in k for k in discovered)
+
+    state = build_dashboard_state(
+        ledger_path=tmp_path / "ledger.json",
+        alerts_path=tmp_path / "alerts.json",
+        bars_path=imported_csv,
+    )
+    assert state.data_freshness_sessions_behind == 0
+    assert len(state.valuation_history) >= 3
+
