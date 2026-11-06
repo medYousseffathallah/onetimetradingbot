@@ -98,6 +98,7 @@ class BacktestConfig:
     carry_pending_orders: bool = True
     max_order_age_sessions: int = 3
     fill_price_mode: str = "next_open"
+    max_turnover_participation: Decimal | None = None
 
     def __post_init__(self) -> None:
         for value in (
@@ -117,6 +118,12 @@ class BacktestConfig:
             raise ValueError("Participation and position weight must be in (0, 1]")
         if type(self.max_order_age_sessions) is not int or self.max_order_age_sessions < 1:
             raise ValueError("Order age must be positive integer sessions")
+        if self.max_turnover_participation is not None and (
+            not isinstance(self.max_turnover_participation, Decimal)
+            or not self.max_turnover_participation.is_finite()
+            or not 0 < self.max_turnover_participation <= 1
+        ):
+            raise ValueError("max_turnover_participation must be a finite Decimal in (0, 1]")
         if self.fill_price_mode not in {"next_open", "next_typical"}:
             raise ValueError("Unsupported fill_price_mode")
 
@@ -190,6 +197,7 @@ class BacktestResult:
     fills: tuple[SimulatedFill, ...]
     orders: tuple[BacktestOrderRecord, ...]
     session_snapshots: tuple[BacktestSessionSnapshot, ...]
+    zero_volume_blocked_fill_attempts: int = 0
 
 
 @dataclass(frozen=True)
@@ -274,6 +282,7 @@ def run_historical_backtest(
     snapshots: list[BacktestSessionSnapshot] = []
     fee_rate = config.commission_bps / Decimal(10000)
     peak = cash
+    zero_volume_blocked = 0
     fees = Decimal(0)
     notional = Decimal(0)
     bench_cash = cash
@@ -289,6 +298,11 @@ def run_historical_backtest(
             key: int(Decimal(b.volume_shares) * config.max_volume_participation)
             for key, b in today.items()
         }
+        turnover_capacity = (
+            {key: b.turnover_tnd * config.max_turnover_participation for key, b in today.items()}
+            if config.max_turnover_participation is not None
+            else {}
+        )
         if session == sessions[0]:
             for key in universe:
                 b = today.get(key)
@@ -298,6 +312,8 @@ def run_historical_backtest(
                 if not b.low <= price <= b.high:
                     continue
                 qty = min(int(sleeve / (price * (1 + fee_rate))), capacity[key])
+                if config.max_turnover_participation is not None:
+                    qty = min(qty, int(turnover_capacity[key] / price))
                 while (
                     qty
                     and _money(Decimal(qty) * price) + _money(Decimal(qty) * price * fee_rate)
@@ -320,6 +336,8 @@ def run_historical_backtest(
                 continue
             b = today.get(key)
             quantity = 0
+            if b is not None and b.volume_shares == 0:
+                zero_volume_blocked += 1
             if b is not None and b.status == "traded" and capacity[key] > 0:
                 base = (
                     b.open
@@ -335,6 +353,8 @@ def run_historical_backtest(
                 )
                 if allowed:
                     quantity = min(order.remaining_quantity, capacity[key])
+                    if config.max_turnover_participation is not None:
+                        quantity = min(quantity, int(turnover_capacity[key] / price))
                     if order.side == OrderSide.SELL:
                         quantity = min(quantity, owned)
                     else:
@@ -363,6 +383,8 @@ def run_historical_backtest(
                             owned + quantity if order.side == OrderSide.BUY else owned - quantity
                         )
                         capacity[key] -= quantity
+                        if config.max_turnover_participation is not None:
+                            turnover_capacity[key] -= Decimal(quantity) * price
                         marks[key] = price
                         fees += fee
                         notional += amount
@@ -434,4 +456,5 @@ def run_historical_backtest(
         tuple(fills),
         tuple(records),
         tuple(snapshots),
+        zero_volume_blocked,
     )

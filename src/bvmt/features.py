@@ -128,6 +128,7 @@ def rank_session_baseline(
     stale_after_open_sessions: int = 3,
     eligible_segment: str = "Continu_Principal",
     benchmark_return_override: float | None = None,
+    allowed_segments: tuple[str, ...] = ("principal", "principal_continu", "principal_fixing"),
 ) -> SessionBaselineReport:
     """Rank point-in-time eligible instruments over verified open exchange sessions (T04).
 
@@ -197,7 +198,10 @@ def rank_session_baseline(
             )
             continue
 
-        if active_rec is None or active_rec.market_segment != eligible_segment:
+        if active_rec is None or (
+            not active_rec.is_competition_eligible
+            or active_rec.market_segment not in (*allowed_segments, eligible_segment)
+        ):
             exclusions.append(
                 ExcludedInstrument(
                     instrument_id=inst_id,
@@ -269,7 +273,7 @@ def rank_session_baseline(
 
         trailing_no_trade = 0
         for b in reversed(short_bars):
-            if b.status == "no_trade":
+            if b.status in {"no_trade", "untraded"}:
                 trailing_no_trade += 1
             else:
                 break
