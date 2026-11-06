@@ -49,6 +49,7 @@ data/staging/
 node_modules/
 playwright-report/
 browser-profiles/
+data/browser_profile/
 .agents/skills/
 .claude/skills/
 .cursor/skills/

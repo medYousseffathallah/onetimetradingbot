@@ -7,15 +7,11 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from playwright.sync_api import BrowserContext, Page
 
 DEFAULT_CHALLENGE_URL = "https://www.tunisbourse-challenge.com/displayp.aspx"
 DEFAULT_LOGIN_URL = "https://www.tunisbourse-challenge.com/"
@@ -99,10 +95,12 @@ class CompetitionPortfolioDOMSnapshot:
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> CompetitionPortfolioDOMSnapshot:
+        raw_holdings = data.get("holdings", [])
+        holdings_list = raw_holdings if isinstance(raw_holdings, list) else []
         holdings = tuple(
             BrowserHoldingItem(
                 symbol=str(h["symbol"]),
-                quantity=int(h["quantity"]),  # type: ignore[arg-type]
+                quantity=int(str(h["quantity"])),
                 acquisition_price_tnd=Decimal(str(h["acquisition_price_tnd"])),
                 acquisition_amount_tnd=Decimal(str(h["acquisition_amount_tnd"])),
                 latest_price_tnd=Decimal(str(h["latest_price_tnd"])),
@@ -110,9 +108,12 @@ class CompetitionPortfolioDOMSnapshot:
                 gain_tnd=Decimal(str(h["gain_tnd"])),
                 gain_pct=Decimal(str(h["gain_pct"])),
             )
-            for h in data.get("holdings", [])  # type: ignore[union-attr]
+            for h in holdings_list
+            if isinstance(h, dict)
         )
         perf = data.get("displayed_overall_performance_pct")
+        rank = data.get("competition_rank")
+        participants = data.get("total_participants")
         return cls(
             source_url=str(data["source_url"]),
             retrieved_at=datetime.fromisoformat(str(data["retrieved_at"])),
@@ -120,8 +121,8 @@ class CompetitionPortfolioDOMSnapshot:
             available_cash_tnd=Decimal(str(data["available_cash_tnd"])),
             holdings_market_value_tnd=Decimal(str(data["holdings_market_value_tnd"])),
             holdings=holdings,
-            competition_rank=int(data["competition_rank"]) if data.get("competition_rank") is not None else None,  # type: ignore[arg-type]
-            total_participants=int(data["total_participants"]) if data.get("total_participants") is not None else None,  # type: ignore[arg-type]
+            competition_rank=int(str(rank)) if rank is not None else None,
+            total_participants=int(str(participants)) if participants is not None else None,
             displayed_overall_performance_pct=Decimal(str(perf)) if perf is not None else None,
             is_reconciled=bool(data["is_reconciled"]),
             reconciliation_gap_tnd=Decimal(str(data["reconciliation_gap_tnd"])),
@@ -166,7 +167,11 @@ class _SimpleDOMTableParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag_lower = tag.lower()
-        if tag_lower in {"td", "th"} and self._current_row is not None and self._current_cell is not None:
+        if (
+            tag_lower in {"td", "th"}
+            and self._current_row is not None
+            and self._current_cell is not None
+        ):
             cell_text = "".join(self._current_cell).strip()
             self._current_row.append(cell_text)
             self._current_cell = None
@@ -191,7 +196,7 @@ def parse_competition_portfolio_html(
     tolerance_tnd: Decimal = DEFAULT_ROUNDING_TOLERANCE_TND,
 ) -> CompetitionPortfolioDOMSnapshot:
     """Parse authenticated displayp.aspx HTML into structured snapshot.
-    
+
     Validates balance: cash + holdings market value == reported total within tolerance.
     Raises AuthenticationExpiredError if session expired, or LayoutChangedError if missing elements.
     """
@@ -254,7 +259,7 @@ def parse_competition_portfolio_html(
     cash_tnd: Decimal | None = None
 
     for table in parser.tables:
-        for row_idx, row in enumerate(table):
+        for _row_idx, row in enumerate(table):
             row_joined = " ".join(row).lower()
 
             # Detect Cash row (Liquidités)
@@ -285,7 +290,11 @@ def parse_competition_portfolio_html(
                     montant_cand = parse_french_number(row[4])
                     dernier_cand = parse_french_number(row[5])
                     capital_cand = parse_french_number(row[6])
-                    gain_dt_cand = parse_french_number(row[7]) if len(row) > 7 else (capital_cand - montant_cand)
+                    gain_dt_cand = (
+                        parse_french_number(row[7])
+                        if len(row) > 7
+                        else (capital_cand - montant_cand)
+                    )
                     gain_pct_cand = parse_french_number(row[8]) if len(row) > 8 else Decimal("0.00")
 
                     symbol_clean = name_cand.strip()
@@ -377,7 +386,7 @@ def run_interactive_browser_sync(
     timeout_seconds: int = 180,
 ) -> str:
     """Launch dedicated browser profile, wait for user to authenticate and navigate to displayp.aspx.
-    
+
     Local-first, read-only:
     - Launches isolated Chromium user_data_dir (separate from user's Chrome profile).
     - Visible non-headless window allowing user to log in manually.

@@ -1092,4 +1092,3 @@ def test_browser_sync_dom_conversion_and_confirmation_gated_update(tmp_path):
     assert ledger.holdings["BH_BANK"].total_shares == 30
     ledger.save(ledger_path)
     assert ledger_path.exists()
-

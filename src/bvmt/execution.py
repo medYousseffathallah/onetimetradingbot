@@ -245,7 +245,6 @@ class SensitivityScenario:
     fill_count: int
 
 
-
 @dataclass(frozen=True)
 class TradingCalendar:
     sessions: tuple[ExchangeSession, ...]
@@ -481,9 +480,7 @@ def run_historical_backtest(
     ) * Decimal(100)
     unrealized_liquidation_fee = _money(final.holdings_value_tnd * fee_rate)
     liquidated_final_equity = final.total_equity_tnd - unrealized_liquidation_fee
-    liquidated_total_return = (
-        (liquidated_final_equity / config.initial_cash_tnd - 1) * Decimal(100)
-    )
+    liquidated_total_return = (liquidated_final_equity / config.initial_cash_tnd - 1) * Decimal(100)
     warning = ""
     if len(sessions) < 120:
         warning = (
@@ -528,7 +525,11 @@ def run_sensitivity_analysis(
     *,
     base_config: BacktestConfig = DEFAULT_BACKTEST_CONFIG,
     commission_bps_grid: tuple[Decimal, ...] = (Decimal("30"), Decimal("50"), Decimal("70")),
-    volume_participation_grid: tuple[Decimal, ...] = (Decimal("0.05"), Decimal("0.10"), Decimal("0.20")),
+    volume_participation_grid: tuple[Decimal, ...] = (
+        Decimal("0.05"),
+        Decimal("0.10"),
+        Decimal("0.20"),
+    ),
     slippage_bps_grid: tuple[Decimal, ...] = (Decimal("5"), Decimal("10"), Decimal("20")),
 ) -> tuple[SensitivityScenario, ...]:
     """Audit strategy robustness across commission rates, participation caps, and slippage."""
@@ -567,7 +568,7 @@ def run_walk_forward_evaluation(
     step_sessions: int = 10,
 ) -> WalkForwardResult:
     """Rigorous chronological walk-forward evaluation without lookahead bias.
-    
+
     Splits observed sessions into rolling train/test windows. Tests out-of-sample forward
     performance. Discloses whether sample size is statistically conclusive.
     """
@@ -589,15 +590,13 @@ def run_walk_forward_evaluation(
             cursor + train_window_sessions : cursor + train_window_sessions + test_window_sessions
         ]
         decision_session = train_sessions[-1]
-        
+
         # Point-in-time bars up to decision session strictly for signals
         train_bars = [b for b in checked if b.session_date <= decision_session]
         signals = signal_builder(train_bars, decision_session)
 
         # Simulation runs over the out-of-sample forward test window
-        test_bars = [
-            b for b in checked if test_sessions[0] <= b.session_date <= test_sessions[-1]
-        ]
+        test_bars = [b for b in checked if test_sessions[0] <= b.session_date <= test_sessions[-1]]
         if test_bars:
             fold_res = run_historical_backtest(
                 test_bars,
@@ -633,7 +632,7 @@ def run_walk_forward_evaluation(
     mean_excess = sum((f.excess_return_pct for f in folds), Decimal(0)) / Decimal(len(folds))
     pos_folds = sum(1 for f in folds if f.strategy_return_pct > 0)
     pos_ratio = Decimal(pos_folds) / Decimal(len(folds))
-    
+
     is_conclusive = len(folds) >= 10 and len(sessions) >= 250
     conclusion = (
         f"Statistically conclusive: {is_conclusive}. Folds tested: {len(folds)}. "
@@ -652,4 +651,3 @@ def run_walk_forward_evaluation(
         is_statistically_conclusive=is_conclusive,
         audit_conclusion=conclusion,
     )
-

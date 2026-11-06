@@ -1083,12 +1083,22 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                     f"Source: `{latest_browser_snap.source_url}`"
                 )
                 b1, b2, b3, b4 = st.columns(4)
-                b1.metric("Retrieved Portfolio Total", f"{latest_browser_snap.portfolio_total_tnd:,.2f} TND")
-                b2.metric("Retrieved Available Cash", f"{latest_browser_snap.available_cash_tnd:,.2f} TND")
-                b3.metric("Competition Rank", f"{latest_browser_snap.competition_rank or '-'} / {latest_browser_snap.total_participants or '-'}")
+                b1.metric(
+                    "Retrieved Portfolio Total",
+                    f"{latest_browser_snap.portfolio_total_tnd:,.2f} TND",
+                )
+                b2.metric(
+                    "Retrieved Available Cash", f"{latest_browser_snap.available_cash_tnd:,.2f} TND"
+                )
+                b3.metric(
+                    "Competition Rank",
+                    f"{latest_browser_snap.competition_rank or '-'} / {latest_browser_snap.total_participants or '-'}",
+                )
                 b4.metric(
                     "Balance Validation",
-                    "RECONCILED (0.00 delta)" if latest_browser_snap.is_reconciled else f"GAP {latest_browser_snap.reconciliation_gap_tnd} TND",
+                    "RECONCILED (0.00 delta)"
+                    if latest_browser_snap.is_reconciled
+                    else f"GAP {latest_browser_snap.reconciliation_gap_tnd} TND",
                 )
             else:
                 st.caption("No previous browser synchronization snapshot found in local storage.")
@@ -1106,7 +1116,9 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                     value=120,
                     key="num_browser_timeout",
                 )
-                launch_clicked = st.button("🚀 Sync Now (Launch Browser)", key="btn_launch_browser_sync")
+                launch_clicked = st.button(
+                    "🚀 Sync Now (Launch Browser)", key="btn_launch_browser_sync"
+                )
             with col_sync2:
                 st.markdown("**Method B: Direct HTML Document Paste**")
                 html_pasted = st.text_area(
@@ -1116,12 +1128,16 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                     key="txt_pasted_html_sync",
                     placeholder="<html>... Mon portefeuille ... BH BANK ... 49998,05 DT ...</html>",
                 )
-                parse_pasted_clicked = st.button("📥 Parse Pasted HTML", key="btn_parse_pasted_html")
+                parse_pasted_clicked = st.button(
+                    "📥 Parse Pasted HTML", key="btn_parse_pasted_html"
+                )
 
             # Handle Browser Launch
             if launch_clicked:
                 try:
-                    with st.spinner("Opening isolated browser... Please log in and view 'Mon portefeuille' (displayp.aspx)..."):
+                    with st.spinner(
+                        "Opening isolated browser... Please log in and view 'Mon portefeuille' (displayp.aspx)..."
+                    ):
                         raw_html = run_interactive_browser_sync(
                             user_data_dir=DEFAULT_BROWSER_PROFILE_DIR,
                             timeout_seconds=int(browser_timeout),
@@ -1179,7 +1195,9 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
 
                 p1, p2, p3 = st.columns(3)
                 p1.metric("Local Ledger Cash", f"{cur_cash:,.2f} TND")
-                p2.metric("Synced Account Cash", f"{new_cash:,.2f} TND", f"{cash_diff:+,.2f} TND delta")
+                p2.metric(
+                    "Synced Account Cash", f"{new_cash:,.2f} TND", f"{cash_diff:+,.2f} TND delta"
+                )
                 p3.metric("Synced Portfolio Total", f"{pending_snap.portfolio_total_tnd:,.2f} TND")
 
                 if pending_snap.holdings:
@@ -1214,9 +1232,13 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                     value=False,
                     key="chk_confirm_browser_sync",
                 )
-                if st.button("✅ Confirm & Apply Synchronized Portfolio Update", key="btn_apply_browser_sync"):
+                if st.button(
+                    "✅ Confirm & Apply Synchronized Portfolio Update", key="btn_apply_browser_sync"
+                ):
                     if not confirm_browser_update:
-                        st.error("You must check the confirmation box above before applying synchronized changes.")
+                        st.error(
+                            "You must check the confirmation box above before applying synchronized changes."
+                        )
                     else:
                         new_acct_snap = build_snapshot_from_dom(pending_snap)
                         save_screenshot_snapshot(
@@ -1224,10 +1246,11 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                             state.real_snapshot_path or DEFAULT_REAL_SNAPSHOT_PATH,
                         )
                         state.ledger.settled_cash_tnd = new_acct_snap.available_cash_tnd
-                        state.ledger.available_cash_tnd = new_acct_snap.available_cash_tnd
                         state.ledger.save(state.ledger_path)
                         st.session_state["pending_synced_snapshot"] = None
-                        st.success("Successfully updated and persisted Real Competition Portfolio ledger!")
+                        st.success(
+                            "Successfully updated and persisted Real Competition Portfolio ledger!"
+                        )
                         st.rerun()
 
             # Display Sync Snapshot History
@@ -1246,7 +1269,9 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                                     "Retrieved At": s_data.get("retrieved_at", "-"),
                                     "Portfolio Total (TND)": s_data.get("portfolio_total_tnd", "-"),
                                     "Cash (TND)": s_data.get("available_cash_tnd", "-"),
-                                    "Holdings Value (TND)": s_data.get("holdings_market_value_tnd", "-"),
+                                    "Holdings Value (TND)": s_data.get(
+                                        "holdings_market_value_tnd", "-"
+                                    ),
                                     "Holdings Count": len(s_data.get("holdings", [])),
                                     "Rank": f"{s_data.get('competition_rank', '-')}/{s_data.get('total_participants', '-')}",
                                     "Reconciled": s_data.get("is_reconciled", False),

@@ -11,7 +11,6 @@ import pytest
 from bvmt.browser import (
     AuthenticationExpiredError,
     BalanceMismatchError,
-    CompetitionPortfolioDOMSnapshot,
     LayoutChangedError,
     load_latest_browser_snapshot,
     parse_competition_portfolio_html,
@@ -296,7 +295,7 @@ def test_layout_changed_error():
 def test_save_and_load_browser_snapshot(tmp_path: Path):
     t0 = datetime(2026, 11, 6, 13, 0, 0, tzinfo=UTC)
     snap = parse_competition_portfolio_html(VERIFIED_SCREENSHOT_HTML_FIXTURE, retrieved_at=t0)
-    
+
     saved_path = save_browser_snapshot(snap, tmp_path)
     assert saved_path.exists()
     assert saved_path.name.startswith("sync_20261106_130000.json")
