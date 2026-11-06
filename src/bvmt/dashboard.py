@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -31,7 +31,14 @@ from bvmt.data import aware_timestamp, read_bars_csv
 from bvmt.features import rank_session_baseline
 from bvmt.ledger import (
     OPEN_ORDER_STATUSES,
+    CompetitionAccountSnapshot,
+    PortfolioHistoryPoint,
     PortfolioLedger,
+    export_ledger_holdings_csv,
+    export_ledger_transactions_csv,
+    parse_account_holdings_csv,
+    parse_account_pending_orders_csv,
+    parse_account_transactions_csv,
     quantize_tnd,
 )
 from bvmt.llm import (
@@ -114,6 +121,20 @@ def default_demo_chunks() -> list[DocumentChunk]:
     return c1 + c2
 
 
+def discover_available_bar_datasets(
+    processed_root: Path = Path("data/processed"),
+    default_bars_path: Path = DEFAULT_BARS_PATH,
+) -> dict[str, Path]:
+    """Discover imported canonical BVMT bar datasets alongside the synthetic demo fixture."""
+    datasets: dict[str, Path] = {}
+    if processed_root.is_dir():
+        for csv_path in sorted(processed_root.glob("*/daily_bars.canonical.csv")):
+            source_name = csv_path.parent.name
+            datasets[f"VERIFIED IMPORT: {source_name} ({csv_path.as_posix()})"] = csv_path
+    datasets[f"SYNTHETIC DEMO: {default_bars_path.as_posix()}"] = default_bars_path
+    return datasets
+
+
 @dataclass
 class DashboardAppState:
     ledger: PortfolioLedger
@@ -129,6 +150,9 @@ class DashboardAppState:
     verified_events: list[VerifiedEventSignal]
     document_chunks: list[DocumentChunk]
     llm_status: dict[str, object]
+    valuation_history: list[PortfolioHistoryPoint] = field(default_factory=list)
+    data_freshness_sessions_behind: int = 0
+    active_bars_path: str = str(DEFAULT_BARS_PATH)
 
 
 def build_dashboard_state(
@@ -188,9 +212,10 @@ def build_dashboard_state(
         else (default_demo_chunks() if data_is_synthetic else [])
     )
 
+    eligible_bars = [b for b in bars if b.session_date <= cutoff.date()]
     price_map: dict[str, Decimal] = {}
-    for b in sorted(bars, key=lambda x: x.session_date):
-        if b.session_date <= cutoff.date() and b.status == "traded":
+    for b in sorted(eligible_bars, key=lambda x: x.session_date):
+        if b.status == "traded":
             price_map[b.instrument_id] = quantize_tnd(b.close)
 
     recs = generate_recommendations(
@@ -203,9 +228,17 @@ def build_dashboard_state(
         verified_events=events,
     )
 
-    latest_bar_date = max(
-        (b.session_date for b in bars if b.session_date <= cutoff.date()), default=None
-    )
+    latest_bar_date = max((b.session_date for b in eligible_bars), default=None)
+    open_up_to_cutoff = [
+        s.session_date for s in calendar if s.is_open and s.session_date <= cutoff.date()
+    ]
+    if latest_bar_date is None:
+        sessions_behind = len(open_up_to_cutoff)
+    else:
+        sessions_behind = sum(1 for d in open_up_to_cutoff if d > latest_bar_date)
+
+    val_history = ledger.compute_valuation_history(eligible_bars)
+
     notifications.evaluate(
         now=cutoff,
         calendar=calendar,
@@ -262,6 +295,9 @@ def build_dashboard_state(
         verified_events=events,
         document_chunks=chunks,
         llm_status=llm_status,
+        valuation_history=val_history,
+        data_freshness_sessions_behind=sessions_behind,
+        active_bars_path=bars_path.as_posix(),
     )
 
 
@@ -477,7 +513,7 @@ def _render_opportunities_page(st: Any, state: DashboardAppState) -> None:
 
 
 def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
-    st.subheader("3. Portfolio Holdings, Weights, P&L & Concentration Compliance")
+    st.subheader("3. Portfolio Holdings, Valuation History & Competition Account Reconciliation")
     snap = state.ledger.valuate(state.price_map)
 
     c1, c2, c3, c4 = st.columns(4)
@@ -488,20 +524,178 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
     c3.metric("Total Unrealized P&L (TND)", f"{snap.total_unrealized_pnl_tnd:+,.3f}")
     c4.metric("Total Realized P&L (TND)", f"{snap.total_realized_pnl_tnd:+,.3f}")
 
-    if not snap.holdings:
-        st.info("No shares currently held in the portfolio.")
-    else:
-        for h in snap.holdings:
-            if h.concentration_warning:
-                st.warning(f"**{h.symbol}**: {h.concentration_warning}")
-        st.dataframe([h.to_dict() for h in snap.holdings], use_container_width=True)
+    tab_holdings, tab_val_history, tab_reconcile = st.tabs(
+        [
+            "1. Active Holdings & CSV Export",
+            "2. Historical Portfolio Valuation",
+            "3. Competition Account CSV Import & Reconciliation",
+        ]
+    )
 
-    st.markdown("#### Historical Realized P&L & Fee Summary by Instrument")
-    all_positions = [pos.to_dict() for pos in state.ledger.holdings.values()]
-    if all_positions:
-        st.dataframe(all_positions, use_container_width=True)
-    else:
-        st.caption("No historical positions recorded yet.")
+    with tab_holdings:
+        if not snap.holdings:
+            st.info("No shares currently held in the portfolio.")
+        else:
+            for h in snap.holdings:
+                if h.concentration_warning:
+                    st.warning(f"**{h.symbol}**: {h.concentration_warning}")
+            st.dataframe([h.to_dict() for h in snap.holdings], use_container_width=True)
+
+        st.markdown("#### Historical Realized P&L & Fee Summary by Instrument")
+        all_positions = [pos.to_dict() for pos in state.ledger.holdings.values()]
+        if all_positions:
+            st.dataframe(all_positions, use_container_width=True)
+        else:
+            st.caption("No historical positions recorded yet.")
+
+        with st.expander("Export Local Holdings & Executed Transactions as CSV"):
+            st.markdown("**Holdings CSV Export**")
+            st.code(export_ledger_holdings_csv(state.ledger, state.price_map), language="csv")
+            st.markdown("**Executed Transactions CSV Export**")
+            st.code(export_ledger_transactions_csv(state.ledger), language="csv")
+
+    with tab_val_history:
+        st.markdown("#### Session-by-Session Portfolio Valuation History")
+        st.caption(
+            f"Data Source: `{state.active_bars_path}` | "
+            f"Data Freshness: `{state.data_freshness_sessions_behind}` open session(s) behind cutoff"
+        )
+        if state.valuation_history:
+            st.dataframe([pt.to_dict() for pt in state.valuation_history], use_container_width=True)
+        else:
+            st.info("No session valuation history available for the current dataset.")
+
+    with tab_reconcile:
+        st.markdown("#### Safe Competition Account CSV Import & Explicit Reconciliation")
+        st.info(
+            "**No-Silent-Mutation Guarantee**: Running a reconciliation check only compares your local "
+            "ledger against your `tunisbourse-challenge.com` account records (cash, holdings, transactions, "
+            "pending orders, and 0.50% fees). No changes are ever applied to the local ledger unless you "
+            "explicitly check the confirmation box and click **Apply Confirmed Adjustments**."
+        )
+
+        col_cash1, col_cash2 = st.columns(2)
+        acct_settled_str = col_cash1.text_input(
+            "Competition Account Settled Cash (TND)",
+            value=str(state.ledger.settled_cash_tnd),
+            key="rec_settled_cash",
+        )
+        acct_avail_str = col_cash2.text_input(
+            "Competition Account Available Cash (TND, optional)",
+            value=str(state.ledger.available_cash_tnd),
+            key="rec_avail_cash",
+        )
+
+        default_holdings_csv = "instrument_id,symbol,total_shares,average_cost_tnd,realized_pnl_tnd,total_fees_paid_tnd\n"
+        for pos in state.ledger.holdings.values():
+            if pos.total_shares > 0:
+                default_holdings_csv += (
+                    f"{pos.instrument_id},{pos.symbol},{pos.total_shares},"
+                    f"{pos.average_cost_tnd},{pos.realized_pnl_tnd},{pos.total_fees_paid_tnd}\n"
+                )
+
+        holdings_csv_input = st.text_area(
+            "Competition Holdings CSV (instrument_id,symbol,total_shares,average_cost_tnd)",
+            value=default_holdings_csv.strip(),
+            height=100,
+            key="rec_holdings_csv",
+        )
+        tx_csv_input = st.text_area(
+            "Competition Executed Transactions CSV (transaction_id,order_id,instrument_id,symbol,side,filled_shares,execution_price_tnd,fee_tnd,executed_at)",
+            value="",
+            height=100,
+            key="rec_tx_csv",
+        )
+        pend_csv_input = st.text_area(
+            "Competition Pending Orders CSV (order_id,instrument_id,symbol,side,requested_shares,filled_shares,remaining_shares,limit_price_tnd,status,submitted_at)",
+            value="",
+            height=100,
+            key="rec_pend_csv",
+        )
+
+        now_dt = aware_timestamp(state.recommendations.decision_cutoff)
+        check_clicked = st.button("1. Run Read-Only Reconciliation Check", key="btn_run_reconcile")
+
+        if check_clicked:
+            try:
+                parsed_holdings = parse_account_holdings_csv(holdings_csv_input)
+                parsed_txs = parse_account_transactions_csv(
+                    tx_csv_input, default_fee_rate=state.ledger.fee_rate
+                )
+                parsed_pend = parse_account_pending_orders_csv(pend_csv_input)
+                snap_obj = CompetitionAccountSnapshot(
+                    as_of=now_dt.isoformat(),
+                    settled_cash_tnd=quantize_tnd(acct_settled_str.strip()),
+                    available_cash_tnd=(
+                        quantize_tnd(acct_avail_str.strip()) if acct_avail_str.strip() else None
+                    ),
+                    holdings=parsed_holdings,
+                    transactions=parsed_txs,
+                    pending_orders=parsed_pend,
+                )
+                rep = state.ledger.reconcile_with_snapshot(snap_obj, evaluated_at=now_dt)
+                st.session_state["last_reconciliation_report"] = rep.to_dict()
+            except ValueError as exc:
+                st.error(f"Reconciliation input error: {exc}")
+
+        last_rep = st.session_state.get("last_reconciliation_report")
+        if isinstance(last_rep, dict):
+            if last_rep.get("is_reconciled"):
+                st.success(
+                    "Local ledger is 100% reconciled with the supplied competition account snapshot (0 discrepancies)."
+                )
+            else:
+                disc_list = last_rep.get("discrepancies", [])
+                st.warning(
+                    f"Detected {len(disc_list)} discrepancy(ies) between local ledger and competition account "
+                    f"(Cash Delta: {last_rep.get('cash_delta_tnd')} TND). Ledger has NOT been modified."
+                )
+                st.dataframe(disc_list, use_container_width=True)
+
+        confirm_apply = st.checkbox(
+            "I have reviewed the reconciliation report and explicitly confirm applying these competition account adjustments to my local ledger",
+            value=False,
+            key="chk_confirm_reconcile",
+        )
+        recon_notes = st.text_input(
+            "Reconciliation Audit Note",
+            value="Manual reconciliation with tunisbourse-challenge.com account statement",
+            key="txt_reconcile_note",
+        )
+        apply_clicked = st.button(
+            "2. Apply Confirmed Reconciliation Adjustments", key="btn_apply_reconcile"
+        )
+        if apply_clicked:
+            try:
+                parsed_holdings = parse_account_holdings_csv(holdings_csv_input)
+                parsed_txs = parse_account_transactions_csv(
+                    tx_csv_input, default_fee_rate=state.ledger.fee_rate
+                )
+                parsed_pend = parse_account_pending_orders_csv(pend_csv_input)
+                snap_obj = CompetitionAccountSnapshot(
+                    as_of=now_dt.isoformat(),
+                    settled_cash_tnd=quantize_tnd(acct_settled_str.strip()),
+                    available_cash_tnd=(
+                        quantize_tnd(acct_avail_str.strip()) if acct_avail_str.strip() else None
+                    ),
+                    holdings=parsed_holdings,
+                    transactions=parsed_txs,
+                    pending_orders=parsed_pend,
+                )
+                applied_rep = state.ledger.apply_reconciliation_snapshot(
+                    snap_obj,
+                    confirmed_by_user=bool(confirm_apply),
+                    applied_at=now_dt,
+                    notes=recon_notes,
+                )
+                state.ledger.save(state.ledger_path)
+                st.session_state["last_reconciliation_report"] = applied_rep.to_dict()
+                st.success(
+                    f"Applied user-confirmed reconciliation adjustments ({len(applied_rep.discrepancies)} item(s) synced) and recorded audit log entry."
+                )
+                st.rerun()
+            except ValueError as exc:
+                st.error(f"Reconciliation adjustment blocked: {exc}")
 
 
 def _render_order_journal_page(st: Any, state: DashboardAppState) -> None:
@@ -654,6 +848,30 @@ def _render_order_journal_page(st: Any, state: DashboardAppState) -> None:
         else:
             st.info("No orders recorded yet.")
 
+        st.markdown("##### Executed Transaction Fill History (0.50% Fee Applied)")
+        all_fills = [
+            {
+                "fill_id": f.fill_id,
+                "order_id": f.order_id,
+                "instrument_id": o.instrument_id,
+                "symbol": o.symbol,
+                "side": o.side,
+                "filled_shares": f.filled_shares,
+                "execution_price_tnd": str(f.execution_price_tnd),
+                "gross_amount_tnd": str(f.gross_amount_tnd),
+                "fee_tnd": str(f.fee_tnd),
+                "net_cash_impact_tnd": str(f.net_cash_impact_tnd),
+                "realized_pnl_delta_tnd": str(f.realized_pnl_delta_tnd),
+                "executed_at": f.executed_at,
+            }
+            for o in state.ledger.orders.values()
+            for f in o.fills
+        ]
+        if all_fills:
+            st.dataframe(all_fills, use_container_width=True)
+        else:
+            st.caption("No executed fills recorded yet.")
+
         st.markdown("##### Immutable Append-Only Audit Log")
         st.dataframe(
             [asdict(e) for e in reversed(state.ledger.audit_log)],
@@ -712,6 +930,25 @@ def _render_system_health_page(st: Any, state: DashboardAppState) -> None:
         "LIVE ENABLED" if state.llm_status["network_enabled"] else "OFFLINE (DEFAULT)",
     )
 
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric(
+        "Data Freshness",
+        "FRESH (0 sessions behind)"
+        if state.data_freshness_sessions_behind == 0
+        else f"STALE ({state.data_freshness_sessions_behind} sessions behind)",
+    )
+    c6.metric("Audit Log Events", str(len(state.ledger.audit_log)))
+    c7.metric(
+        "Open Pending Orders",
+        str(sum(1 for o in state.ledger.orders.values() if o.status in OPEN_ORDER_STATUSES)),
+    )
+    c8.metric(
+        "Ledger Reservation Check",
+        "HEALTHY"
+        if state.ledger.reserved_cash_tnd <= state.ledger.settled_cash_tnd
+        else "INVARIANT ERROR",
+    )
+
     st.markdown("#### Exchange Calendar & Observation Coverage Summary (`T03`)")
     st.json(state.coverage_summary)
 
@@ -744,13 +981,24 @@ def render_streamlit_app(state: DashboardAppState | None = None) -> DashboardApp
     )
     _inject_terminal_css(st)
 
-    app_state = state or build_dashboard_state()
-
     st.sidebar.title("BVMT Trading Terminal")
     st.sidebar.caption(f"v{__version__} | Local Decision-Support Only")
+
+    available_datasets = discover_available_bar_datasets()
+    dataset_labels = list(available_datasets.keys())
+    selected_dataset_label = st.sidebar.selectbox(
+        "Market Bar Dataset",
+        dataset_labels,
+        index=0,
+    )
+    selected_bars_path = available_datasets.get(selected_dataset_label, DEFAULT_BARS_PATH)
+
+    app_state = state or build_dashboard_state(bars_path=selected_bars_path)
+
     st.sidebar.markdown(
         f"**Mode:** `{'SYNTHETIC DEMO' if app_state.data_is_synthetic else 'VERIFIED LOCAL'}`\n\n"
         f"**Latest Session:** `{app_state.latest_bar_session_str}`\n\n"
+        f"**Freshness:** `{app_state.data_freshness_sessions_behind} session(s) behind`\n\n"
         f"**Active Alerts:** `{len(app_state.notifications.active_alerts())}`"
     )
 

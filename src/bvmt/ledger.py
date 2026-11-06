@@ -6,14 +6,16 @@ All monetary calculations use Decimal quantized to 0.001 TND (Tunisian millimes)
 
 from __future__ import annotations
 
+import csv
+import io
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-from bvmt.data import aware_timestamp
+from bvmt.data import DailyBar, aware_timestamp
 from bvmt.snapshots import (
     atomic_write_text,
     ensure_no_symlink_ancestors,
@@ -224,6 +226,513 @@ class PortfolioValuationSnapshot:
             "total_return_pct": str(quantize_tnd(self.total_return_pct)),
             "total_unrealized_pnl_tnd": str(quantize_tnd(self.total_unrealized_pnl_tnd)),
         }
+
+
+@dataclass(frozen=True)
+class PortfolioHistoryPoint:
+    session_date: str
+    settled_cash_tnd: Decimal
+    holdings_market_value_tnd: Decimal
+    total_equity_tnd: Decimal
+    cumulative_return_pct: Decimal
+    realized_pnl_tnd: Decimal
+    unrealized_pnl_tnd: Decimal
+    cumulative_fees_tnd: Decimal
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "cumulative_fees_tnd": str(quantize_tnd(self.cumulative_fees_tnd)),
+            "cumulative_return_pct": str(quantize_tnd(self.cumulative_return_pct)),
+            "holdings_market_value_tnd": str(quantize_tnd(self.holdings_market_value_tnd)),
+            "realized_pnl_tnd": str(quantize_tnd(self.realized_pnl_tnd)),
+            "session_date": self.session_date,
+            "settled_cash_tnd": str(quantize_tnd(self.settled_cash_tnd)),
+            "total_equity_tnd": str(quantize_tnd(self.total_equity_tnd)),
+            "unrealized_pnl_tnd": str(quantize_tnd(self.unrealized_pnl_tnd)),
+        }
+
+
+@dataclass(frozen=True)
+class AccountHoldingRecord:
+    instrument_id: str
+    symbol: str
+    total_shares: int
+    average_cost_tnd: Decimal
+    realized_pnl_tnd: Decimal = Decimal("0.000")
+    total_fees_paid_tnd: Decimal = Decimal("0.000")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "average_cost_tnd": str(quantize_tnd(self.average_cost_tnd)),
+            "instrument_id": self.instrument_id,
+            "realized_pnl_tnd": str(quantize_tnd(self.realized_pnl_tnd)),
+            "symbol": self.symbol,
+            "total_fees_paid_tnd": str(quantize_tnd(self.total_fees_paid_tnd)),
+            "total_shares": self.total_shares,
+        }
+
+
+@dataclass(frozen=True)
+class AccountTransactionRecord:
+    transaction_id: str
+    order_id: str
+    instrument_id: str
+    symbol: str
+    side: str  # "BUY" | "SELL"
+    filled_shares: int
+    execution_price_tnd: Decimal
+    fee_tnd: Decimal
+    executed_at: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "executed_at": self.executed_at,
+            "execution_price_tnd": str(quantize_tnd(self.execution_price_tnd)),
+            "fee_tnd": str(quantize_tnd(self.fee_tnd)),
+            "filled_shares": self.filled_shares,
+            "instrument_id": self.instrument_id,
+            "order_id": self.order_id,
+            "side": self.side,
+            "symbol": self.symbol,
+            "transaction_id": self.transaction_id,
+        }
+
+
+@dataclass(frozen=True)
+class AccountPendingOrderRecord:
+    order_id: str
+    instrument_id: str
+    symbol: str
+    side: str  # "BUY" | "SELL"
+    requested_shares: int
+    filled_shares: int
+    remaining_shares: int
+    limit_price_tnd: Decimal
+    status: str  # "PENDING" | "PARTIALLY_FILLED"
+    submitted_at: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "filled_shares": self.filled_shares,
+            "instrument_id": self.instrument_id,
+            "limit_price_tnd": str(quantize_tnd(self.limit_price_tnd)),
+            "order_id": self.order_id,
+            "remaining_shares": self.remaining_shares,
+            "requested_shares": self.requested_shares,
+            "side": self.side,
+            "status": self.status,
+            "submitted_at": self.submitted_at,
+            "symbol": self.symbol,
+        }
+
+
+@dataclass(frozen=True)
+class CompetitionAccountSnapshot:
+    as_of: str
+    settled_cash_tnd: Decimal
+    available_cash_tnd: Decimal | None = None
+    initial_cash_tnd: Decimal | None = None
+    holdings: list[AccountHoldingRecord] = field(default_factory=list)
+    transactions: list[AccountTransactionRecord] = field(default_factory=list)
+    pending_orders: list[AccountPendingOrderRecord] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "as_of": self.as_of,
+            "available_cash_tnd": (
+                str(quantize_tnd(self.available_cash_tnd))
+                if self.available_cash_tnd is not None
+                else None
+            ),
+            "holdings": [h.to_dict() for h in self.holdings],
+            "initial_cash_tnd": (
+                str(quantize_tnd(self.initial_cash_tnd))
+                if self.initial_cash_tnd is not None
+                else None
+            ),
+            "pending_orders": [o.to_dict() for o in self.pending_orders],
+            "settled_cash_tnd": str(quantize_tnd(self.settled_cash_tnd)),
+            "transactions": [t.to_dict() for t in self.transactions],
+        }
+
+
+@dataclass(frozen=True)
+class ReconciliationDiscrepancy:
+    discrepancy_type: str  # cash_mismatch | missing_transaction | duplicate_transaction | share_quantity_mismatch | unmatched_pending_order | fee_mismatch
+    severity: str  # "CRITICAL" | "WARNING"
+    instrument_id: str | None
+    order_id: str | None
+    local_value: str
+    account_value: str
+    delta: str
+    explanation: str
+    suggested_adjustment: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "account_value": self.account_value,
+            "delta": self.delta,
+            "discrepancy_type": self.discrepancy_type,
+            "explanation": self.explanation,
+            "instrument_id": self.instrument_id,
+            "local_value": self.local_value,
+            "order_id": self.order_id,
+            "severity": self.severity,
+            "suggested_adjustment": self.suggested_adjustment,
+        }
+
+
+@dataclass(frozen=True)
+class ReconciliationReport:
+    evaluated_at: str
+    snapshot_as_of: str
+    is_reconciled: bool
+    requires_user_confirmation: bool
+    local_settled_cash_tnd: Decimal
+    account_settled_cash_tnd: Decimal
+    cash_delta_tnd: Decimal
+    discrepancies: list[ReconciliationDiscrepancy]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "account_settled_cash_tnd": str(quantize_tnd(self.account_settled_cash_tnd)),
+            "cash_delta_tnd": str(quantize_tnd(self.cash_delta_tnd)),
+            "discrepancies": [d.to_dict() for d in self.discrepancies],
+            "evaluated_at": self.evaluated_at,
+            "is_reconciled": self.is_reconciled,
+            "local_settled_cash_tnd": str(quantize_tnd(self.local_settled_cash_tnd)),
+            "requires_user_confirmation": self.requires_user_confirmation,
+            "snapshot_as_of": self.snapshot_as_of,
+        }
+
+
+def _normalize_csv_decimal(raw_val: str) -> Decimal:
+    cleaned = raw_val.strip().replace("\u00a0", "").replace(" ", "").replace(",", ".")
+    return quantize_tnd(cleaned)
+
+
+def _normalize_side_token(raw_val: str) -> str:
+    token = raw_val.strip().upper()
+    if token in {"BUY", "ACHAT", "A", "B"}:
+        return "BUY"
+    if token in {"SELL", "VENTE", "V", "S"}:
+        return "SELL"
+    raise ValueError(f"Unsupported order side '{raw_val}'; expected BUY/ACHAT or SELL/VENTE")
+
+
+def _iter_csv_dicts(csv_text: str) -> list[dict[str, str]]:
+    stripped = csv_text.strip("\ufeff \t\r\n")
+    if not stripped:
+        return []
+    first_line = stripped.splitlines()[0]
+    delimiter = ";" if first_line.count(";") > first_line.count(",") else ","
+    reader = csv.DictReader(io.StringIO(stripped), delimiter=delimiter)
+    rows: list[dict[str, str]] = []
+    for raw_row in reader:
+        normalized_row = {
+            (k or "").strip().lower(): (v or "").strip() for k, v in raw_row.items() if k
+        }
+        if any(normalized_row.values()):
+            rows.append(normalized_row)
+    return rows
+
+
+def parse_account_holdings_csv(csv_text: str) -> list[AccountHoldingRecord]:
+    """Parse competition account holdings CSV (supports English and French column names)."""
+    rows = _iter_csv_dicts(csv_text)
+    records: list[AccountHoldingRecord] = []
+    for idx, row in enumerate(rows, start=1):
+        inst_raw = (
+            row.get("instrument_id")
+            or row.get("valeur")
+            or row.get("code")
+            or row.get("ticker")
+            or row.get("symbol")
+            or ""
+        ).strip()
+        if not inst_raw:
+            raise ValueError(f"Holdings CSV row {idx} is missing instrument_id/valeur")
+        inst_id = inst_raw.upper()
+        validate_safe_id(inst_id, "instrument_id")
+        symbol = (row.get("symbol") or row.get("libelle") or inst_id).strip()
+        shares_raw = (
+            row.get("total_shares")
+            or row.get("quantite")
+            or row.get("shares")
+            or row.get("qty")
+            or ""
+        ).strip()
+        if not shares_raw:
+            raise ValueError(f"Holdings CSV row {idx} for {inst_id} is missing total_shares/quantite")
+        shares = int(shares_raw.replace(" ", ""))
+        if shares < 0:
+            raise ValueError(f"Holdings CSV row {idx} for {inst_id} has negative shares: {shares}")
+        avg_cost_raw = (
+            row.get("average_cost_tnd")
+            or row.get("cmp")
+            or row.get("prix_revient")
+            or row.get("avg_cost")
+            or "0.000"
+        )
+        avg_cost = _normalize_csv_decimal(avg_cost_raw)
+        if shares > 0 and avg_cost <= Decimal("0"):
+            raise ValueError(
+                f"Holdings CSV row {idx} for {inst_id} requires positive average_cost_tnd/cmp"
+            )
+        realized_raw = row.get("realized_pnl_tnd") or row.get("plus_value_realisee") or "0.000"
+        fees_raw = row.get("total_fees_paid_tnd") or row.get("frais_totaux") or "0.000"
+        records.append(
+            AccountHoldingRecord(
+                instrument_id=inst_id,
+                symbol=symbol,
+                total_shares=shares,
+                average_cost_tnd=avg_cost,
+                realized_pnl_tnd=_normalize_csv_decimal(realized_raw),
+                total_fees_paid_tnd=_normalize_csv_decimal(fees_raw),
+            )
+        )
+    return records
+
+
+def parse_account_transactions_csv(
+    csv_text: str, *, default_fee_rate: Decimal = DEFAULT_FEE_RATE
+) -> list[AccountTransactionRecord]:
+    """Parse executed competition transactions CSV (supports English and French column names)."""
+    rows = _iter_csv_dicts(csv_text)
+    records: list[AccountTransactionRecord] = []
+    for idx, row in enumerate(rows, start=1):
+        order_id = (
+            row.get("order_id") or row.get("num_ordre") or row.get("ordre") or f"IMP-ORD-{idx:04d}"
+        ).strip()
+        validate_safe_id(order_id, "order_id")
+        tx_id = (
+            row.get("transaction_id")
+            or row.get("fill_id")
+            or row.get("id")
+            or f"{order_id}-F{idx:02d}"
+        ).strip()
+        validate_safe_id(tx_id, "transaction_id")
+        inst_raw = (
+            row.get("instrument_id")
+            or row.get("valeur")
+            or row.get("code")
+            or row.get("symbol")
+            or ""
+        ).strip()
+        if not inst_raw:
+            raise ValueError(f"Transactions CSV row {idx} is missing instrument_id/valeur")
+        inst_id = inst_raw.upper()
+        validate_safe_id(inst_id, "instrument_id")
+        symbol = (row.get("symbol") or row.get("libelle") or inst_id).strip()
+        side = _normalize_side_token(row.get("side") or row.get("sens") or "")
+        qty_raw = (
+            row.get("filled_shares")
+            or row.get("quantite")
+            or row.get("shares")
+            or row.get("qty")
+            or ""
+        ).strip()
+        qty = int(qty_raw.replace(" ", ""))
+        if qty <= 0:
+            raise ValueError(f"Transactions CSV row {idx} requires positive filled_shares")
+        price_raw = (
+            row.get("execution_price_tnd")
+            or row.get("prix")
+            or row.get("cours")
+            or row.get("price")
+            or ""
+        ).strip()
+        price = _normalize_csv_decimal(price_raw)
+        if price <= Decimal("0"):
+            raise ValueError(f"Transactions CSV row {idx} requires positive execution_price_tnd")
+        gross = quantize_tnd(Decimal(qty) * price)
+        fee_raw = (row.get("fee_tnd") or row.get("frais") or row.get("commission") or "").strip()
+        fee = (
+            _normalize_csv_decimal(fee_raw)
+            if fee_raw
+            else compute_commission(gross, default_fee_rate)
+        )
+        exec_at = (
+            row.get("executed_at") or row.get("date") or "2026-01-15T10:00:00+01:00"
+        ).strip()
+        records.append(
+            AccountTransactionRecord(
+                transaction_id=tx_id,
+                order_id=order_id,
+                instrument_id=inst_id,
+                symbol=symbol,
+                side=side,
+                filled_shares=qty,
+                execution_price_tnd=price,
+                fee_tnd=fee,
+                executed_at=exec_at,
+            )
+        )
+    return records
+
+
+def parse_account_pending_orders_csv(csv_text: str) -> list[AccountPendingOrderRecord]:
+    """Parse competition pending/partially-filled orders CSV."""
+    rows = _iter_csv_dicts(csv_text)
+    records: list[AccountPendingOrderRecord] = []
+    for idx, row in enumerate(rows, start=1):
+        order_id = (
+            row.get("order_id") or row.get("num_ordre") or row.get("id") or f"IMP-PEND-{idx:04d}"
+        ).strip()
+        validate_safe_id(order_id, "order_id")
+        inst_raw = (
+            row.get("instrument_id")
+            or row.get("valeur")
+            or row.get("code")
+            or row.get("symbol")
+            or ""
+        ).strip()
+        if not inst_raw:
+            raise ValueError(f"Pending orders CSV row {idx} is missing instrument_id/valeur")
+        inst_id = inst_raw.upper()
+        validate_safe_id(inst_id, "instrument_id")
+        symbol = (row.get("symbol") or row.get("libelle") or inst_id).strip()
+        side = _normalize_side_token(row.get("side") or row.get("sens") or "")
+        req_raw = (
+            row.get("requested_shares")
+            or row.get("quantite_demandee")
+            or row.get("quantite")
+            or row.get("shares")
+            or ""
+        ).strip()
+        requested = int(req_raw.replace(" ", ""))
+        if requested <= 0:
+            raise ValueError(f"Pending orders CSV row {idx} requires positive requested_shares")
+        filled_raw = (
+            row.get("filled_shares") or row.get("quantite_executee") or "0"
+        ).strip()
+        filled = int(filled_raw.replace(" ", ""))
+        rem_raw = (row.get("remaining_shares") or row.get("quantite_restante") or "").strip()
+        remaining = int(rem_raw.replace(" ", "")) if rem_raw else max(0, requested - filled)
+        if remaining <= 0 or filled < 0 or filled + remaining > requested:
+            raise ValueError(
+                f"Pending orders CSV row {idx} has inconsistent shares: requested={requested}, filled={filled}, remaining={remaining}"
+            )
+        limit_raw = (
+            row.get("limit_price_tnd")
+            or row.get("prix_limite")
+            or row.get("cours")
+            or row.get("price")
+            or ""
+        ).strip()
+        limit_px = _normalize_csv_decimal(limit_raw)
+        if limit_px <= Decimal("0"):
+            raise ValueError(f"Pending orders CSV row {idx} requires positive limit_price_tnd")
+        status_raw = (row.get("status") or row.get("statut") or "").strip().upper()
+        status = (
+            status_raw
+            if status_raw in OPEN_ORDER_STATUSES
+            else ("PARTIALLY_FILLED" if filled > 0 else "PENDING")
+        )
+        sub_at = (
+            row.get("submitted_at") or row.get("date") or "2026-01-15T09:00:00+01:00"
+        ).strip()
+        records.append(
+            AccountPendingOrderRecord(
+                order_id=order_id,
+                instrument_id=inst_id,
+                symbol=symbol,
+                side=side,
+                requested_shares=requested,
+                filled_shares=filled,
+                remaining_shares=remaining,
+                limit_price_tnd=limit_px,
+                status=status,
+                submitted_at=sub_at,
+            )
+        )
+    return records
+
+
+def export_ledger_holdings_csv(
+    ledger: PortfolioLedger, current_prices: Mapping[str, Decimal | str] | None = None
+) -> str:
+    """Export current holdings and valuations to canonical CSV."""
+    snap = ledger.valuate(current_prices)
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(
+        [
+            "instrument_id",
+            "symbol",
+            "total_shares",
+            "available_shares",
+            "reserved_sell_shares",
+            "average_cost_tnd",
+            "cost_basis_tnd",
+            "mark_price_tnd",
+            "market_value_tnd",
+            "unrealized_pnl_tnd",
+            "realized_pnl_tnd",
+            "total_fees_paid_tnd",
+            "portfolio_weight_pct",
+        ]
+    )
+    for h in snap.holdings:
+        writer.writerow(
+            [
+                h.instrument_id,
+                h.symbol,
+                h.total_shares,
+                h.available_shares,
+                h.reserved_sell_shares,
+                str(quantize_tnd(h.average_cost_tnd)),
+                str(quantize_tnd(h.cost_basis_tnd)),
+                str(quantize_tnd(h.mark_price_tnd)),
+                str(quantize_tnd(h.market_value_tnd)),
+                str(quantize_tnd(h.unrealized_pnl_tnd)),
+                str(quantize_tnd(h.realized_pnl_tnd)),
+                str(quantize_tnd(h.total_fees_paid_tnd)),
+                str(quantize_tnd(h.portfolio_weight_pct)),
+            ]
+        )
+    return buf.getvalue()
+
+
+def export_ledger_transactions_csv(ledger: PortfolioLedger) -> str:
+    """Export all recorded execution fills across all orders to canonical CSV."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(
+        [
+            "transaction_id",
+            "order_id",
+            "instrument_id",
+            "symbol",
+            "side",
+            "filled_shares",
+            "execution_price_tnd",
+            "gross_amount_tnd",
+            "fee_tnd",
+            "net_cash_impact_tnd",
+            "realized_pnl_delta_tnd",
+            "executed_at",
+        ]
+    )
+    for order in ledger.orders.values():
+        for fill in order.fills:
+            writer.writerow(
+                [
+                    fill.fill_id,
+                    fill.order_id,
+                    order.instrument_id,
+                    order.symbol,
+                    order.side,
+                    fill.filled_shares,
+                    str(quantize_tnd(fill.execution_price_tnd)),
+                    str(quantize_tnd(fill.gross_amount_tnd)),
+                    str(quantize_tnd(fill.fee_tnd)),
+                    str(quantize_tnd(fill.net_cash_impact_tnd)),
+                    str(quantize_tnd(fill.realized_pnl_delta_tnd)),
+                    fill.executed_at,
+                ]
+            )
+    return buf.getvalue()
 
 
 class PortfolioLedger:
@@ -782,6 +1291,627 @@ class PortfolioLedger:
             holdings=valuations,
             open_orders_count=open_cnt,
         )
+
+    def compute_valuation_history(
+        self, bars: Sequence[DailyBar], *, max_sessions: int = 30
+    ) -> list[PortfolioHistoryPoint]:
+        """Compute session-by-session historical portfolio valuation across market sessions."""
+        if not bars or max_sessions <= 0:
+            return []
+        sessions = sorted({b.session_date for b in bars})[-max_sessions:]
+        bars_by_session: dict[str, dict[str, Decimal]] = {}
+        for b in bars:
+            key = b.session_date.isoformat()
+            bars_by_session.setdefault(key, {})[b.instrument_id] = quantize_tnd(b.close)
+
+        # Collect chronological fills with session dates
+        fill_events: list[tuple[str, str, str, OrderExecutionFill]] = []
+        for order in self.orders.values():
+            for fill in order.fills:
+                fill_date = fill.executed_at[:10]
+                fill_events.append((fill_date, fill.executed_at, order.side, fill))
+        fill_events.sort(key=lambda item: (item[0], item[1]))
+
+        has_dated_fills = len(fill_events) > 0 and any(
+            f[0] <= sessions[-1].isoformat() for f in fill_events
+        )
+        latest_marks: dict[str, Decimal] = {}
+        history: list[PortfolioHistoryPoint] = []
+
+        if has_dated_fills:
+            running_cash = self.initial_cash_tnd
+            running_shares: dict[str, int] = {}
+            running_cost_basis: dict[str, Decimal] = {}
+            running_realized = Decimal("0.000")
+            running_fees = Decimal("0.000")
+            fill_idx = 0
+
+            for sess in sessions:
+                sess_iso = sess.isoformat()
+                latest_marks.update(bars_by_session.get(sess_iso, {}))
+                while fill_idx < len(fill_events) and fill_events[fill_idx][0] <= sess_iso:
+                    _, _, side, fill = fill_events[fill_idx]
+                    order_obj = self.orders[fill.order_id]
+                    inst_id = order_obj.instrument_id
+                    cur_sh = running_shares.get(inst_id, 0)
+                    cur_cb = running_cost_basis.get(inst_id, Decimal("0.000"))
+                    running_cash = quantize_tnd(running_cash + fill.net_cash_impact_tnd)
+                    running_fees = quantize_tnd(running_fees + fill.fee_tnd)
+                    running_realized = quantize_tnd(running_realized + fill.realized_pnl_delta_tnd)
+                    if side == "BUY":
+                        running_shares[inst_id] = cur_sh + fill.filled_shares
+                        running_cost_basis[inst_id] = quantize_tnd(
+                            cur_cb + (-fill.net_cash_impact_tnd)
+                        )
+                    else:
+                        rem_sh = max(0, cur_sh - fill.filled_shares)
+                        running_shares[inst_id] = rem_sh
+                        if rem_sh == 0 or cur_sh <= 0:
+                            running_cost_basis[inst_id] = Decimal("0.000")
+                        else:
+                            removed_cb = quantize_tnd(
+                                cur_cb * Decimal(fill.filled_shares) / Decimal(cur_sh)
+                            )
+                            running_cost_basis[inst_id] = quantize_tnd(cur_cb - removed_cb)
+                    fill_idx += 1
+
+                mv = Decimal("0.000")
+                unreal = Decimal("0.000")
+                for inst_id, sh in sorted(running_shares.items()):
+                    if sh > 0:
+                        cb = running_cost_basis.get(inst_id, Decimal("0.000"))
+                        fallback_px = quantize_tnd(cb / Decimal(sh)) if cb > Decimal("0") else Decimal("0.000")
+                        px = latest_marks.get(inst_id, fallback_px)
+                        pos_mv = quantize_tnd(Decimal(sh) * px)
+                        mv = quantize_tnd(mv + pos_mv)
+                        unreal = quantize_tnd(unreal + (pos_mv - cb))
+
+                eq = quantize_tnd(running_cash + mv)
+                ret_pct = (
+                    quantize_tnd(((eq - self.initial_cash_tnd) / self.initial_cash_tnd) * Decimal("100"))
+                    if self.initial_cash_tnd > Decimal("0")
+                    else Decimal("0.000")
+                )
+                history.append(
+                    PortfolioHistoryPoint(
+                        session_date=sess_iso,
+                        settled_cash_tnd=running_cash,
+                        holdings_market_value_tnd=mv,
+                        total_equity_tnd=eq,
+                        cumulative_return_pct=ret_pct,
+                        realized_pnl_tnd=running_realized,
+                        unrealized_pnl_tnd=unreal,
+                        cumulative_fees_tnd=running_fees,
+                    )
+                )
+        else:
+            # Value current holdings snapshot across historical session marks
+            for sess in sessions:
+                sess_iso = sess.isoformat()
+                latest_marks.update(bars_by_session.get(sess_iso, {}))
+                snap = self.valuate(latest_marks)
+                history.append(
+                    PortfolioHistoryPoint(
+                        session_date=sess_iso,
+                        settled_cash_tnd=snap.settled_cash_tnd,
+                        holdings_market_value_tnd=snap.holdings_market_value_tnd,
+                        total_equity_tnd=snap.total_equity_tnd,
+                        cumulative_return_pct=snap.total_return_pct,
+                        realized_pnl_tnd=snap.total_realized_pnl_tnd,
+                        unrealized_pnl_tnd=snap.total_unrealized_pnl_tnd,
+                        cumulative_fees_tnd=snap.total_fees_paid_tnd,
+                    )
+                )
+        return history
+
+    def reconcile_with_snapshot(
+        self, snapshot: CompetitionAccountSnapshot, *, evaluated_at: datetime
+    ) -> ReconciliationReport:
+        """Compare local ledger against a competition account snapshot without mutating the ledger.
+
+        Detects:
+        1. cash_mismatch (settled cash and optional available cash)
+        2. missing_transaction (transactions in snapshot missing from local ledger)
+        3. duplicate_transaction (duplicate transactions in snapshot or local fills)
+        4. share_quantity_mismatch (local share count vs competition holding count)
+        5. unmatched_pending_order (open order differences between local ledger and account)
+        6. fee_mismatch (transaction fees differing from 0.50% rule or local fill record)
+        """
+        if evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
+            raise ValueError("evaluated_at must be timezone-aware")
+
+        discrepancies: list[ReconciliationDiscrepancy] = []
+        acct_settled = quantize_tnd(snapshot.settled_cash_tnd)
+        cash_delta = quantize_tnd(acct_settled - self.settled_cash_tnd)
+
+        # 1. Cash discrepancies
+        if cash_delta != Decimal("0.000"):
+            discrepancies.append(
+                ReconciliationDiscrepancy(
+                    discrepancy_type="cash_mismatch",
+                    severity="CRITICAL" if abs(cash_delta) >= Decimal("1.000") else "WARNING",
+                    instrument_id=None,
+                    order_id=None,
+                    local_value=f"{self.settled_cash_tnd} TND",
+                    account_value=f"{acct_settled} TND",
+                    delta=f"{cash_delta:+.3f} TND",
+                    explanation=(
+                        f"Local settled cash ({self.settled_cash_tnd} TND) differs from competition account "
+                        f"settled cash ({acct_settled} TND) by {cash_delta:+.3f} TND."
+                    ),
+                    suggested_adjustment=f"Adjust local settled_cash_tnd to {acct_settled} TND after confirming transactions and fees.",
+                )
+            )
+        if snapshot.available_cash_tnd is not None:
+            acct_avail = quantize_tnd(snapshot.available_cash_tnd)
+            avail_delta = quantize_tnd(acct_avail - self.available_cash_tnd)
+            if avail_delta != Decimal("0.000"):
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="cash_mismatch",
+                        severity="WARNING",
+                        instrument_id=None,
+                        order_id=None,
+                        local_value=f"{self.available_cash_tnd} TND (available)",
+                        account_value=f"{acct_avail} TND (available)",
+                        delta=f"{avail_delta:+.3f} TND",
+                        explanation=(
+                            f"Local available cash ({self.available_cash_tnd} TND) differs from competition account "
+                            f"available cash ({acct_avail} TND) by {avail_delta:+.3f} TND."
+                        ),
+                        suggested_adjustment="Sync pending BUY order reservations and settled cash with competition account.",
+                    )
+                )
+
+        # 2, 3 & 6. Transactions: missing, duplicate, and fee discrepancies
+        local_fills_by_id: dict[str, tuple[ManualOrderRecord, OrderExecutionFill]] = {}
+        local_sig_counts: dict[tuple[str, str, int, Decimal], int] = {}
+        local_fills_by_sig: dict[
+            tuple[str, str, int, Decimal], list[tuple[ManualOrderRecord, OrderExecutionFill]]
+        ] = {}
+        for order in self.orders.values():
+            for fill in order.fills:
+                local_fills_by_id[fill.fill_id] = (order, fill)
+                sig = (
+                    order.instrument_id,
+                    order.side,
+                    fill.filled_shares,
+                    quantize_tnd(fill.execution_price_tnd),
+                )
+                local_sig_counts[sig] = local_sig_counts.get(sig, 0) + 1
+                local_fills_by_sig.setdefault(sig, []).append((order, fill))
+
+        seen_acct_tx_ids: set[str] = set()
+        acct_sig_counts: dict[tuple[str, str, int, Decimal], int] = {}
+        seen_acct_exact: set[tuple[str, str, int, Decimal, str]] = set()
+
+        for tx in snapshot.transactions:
+            tx_price = quantize_tnd(tx.execution_price_tnd)
+            tx_fee = quantize_tnd(tx.fee_tnd)
+            sig = (tx.instrument_id, tx.side, tx.filled_shares, tx_price)
+            exact_key = (tx.order_id, tx.side, tx.filled_shares, tx_price, tx.executed_at)
+            acct_sig_counts[sig] = acct_sig_counts.get(sig, 0) + 1
+
+            # Check duplicate in snapshot
+            if tx.transaction_id in seen_acct_tx_ids or exact_key in seen_acct_exact:
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="duplicate_transaction",
+                        severity="CRITICAL",
+                        instrument_id=tx.instrument_id,
+                        order_id=tx.order_id,
+                        local_value="1 expected execution",
+                        account_value=f"Duplicate transaction {tx.transaction_id} ({tx.side} {tx.filled_shares} @ {tx_price} TND)",
+                        delta=f"+{tx.filled_shares} duplicate shares",
+                        explanation=(
+                            f"Transaction '{tx.transaction_id}' (order '{tx.order_id}', {tx.side} {tx.filled_shares} "
+                            f"{tx.symbol} @ {tx_price} TND) appears multiple times in the imported records."
+                        ),
+                        suggested_adjustment=f"Deduplicate transaction '{tx.transaction_id}' before applying to ledger.",
+                    )
+                )
+            seen_acct_tx_ids.add(tx.transaction_id)
+            seen_acct_exact.add(exact_key)
+
+            # Check fee against 0.50% competition fee rule
+            expected_fee = compute_commission(
+                quantize_tnd(Decimal(tx.filled_shares) * tx_price), self.fee_rate
+            )
+            matched_local = local_fills_by_id.get(tx.transaction_id)
+            if matched_local is None and sig in local_fills_by_sig:
+                for cand_ord, cand_fill in local_fills_by_sig[sig]:
+                    if cand_ord.order_id == tx.order_id:
+                        matched_local = (cand_ord, cand_fill)
+                        break
+
+            if tx_fee != expected_fee:
+                fee_diff = quantize_tnd(tx_fee - expected_fee)
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="fee_mismatch",
+                        severity="WARNING",
+                        instrument_id=tx.instrument_id,
+                        order_id=tx.order_id,
+                        local_value=f"{expected_fee} TND (0.50% standard)",
+                        account_value=f"{tx_fee} TND",
+                        delta=f"{fee_diff:+.3f} TND",
+                        explanation=(
+                            f"Transaction '{tx.transaction_id}' on {tx.symbol} reports fee {tx_fee} TND, "
+                            f"which differs from the 0.50% competition fee ({expected_fee} TND) by {fee_diff:+.3f} TND."
+                        ),
+                        suggested_adjustment=f"Record exact competition fee {tx_fee} TND on fill '{tx.transaction_id}'.",
+                    )
+                )
+            elif matched_local is not None and quantize_tnd(matched_local[1].fee_tnd) != tx_fee:
+                local_f = quantize_tnd(matched_local[1].fee_tnd)
+                fee_diff = quantize_tnd(tx_fee - local_f)
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="fee_mismatch",
+                        severity="WARNING",
+                        instrument_id=tx.instrument_id,
+                        order_id=tx.order_id,
+                        local_value=f"{local_f} TND",
+                        account_value=f"{tx_fee} TND",
+                        delta=f"{fee_diff:+.3f} TND",
+                        explanation=(
+                            f"Local fill '{matched_local[1].fill_id}' fee ({local_f} TND) differs from "
+                            f"competition transaction '{tx.transaction_id}' fee ({tx_fee} TND)."
+                        ),
+                        suggested_adjustment=f"Update fill fee to {tx_fee} TND.",
+                    )
+                )
+
+            # Check missing transaction in local ledger
+            if matched_local is None:
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="missing_transaction",
+                        severity="CRITICAL",
+                        instrument_id=tx.instrument_id,
+                        order_id=tx.order_id,
+                        local_value="Not recorded locally",
+                        account_value=f"{tx.side} {tx.filled_shares} {tx.symbol} @ {tx_price} TND (fee {tx_fee} TND)",
+                        delta=f"{tx.filled_shares:+d} shares" if tx.side == "BUY" else f"-{tx.filled_shares} shares",
+                        explanation=(
+                            f"Executed competition transaction '{tx.transaction_id}' ({tx.side} {tx.filled_shares} "
+                            f"{tx.symbol} @ {tx_price} TND) is missing from the local ledger."
+                        ),
+                        suggested_adjustment=f"Import executed transaction '{tx.transaction_id}' into order '{tx.order_id}'.",
+                    )
+                )
+
+        # Also check if local ledger has duplicate fills for the same signature compared to snapshot
+        if snapshot.transactions:
+            for sig, local_cnt in sorted(local_sig_counts.items()):
+                acct_cnt = acct_sig_counts.get(sig, 0)
+                if acct_cnt > 0 and local_cnt > acct_cnt:
+                    inst_id, side, sh, px = sig
+                    sample_ord, sample_fill = local_fills_by_sig[sig][-1]
+                    discrepancies.append(
+                        ReconciliationDiscrepancy(
+                            discrepancy_type="duplicate_transaction",
+                            severity="CRITICAL",
+                            instrument_id=inst_id,
+                            order_id=sample_ord.order_id,
+                            local_value=f"{local_cnt} fills of {side} {sh} @ {px} TND",
+                            account_value=f"{acct_cnt} fills in competition account",
+                            delta=f"+{local_cnt - acct_cnt} extra local fill(s)",
+                            explanation=(
+                                f"Local ledger contains {local_cnt} fills for {side} {sh} {inst_id} @ {px} TND "
+                                f"(e.g., '{sample_fill.fill_id}'), but competition account shows only {acct_cnt}."
+                            ),
+                            suggested_adjustment=f"Remove duplicate local fill '{sample_fill.fill_id}' during reconciliation.",
+                        )
+                    )
+
+        # 4. Share quantity discrepancies
+        acct_holdings_by_inst = {h.instrument_id: h for h in snapshot.holdings}
+        all_holding_insts = sorted(
+            set(self.holdings.keys()) | set(acct_holdings_by_inst.keys())
+        )
+        for inst_id in all_holding_insts:
+            local_pos = self.holdings.get(inst_id)
+            local_sh = local_pos.total_shares if local_pos is not None else 0
+            acct_pos = acct_holdings_by_inst.get(inst_id)
+            acct_sh = acct_pos.total_shares if acct_pos is not None else 0
+            if local_sh != acct_sh:
+                sh_delta = acct_sh - local_sh
+                sym = (
+                    acct_pos.symbol
+                    if acct_pos is not None
+                    else (local_pos.symbol if local_pos is not None else inst_id)
+                )
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="share_quantity_mismatch",
+                        severity="CRITICAL",
+                        instrument_id=inst_id,
+                        order_id=None,
+                        local_value=f"{local_sh} shares",
+                        account_value=f"{acct_sh} shares",
+                        delta=f"{sh_delta:+d} shares",
+                        explanation=(
+                            f"Local holding for {sym} ({inst_id}) is {local_sh} shares, "
+                            f"whereas competition account holds {acct_sh} shares ({sh_delta:+d} shares)."
+                        ),
+                        suggested_adjustment=f"Sync {sym} ({inst_id}) position to {acct_sh} shares.",
+                    )
+                )
+
+        # 5. Unmatched pending orders
+        local_open_orders = {
+            o.order_id: o for o in self.orders.values() if o.status in OPEN_ORDER_STATUSES
+        }
+        acct_open_orders = {o.order_id: o for o in snapshot.pending_orders}
+        all_open_ids = sorted(set(local_open_orders.keys()) | set(acct_open_orders.keys()))
+        for oid in all_open_ids:
+            loc_o = local_open_orders.get(oid)
+            acc_o = acct_open_orders.get(oid)
+            if loc_o is not None and acc_o is None:
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="unmatched_pending_order",
+                        severity="WARNING",
+                        instrument_id=loc_o.instrument_id,
+                        order_id=oid,
+                        local_value=f"{loc_o.status} {loc_o.side} {loc_o.remaining_shares} {loc_o.symbol} @ {loc_o.limit_price_tnd} TND",
+                        account_value="Not open in competition account",
+                        delta=f"-{loc_o.remaining_shares} open shares",
+                        explanation=(
+                            f"Local open order '{oid}' ({loc_o.side} {loc_o.remaining_shares} {loc_o.symbol}) "
+                            f"is no longer open in the competition account (may have executed, expired, or been cancelled)."
+                        ),
+                        suggested_adjustment=f"Close or reconcile local pending order '{oid}'.",
+                    )
+                )
+            elif loc_o is None and acc_o is not None:
+                discrepancies.append(
+                    ReconciliationDiscrepancy(
+                        discrepancy_type="unmatched_pending_order",
+                        severity="WARNING",
+                        instrument_id=acc_o.instrument_id,
+                        order_id=oid,
+                        local_value="Not recorded locally",
+                        account_value=f"{acc_o.status} {acc_o.side} {acc_o.remaining_shares} {acc_o.symbol} @ {acc_o.limit_price_tnd} TND",
+                        delta=f"+{acc_o.remaining_shares} open shares",
+                        explanation=(
+                            f"Competition pending order '{oid}' ({acc_o.side} {acc_o.remaining_shares} {acc_o.symbol} "
+                            f"@ {acc_o.limit_price_tnd} TND) is missing from the local order journal."
+                        ),
+                        suggested_adjustment=f"Add open order '{oid}' to local ledger and reserve required cash/shares.",
+                    )
+                )
+            elif loc_o is not None and acc_o is not None:
+                if (
+                    loc_o.remaining_shares != acc_o.remaining_shares
+                    or quantize_tnd(loc_o.limit_price_tnd) != quantize_tnd(acc_o.limit_price_tnd)
+                ):
+                    discrepancies.append(
+                        ReconciliationDiscrepancy(
+                            discrepancy_type="unmatched_pending_order",
+                            severity="WARNING",
+                            instrument_id=acc_o.instrument_id,
+                            order_id=oid,
+                            local_value=f"{loc_o.remaining_shares} rem @ {loc_o.limit_price_tnd} TND",
+                            account_value=f"{acc_o.remaining_shares} rem @ {acc_o.limit_price_tnd} TND",
+                            delta=f"{acc_o.remaining_shares - loc_o.remaining_shares:+d} rem shares",
+                            explanation=(
+                                f"Pending order '{oid}' has {loc_o.remaining_shares} remaining shares @ {loc_o.limit_price_tnd} TND locally, "
+                                f"but competition account shows {acc_o.remaining_shares} remaining shares @ {acc_o.limit_price_tnd} TND."
+                            ),
+                            suggested_adjustment=f"Update open order '{oid}' remaining shares to {acc_o.remaining_shares} @ {acc_o.limit_price_tnd} TND.",
+                        )
+                    )
+
+        is_clean = len(discrepancies) == 0
+        return ReconciliationReport(
+            evaluated_at=evaluated_at.isoformat(),
+            snapshot_as_of=snapshot.as_of,
+            is_reconciled=is_clean,
+            requires_user_confirmation=not is_clean,
+            local_settled_cash_tnd=self.settled_cash_tnd,
+            account_settled_cash_tnd=acct_settled,
+            cash_delta_tnd=cash_delta,
+            discrepancies=discrepancies,
+        )
+
+    def apply_reconciliation_snapshot(
+        self,
+        snapshot: CompetitionAccountSnapshot,
+        *,
+        confirmed_by_user: bool,
+        applied_at: datetime,
+        notes: str = "",
+    ) -> ReconciliationReport:
+        """Apply user-confirmed competition snapshot adjustments to the local ledger and log to audit_log.
+
+        Never silently mutates the ledger: raises ValueError if confirmed_by_user is False.
+        """
+        if confirmed_by_user is not True:
+            raise ValueError(
+                "Explicit user confirmation (confirmed_by_user=True) is required before applying reconciliation adjustments"
+            )
+        if applied_at.tzinfo is None or applied_at.utcoffset() is None:
+            raise ValueError("applied_at must be timezone-aware")
+
+        pre_report = self.reconcile_with_snapshot(snapshot, evaluated_at=applied_at)
+        if snapshot.initial_cash_tnd is not None and snapshot.initial_cash_tnd > Decimal("0"):
+            self.initial_cash_tnd = quantize_tnd(snapshot.initial_cash_tnd)
+        self.settled_cash_tnd = quantize_tnd(snapshot.settled_cash_tnd)
+
+        # Deduplicate imported transactions preserving order
+        dedup_txs: list[AccountTransactionRecord] = []
+        seen_tx_ids: set[str] = set()
+        seen_exact: set[tuple[str, str, int, Decimal, str]] = set()
+        for tx in snapshot.transactions:
+            tx_px = quantize_tnd(tx.execution_price_tnd)
+            exact_key = (tx.order_id, tx.side, tx.filled_shares, tx_px, tx.executed_at)
+            if tx.transaction_id in seen_tx_ids or exact_key in seen_exact:
+                continue
+            seen_tx_ids.add(tx.transaction_id)
+            seen_exact.add(exact_key)
+            dedup_txs.append(tx)
+
+        # Sync holdings from competition snapshot
+        new_holdings: dict[str, HoldingPosition] = {}
+        for h in snapshot.holdings:
+            cost_basis = quantize_tnd(Decimal(h.total_shares) * quantize_tnd(h.average_cost_tnd))
+            new_holdings[h.instrument_id] = HoldingPosition(
+                instrument_id=h.instrument_id,
+                symbol=h.symbol,
+                total_shares=h.total_shares,
+                reserved_sell_shares=0,
+                average_cost_tnd=quantize_tnd(h.average_cost_tnd),
+                cost_basis_tnd=cost_basis,
+                realized_pnl_tnd=quantize_tnd(h.realized_pnl_tnd),
+                total_fees_paid_tnd=quantize_tnd(h.total_fees_paid_tnd),
+            )
+        self.holdings = new_holdings
+
+        # Close any previously open local orders that are not in snapshot.pending_orders
+        acct_pend_by_id = {p.order_id: p for p in snapshot.pending_orders}
+        for oid, existing_order in list(self.orders.items()):
+            if existing_order.status in OPEN_ORDER_STATUSES and oid not in acct_pend_by_id:
+                self.orders[oid] = ManualOrderRecord(
+                    order_id=existing_order.order_id,
+                    recommendation_id=existing_order.recommendation_id,
+                    instrument_id=existing_order.instrument_id,
+                    symbol=existing_order.symbol,
+                    side=existing_order.side,
+                    requested_shares=existing_order.requested_shares,
+                    filled_shares=existing_order.filled_shares,
+                    remaining_shares=0,
+                    limit_price_tnd=existing_order.limit_price_tnd,
+                    reserved_cash_tnd=Decimal("0.000"),
+                    reserved_shares=0,
+                    status="EXECUTED" if existing_order.filled_shares > 0 else "CANCELLED",
+                    submitted_at=existing_order.submitted_at,
+                    updated_at=applied_at.isoformat(),
+                    notes=f"{existing_order.notes} | Closed during account reconciliation".strip(" |"),
+                    fills=list(existing_order.fills),
+                )
+
+        # Group deduplicated transactions by order_id and ensure orders + fills exist
+        txs_by_order: dict[str, list[AccountTransactionRecord]] = {}
+        for tx in dedup_txs:
+            txs_by_order.setdefault(tx.order_id, []).append(tx)
+
+        for oid, tx_list in txs_by_order.items():
+            fills: list[OrderExecutionFill] = []
+            total_filled = 0
+            for tx in tx_list:
+                gross = quantize_tnd(Decimal(tx.filled_shares) * quantize_tnd(tx.execution_price_tnd))
+                fee = quantize_tnd(tx.fee_tnd)
+                net_impact = (
+                    -quantize_tnd(gross + fee)
+                    if tx.side == "BUY"
+                    else quantize_tnd(gross - fee)
+                )
+                fills.append(
+                    OrderExecutionFill(
+                        fill_id=tx.transaction_id,
+                        order_id=oid,
+                        executed_at=tx.executed_at,
+                        filled_shares=tx.filled_shares,
+                        execution_price_tnd=quantize_tnd(tx.execution_price_tnd),
+                        gross_amount_tnd=gross,
+                        fee_tnd=fee,
+                        net_cash_impact_tnd=net_impact,
+                        realized_pnl_delta_tnd=Decimal("0.000"),
+                    )
+                )
+                total_filled += tx.filled_shares
+
+            first_tx = tx_list[0]
+            pend_match = acct_pend_by_id.get(oid)
+            if pend_match is not None:
+                req_sh = pend_match.requested_shares
+                rem_sh = pend_match.remaining_shares
+                lim_px = quantize_tnd(pend_match.limit_price_tnd)
+                ord_status = pend_match.status
+                rem_gross = quantize_tnd(Decimal(rem_sh) * lim_px)
+                rem_fee = compute_commission(rem_gross, self.fee_rate)
+                res_cash = quantize_tnd(rem_gross + rem_fee) if pend_match.side == "BUY" else Decimal("0.000")
+                res_sh = rem_sh if pend_match.side == "SELL" else 0
+            else:
+                req_sh = total_filled
+                rem_sh = 0
+                lim_px = quantize_tnd(first_tx.execution_price_tnd)
+                ord_status = "EXECUTED"
+                res_cash = Decimal("0.000")
+                res_sh = 0
+
+            existing_rec = self.orders.get(oid)
+            self.orders[oid] = ManualOrderRecord(
+                order_id=oid,
+                recommendation_id=existing_rec.recommendation_id if existing_rec else None,
+                instrument_id=first_tx.instrument_id,
+                symbol=first_tx.symbol,
+                side=first_tx.side,
+                requested_shares=req_sh,
+                filled_shares=total_filled,
+                remaining_shares=rem_sh,
+                limit_price_tnd=lim_px,
+                reserved_cash_tnd=res_cash,
+                reserved_shares=res_sh,
+                status=ord_status,
+                submitted_at=existing_rec.submitted_at if existing_rec else first_tx.executed_at,
+                updated_at=applied_at.isoformat(),
+                notes=(existing_rec.notes if existing_rec else "Imported via competition account reconciliation"),
+                fills=fills,
+            )
+
+        # Sync any remaining pending orders that had no executed transactions yet
+        for oid, pend in acct_pend_by_id.items():
+            if oid not in txs_by_order:
+                lim_px = quantize_tnd(pend.limit_price_tnd)
+                rem_gross = quantize_tnd(Decimal(pend.remaining_shares) * lim_px)
+                rem_fee = compute_commission(rem_gross, self.fee_rate)
+                res_cash = (
+                    quantize_tnd(rem_gross + rem_fee)
+                    if pend.side == "BUY"
+                    else Decimal("0.000")
+                )
+                res_sh = pend.remaining_shares if pend.side == "SELL" else 0
+                existing_rec = self.orders.get(oid)
+                self.orders[oid] = ManualOrderRecord(
+                    order_id=oid,
+                    recommendation_id=existing_rec.recommendation_id if existing_rec else None,
+                    instrument_id=pend.instrument_id,
+                    symbol=pend.symbol,
+                    side=pend.side,
+                    requested_shares=pend.requested_shares,
+                    filled_shares=pend.filled_shares,
+                    remaining_shares=pend.remaining_shares,
+                    limit_price_tnd=lim_px,
+                    reserved_cash_tnd=res_cash,
+                    reserved_shares=res_sh,
+                    status=pend.status,
+                    submitted_at=pend.submitted_at,
+                    updated_at=applied_at.isoformat(),
+                    notes=(existing_rec.notes if existing_rec else "Imported pending order via reconciliation"),
+                    fills=list(existing_rec.fills) if existing_rec else [],
+                )
+
+        self._reconcile_reservations()
+        self._append_audit(
+            timestamp=applied_at,
+            event_type="RECONCILIATION_ADJUSTMENT_APPLIED",
+            order_id=None,
+            instrument_id=None,
+            summary=(
+                f"Applied user-confirmed competition account reconciliation (snapshot {snapshot.as_of}; "
+                f"{len(pre_report.discrepancies)} discrepancies resolved). {notes}".strip()
+            ),
+            payload={
+                "confirmed_by_user": True,
+                "discrepancies_resolved": [d.to_dict() for d in pre_report.discrepancies],
+                "notes": notes,
+                "snapshot_as_of": snapshot.as_of,
+            },
+        )
+        return pre_report
 
     def to_dict(self) -> dict[str, object]:
         return {
