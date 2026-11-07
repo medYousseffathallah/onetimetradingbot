@@ -196,7 +196,7 @@ BALANCE_MISMATCH_HTML_FIXTURE = """
 <body>
 <div>Votre portefeuille : 49998,05 DT</div>
 <table>
-    <tbody>
+    <tbody class="alri">
         <tr>
             <td><button>vendre</button></td>
             <td>BH BANK</td>
@@ -204,7 +204,7 @@ BALANCE_MISMATCH_HTML_FIXTURE = """
             <td>13.065</td>
             <td>391.95</td>
             <td>13.00</td>
-            <td>390.00</td>
+            <td>390.00</td><td>-1.95</td><td>-0.50%</td>
         </tr>
         <tr>
             <td colspan="6">Liquidités</td>
@@ -479,3 +479,114 @@ def test_browser_sync_confirmation_reconciliation_and_restart_persistence(tmp_pa
     )
     assert freshness_after["is_stale"] is False
     assert freshness_after["warning_message"] is None
+
+
+VERIFIED_ALRI_ROW = """
+<tr data-sect="8300">
+  <td class="alct"><button>vendre</button></td>
+  <td class="no">BH</td><td class="no">223375</td>
+  <td class="allf"><a href="display.aspx?s=BH">BH BANK</a></td>
+  <td>30</td><td class="no">A</td><td>13.065</td><td>391.95</td>
+  <td>...</td><td>392.70</td>
+  <td class="quote_upb">0.75</td><td class="quote_upb">0.19%</td>
+</tr>
+"""
+
+
+def alri_portfolio(rows: str, total: str = "50000,75", cash: str = "49608.05") -> str:
+    return f"""<div>Votre portefeuille : {total} DT</div>
+    <table><tbody class="alri">{rows}
+    <tr><td colspan="9">Liquidités</td><td>{cash}</td></tr>
+    <tr><td colspan="9">Totaux</td><td>{total}</td></tr>
+    </tbody></table>"""
+
+
+@pytest.mark.parametrize("latest", ["...", "\u2026", "13.090"])
+def test_verified_alri_holdings(latest: str):
+    snap = parse_competition_portfolio_html(
+        alri_portfolio(VERIFIED_ALRI_ROW.replace("...", latest))
+    )
+    assert len(snap.holdings) == 1
+    bh = snap.holdings[0]
+    assert bh.symbol == "BH BANK"
+    assert bh.displayed_symbol == "BH"
+    assert bh.displayed_identifier == "223375"
+    assert bh.quantity == 30
+    assert bh.acquisition_price_tnd == Decimal("13.065")
+    assert bh.acquisition_amount_tnd == Decimal("391.95")
+    assert bh.latest_price_tnd == Decimal("13.090")
+    assert bh.market_value_tnd == Decimal("392.70")
+    assert bh.gain_tnd == Decimal("0.75")
+    assert bh.gain_pct == Decimal("0.19")
+    assert snap.available_cash_tnd == Decimal("49608.05")
+    assert snap.available_cash_tnd + bh.market_value_tnd == snap.portfolio_total_tnd
+    assert snap.portfolio_total_tnd == Decimal("50000.75")
+    assert type(snap).from_dict(snap.to_dict()) == snap
+
+
+def test_alri_multiple_holdings_and_link_symbol_fallback():
+    second = (
+        VERIFIED_ALRI_ROW.replace(">BH</td>", "></td>")
+        .replace(">BH BANK</a>", ">SECOND BANK</a>")
+        .replace("s=BH", "s=SECOND")
+        .replace("223375", "999999")
+        .replace("13.065", "13,065")
+        .replace("...", "13,00")
+        .replace("392.70", "390,00")
+        .replace("quote_upb", "quote_downb")
+        .replace(">0.75<", ">-1,95<")
+        .replace(">0.19%<", ">-0,50%<")
+    )
+    snap = parse_competition_portfolio_html(
+        alri_portfolio(VERIFIED_ALRI_ROW + second, total="50390,75", cash="49 608,05")
+    )
+    assert len(snap.holdings) == 2
+    assert snap.holdings[0].gain_tnd == Decimal("0.75")
+    assert snap.holdings[1].displayed_symbol == "SECOND"
+    assert snap.holdings[1].displayed_identifier == "999999"
+    assert snap.holdings[1].acquisition_price_tnd == Decimal("13.065")
+    assert snap.holdings[1].gain_tnd == Decimal("-1.95")
+    assert snap.holdings[1].gain_pct == Decimal("-0.50")
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        VERIFIED_ALRI_ROW.replace("<td>...</td>", "<td>unavailable</td>"),
+        VERIFIED_ALRI_ROW.replace("<td>30</td>", "<td>invalid</td>"),
+        VERIFIED_ALRI_ROW.replace("<td>30</td>", "<td>0</td>"),
+        VERIFIED_ALRI_ROW.replace("<td>391.95</td>", ""),
+        VERIFIED_ALRI_ROW.replace("BH BANK</a>", "</a>"),
+        VERIFIED_ALRI_ROW.replace("<td>392.70</td>", "<td>NaN</td>"),
+        "<tr><td>Unrecognized holding</td></tr>",
+    ],
+)
+def test_alri_malformed_rows_fail_even_when_totals_are_all_cash(row: str):
+    with pytest.raises(LayoutChangedError):
+        parse_competition_portfolio_html(alri_portfolio(row, total="49608,05"))
+
+
+@pytest.mark.parametrize("rows", ["", '<tr><td colspan="12">Aucune valeur</td></tr>'])
+def test_alri_empty_portfolio(rows: str):
+    snap = parse_competition_portfolio_html(alri_portfolio(rows, total="49608,05"))
+    assert snap.holdings == ()
+    assert snap.available_cash_tnd == snap.portfolio_total_tnd
+
+
+def test_totals_without_holdings_table_fail():
+    with pytest.raises(LayoutChangedError, match="holdings table"):
+        parse_competition_portfolio_html(
+            "<div>Votre portefeuille : 50000 DT</div>"
+            "<table><tr><td>Liquidités</td><td>50000</td></tr></table>"
+        )
+
+
+def test_legacy_snapshot_without_displayed_identifiers():
+    snap = parse_competition_portfolio_html(VERIFIED_SCREENSHOT_HTML_FIXTURE)
+    data = snap.to_dict()
+    for holding in data["holdings"]:
+        holding.pop("displayed_symbol", None)
+        holding.pop("displayed_identifier", None)
+    loaded = type(snap).from_dict(data)
+    assert loaded.holdings[0].displayed_symbol is None
+    assert loaded.holdings[0].displayed_identifier is None
