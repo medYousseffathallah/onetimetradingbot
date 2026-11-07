@@ -200,12 +200,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     rec_cmd.add_argument("--output")
 
     dash = commands.add_parser(
-        "dashboard", help="Launch the local Streamlit decision-support dashboard"
+        "dashboard", help="Launch the local Streamlit fallback decision-support dashboard"
     )
     dash.add_argument("--port", type=int, default=8501)
     dash.add_argument(
         "--headless", action="store_true", help="Run without opening a browser tab automatically"
     )
+
+    api_cmd = commands.add_parser(
+        "api", help="Launch the localhost-only FastAPI backend service for the Next.js dashboard"
+    )
+    api_cmd.add_argument("--host", default="127.0.0.1")
+    api_cmd.add_argument("--port", type=int, default=8000)
 
     bsync = commands.add_parser(
         "browser-sync",
@@ -329,6 +335,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             ]
             if args.headless:
                 cmd.extend(["--server.headless", "true"])
+            return subprocess.call(cmd)
+        if args.command == "api":
+            if args.host not in ("127.0.0.1", "localhost"):
+                raise ValueError("FastAPI server must bind only to localhost (127.0.0.1).")
+            cmd = [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "bvmt.api:app",
+                "--host",
+                str(args.host),
+                "--port",
+                str(args.port),
+            ]
             return subprocess.call(cmd)
         if args.command == "browser-sync":
             from bvmt.browser import (
