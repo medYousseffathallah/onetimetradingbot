@@ -297,6 +297,73 @@ def read_bars_csv(path: Path) -> list[DailyBar]:
     return validate_bars(bars)
 
 
+def inspect_market_dataset_provenance(bars_path: Path) -> dict[str, object]:
+    """Inspect validated local bars without fallback data or filesystem writes.
+
+    Metadata precedence is provenance, import timestamp, manifest, then quality report;
+    manifests may nest fields under ``provenance``. Only explicit ``retrieved_at``
+    values describe retrieval: import/portfolio timestamps are not substituted.
+    Missing metadata leaves fields unknown; malformed metadata raises ValueError.
+    """
+    try:
+        bars = read_bars_csv(bars_path)
+    except FileNotFoundError:
+        raise
+    except (OSError, csv.Error) as exc:
+        raise ValueError(f"Cannot read market dataset {bars_path}: {exc}") from exc
+
+    source_ids = sorted({bar.source_id for bar in bars})
+    # Check both the supplied path and its target so fixture symlinks stay labeled.
+    is_fixture = any(
+        any(
+            left.lower() == "tests" and right.lower() == "fixtures"
+            for left, right in zip(path.parts, path.parts[1:], strict=False)
+        )
+        for path in (bars_path.absolute(), bars_path.resolve())
+    )
+    source_url: str | None = None
+    retrieved_at: str | None = None
+    for filename in (
+        "provenance.json",
+        "import_timestamp.json",
+        "manifest.json",
+        "quality_report.json",
+    ):
+        metadata_path = bars_path.parent / filename
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"Cannot read dataset metadata {metadata_path}: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"Dataset metadata must be a JSON object: {metadata_path}")
+        nested = payload.get("provenance")
+        candidates = [payload]
+        if isinstance(nested, dict):
+            candidates.append(nested)
+        for metadata in candidates:
+            url = metadata.get("source_url")
+            stamp = metadata.get("retrieved_at")
+            if source_url is None and isinstance(url, str) and url.strip():
+                source_url = url
+            if retrieved_at is None and isinstance(stamp, str) and stamp.strip():
+                retrieved_at = stamp
+
+    sessions = {bar.session_date for bar in bars}
+    return {
+        "is_synthetic": is_fixture or any("synthetic" in source.lower() for source in source_ids),
+        "latest_session_date": max(sessions).isoformat(),
+        "first_session_date": min(sessions).isoformat(),
+        "total_bars": len(bars),
+        "unique_sessions": len(sessions),
+        "unique_instruments": len({bar.instrument_id for bar in bars}),
+        "source_ids": source_ids,
+        "source_url": source_url,
+        "retrieved_at": retrieved_at,
+    }
+
+
 def _parse_french_bvmt_row(
     row: dict[str | None, str | None],
     *,

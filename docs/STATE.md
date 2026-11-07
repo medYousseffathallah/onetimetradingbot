@@ -1,5 +1,33 @@
 # Working state
 
+## Market dataset provenance helper (Codex worktree, 2026-11-07)
+- Added `inspect_market_dataset_provenance(Path)` in `src/bvmt/data.py`, with
+  deterministic regression tests in `tests/test_data_import.py`. Gemini-owned
+  dashboard, ledger, and recommendations files are unchanged.
+- Validates canonical bars before returning coverage, sorted source IDs, synthetic
+  classification, and sibling metadata source URL/retrieval time. Missing/empty/
+  corrupt datasets raise explicitly; no synthetic fallback. Optional metadata
+  precedence: provenance, import timestamp, manifest, quality report (including
+  nested manifest provenance). Malformed JSON raises ValueError. Import-only
+  timestamps are not relabeled as retrieval timestamps.
+- Inspected local canonical bars, exchange calendar, instrument master, provenance,
+  import timestamp, manifest, and quality report. Helper smoke check found 14,480
+  bars / 194 sessions / 76 instruments, 2026-01-02 through 2026-11-06,
+  `is_synthetic=False`, source `official-bvmt-full-2026`, and explicit provenance
+  `retrieved_at=2026-11-07T11:44:03.365417+00:00`. This reflects saved metadata,
+  not independent source verification: the manifest says original download time
+  is unavailable, while provenance.json labels the processing time retrieved_at.
+- Verification: `uv run --no-sync pytest tests/test_data_import.py` -> 22 passed;
+  `uv run --no-sync ruff check src/bvmt/data.py tests/test_data_import.py`,
+  `uv run --no-sync ruff format --check src/bvmt/data.py tests/test_data_import.py`,
+  and `uv run --no-sync mypy src/bvmt/data.py` -> all passed.
+  `uv run --no-sync python scripts/check.py` -> full gate passed, 205 tests.
+  Windows sandbox denied pytest temp/cache access; successful tests used elevated
+  execution, workspace-local UV_CACHE_DIR, and fresh artifact temp/cache paths via
+  PYTEST_ADDOPTS. No network or live API calls were needed.
+- Next exact action: integration review on main, then Gemini can consume the helper
+  to display quotation provenance separately from portfolio snapshot freshness.
+
 ## Current checkpoint
 **Milestone 3: Production Readiness (Live Browser Sync Subprocess, Movements & Pending Orders, Full 2026 Official BVMT Archive & 7-Fold Walk-Forward Audit)** merged on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
 All **175 automated unit, integration, backtesting, walk-forward, reconciliation, price drift, browser DOM/movements parsing, URL guard, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run --no-sync python scripts/check.py`) pass with **zero live API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
