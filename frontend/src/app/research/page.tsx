@@ -101,7 +101,7 @@ export default function StockResearchPage() {
                     </div>
                     <span className="text-slate-400">{formatTimestamp(doc.published_at)}</span>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">{doc.text}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">{doc.chunk_text}</p>
                 </div>
               ))}
             </div>

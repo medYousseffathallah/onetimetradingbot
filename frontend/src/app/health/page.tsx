@@ -185,7 +185,7 @@ export default function SystemHealthPage() {
                     <p className="text-xs text-slate-400">{a.message}</p>
                   </div>
                   <span className="text-[11px] text-slate-500 shrink-0">
-                    {formatTimestamp(a.created_at)}
+                    {formatTimestamp(a.created_at_utc)}
                   </span>
                 </div>
               ))}

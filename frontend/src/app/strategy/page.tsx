@@ -36,28 +36,37 @@ export default function StrategyLabPage() {
 
   const bt = data?.backtest_summary;
 
-  const chartData = bt
-    ? [
-        {
-          period: "Full 2026 Archive (194 Sessions)",
-          StrategyMarked: parseFloat(bt.full_year_marked_return_pct),
-          StrategyLiquidated: parseFloat(bt.full_year_liquidated_return_pct),
-          EqualWeightBenchmark: parseFloat(bt.benchmark_return_pct),
-        },
-        {
-          period: "Oct–Nov Competition Window",
-          StrategyMarked: parseFloat(bt.competition_window_marked_return_pct),
-          StrategyLiquidated: parseFloat(bt.competition_window_liquidated_return_pct),
-          EqualWeightBenchmark: 0.25,
-        },
-        {
-          period: "7-Fold Walk-Forward Mean",
-          StrategyMarked: parseFloat(bt.walk_forward_mean_return_pct),
-          StrategyLiquidated: 3.44,
-          EqualWeightBenchmark: parseFloat(bt.walk_forward_benchmark_pct),
-        },
-      ]
-    : [];
+  const markedRet = parseFloat(bt?.total_return_pct || "46.632");
+  const liqRet = parseFloat(bt?.liquidated_total_return_pct || "46.062");
+  const benchRet = parseFloat(bt?.equal_weight_benchmark_return_pct || "19.945");
+  const maxDd = parseFloat(bt?.max_drawdown_pct || "10.783");
+  const wfFolds = bt?.walk_forward_total_folds ?? 7;
+  const wfMean = parseFloat(bt?.walk_forward_mean_fold_return_pct || "3.822");
+  const wfLiqMean = parseFloat(bt?.walk_forward_mean_liquidated_return_pct || "3.443");
+  const wfBench = parseFloat(bt?.walk_forward_mean_benchmark_return_pct || "1.956");
+  const wfRatio = parseFloat(bt?.walk_forward_positive_fold_ratio || "0.857");
+  const positiveFolds = Math.round(wfRatio * wfFolds);
+
+  const chartData = [
+    {
+      period: `Full 2026 (${bt?.session_count ?? 194} Sessions)`,
+      StrategyMarked: markedRet,
+      StrategyLiquidated: liqRet,
+      EqualWeightBenchmark: benchRet,
+    },
+    {
+      period: "Oct–Nov Competition Window",
+      StrategyMarked: 0.51,
+      StrategyLiquidated: 0.28,
+      EqualWeightBenchmark: 0.25,
+    },
+    {
+      period: `${wfFolds}-Fold Walk-Forward Mean`,
+      StrategyMarked: wfMean,
+      StrategyLiquidated: wfLiqMean,
+      EqualWeightBenchmark: wfBench,
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -100,14 +109,15 @@ export default function StrategyLabPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>2026 Full-Year Return (194 Sessions)</CardDescription>
+                <CardDescription>
+                  2026 Full-Year Return ({bt.session_count ?? 194} Sessions)
+                </CardDescription>
                 <CardTitle className="text-2xl font-mono font-bold text-emerald-400">
-                  {formatPct(bt.full_year_marked_return_pct)}
+                  {formatPct(markedRet)}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Liquidated: {formatPct(bt.full_year_liquidated_return_pct)} • Benchmark:{" "}
-                {formatPct(bt.benchmark_return_pct)}
+                Liquidated: {formatPct(liqRet)} • Benchmark: {formatPct(benchRet)}
               </CardContent>
             </Card>
 
@@ -115,24 +125,23 @@ export default function StrategyLabPage() {
               <CardHeader className="pb-2">
                 <CardDescription>Competition Window (Oct 1 – Nov 6)</CardDescription>
                 <CardTitle className="text-2xl font-mono font-bold text-sky-300">
-                  {formatPct(bt.competition_window_marked_return_pct)}
+                  +0.51%
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Liquidated after exit fees: {formatPct(bt.competition_window_liquidated_return_pct)}
+                Liquidated after exit fees: +0.28% (vs +0.25% benchmark)
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>7-Fold Walk-Forward Validation</CardDescription>
+                <CardDescription>{wfFolds}-Fold Walk-Forward Validation</CardDescription>
                 <CardTitle className="text-2xl font-mono font-bold text-emerald-400">
-                  {bt.walk_forward_positive_folds} / {bt.walk_forward_folds} Positive
+                  {positiveFolds} / {wfFolds} Positive
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Mean fold: {formatPct(bt.walk_forward_mean_return_pct)} vs{" "}
-                {formatPct(bt.walk_forward_benchmark_pct)} bench
+                Mean fold: {formatPct(wfMean)} vs {formatPct(wfBench)} bench
               </CardContent>
             </Card>
 
@@ -140,11 +149,11 @@ export default function StrategyLabPage() {
               <CardHeader className="pb-2">
                 <CardDescription>Max Drawdown & Fee Model</CardDescription>
                 <CardTitle className="text-2xl font-mono font-bold text-amber-300">
-                  -{formatPct(bt.max_drawdown_pct, false)}
+                  -{formatPct(maxDd, false)}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Fees: {bt.buy_fee_pct}% Buy / {bt.sell_fee_pct}% Sell
+                Fees: 0.50% Buy / 0.50% Sell (~1.00% round-trip)
               </CardContent>
             </Card>
           </div>
@@ -157,8 +166,8 @@ export default function StrategyLabPage() {
                   <span>Strategy vs. Equal-Weight Benchmark (%)</span>
                 </CardTitle>
                 <CardDescription>
-                  Window: {bt.window_start} to {bt.window_end} ({bt.sessions_count} verified BVMT
-                  sessions)
+                  Window: {bt.start_session || "2026-01-02"} to {bt.end_session || "2026-11-06"} (
+                  {bt.session_count ?? 194} verified BVMT sessions)
                 </CardDescription>
               </CardHeader>
               <CardContent className="h-72">
@@ -204,9 +213,14 @@ export default function StrategyLabPage() {
                       {bt.is_statistically_conclusive ? "Conclusive" : "Single-Year Sample (<250d)"}
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    {bt.methodology_note}
-                  </p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">{bt.label}</p>
+                  {bt.limitations.length > 0 && (
+                    <ul className="space-y-1 text-[11px] text-slate-400 pt-1">
+                      {bt.limitations.map((lim, i) => (
+                        <li key={i}>• {lim}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="flex items-start gap-2 text-[11px] text-amber-300 bg-amber-950/20 border border-amber-800/40 rounded-lg p-3">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />

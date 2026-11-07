@@ -396,11 +396,11 @@ export default function OverviewPage() {
                   <tbody className="divide-y divide-slate-800/60">
                     {rankings.rankings.slice(0, 5).map((r) => (
                       <tr key={r.instrument_id} className="hover:bg-slate-800/30">
-                        <td className="py-2 font-mono text-slate-400">#{r.rank}</td>
+                        <td className="py-2 font-mono text-slate-400">#{r.rank ?? "-"}</td>
                         <td className="py-2 font-medium text-slate-100">{r.symbol}</td>
                         <td className="py-2 text-right font-mono">{formatTnd(r.close_tnd)}</td>
                         <td className="py-2 text-right font-mono text-sky-300">
-                          {parseFloat(r.composite_score).toFixed(3)}
+                          {r.composite_score !== null ? r.composite_score.toFixed(3) : "N/A"}
                         </td>
                         <td className="py-2 text-right">
                           <Badge

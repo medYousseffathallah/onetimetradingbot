@@ -1,14 +1,14 @@
 export type PortfolioMode = "REAL_COMPETITION" | "SYNTHETIC_DEMO";
 
 export interface WebsiteReportedSummary {
-  snapshot_id: string;
+  snapshot_id: string | null;
   capture_timestamp: string | null;
   live_synchronized: boolean;
-  portfolio_total_tnd: string;
-  available_cash_tnd: string;
-  holdings_value_tnd: string;
-  unrealized_pnl_tnd: string;
-  overall_performance_pct: string;
+  portfolio_total_tnd: string | null;
+  available_cash_tnd: string | null;
+  holdings_value_tnd: string | null;
+  unrealized_pnl_tnd: string | null;
+  overall_performance_pct: string | null;
   competition_rank: number | null;
   competition_participants: number | null;
   competition_window: string | null;
@@ -68,10 +68,10 @@ export interface HoldingItem {
   quantity: number;
   acquisition_price_tnd: string;
   acquisition_amount_tnd: string;
-  website_last_price_tnd: string;
-  website_market_value_tnd: string;
-  website_unrealized_pnl_tnd: string;
-  website_unrealized_return_pct: string;
+  website_last_price_tnd: string | null;
+  website_market_value_tnd: string | null;
+  website_unrealized_pnl_tnd: string | null;
+  website_unrealized_return_pct: string | null;
   verified_market_price_tnd: string | null;
   verified_market_value_tnd: string | null;
   price_drift_tnd: string | null;
@@ -88,18 +88,7 @@ export interface HoldingsResponse {
   holdings: HoldingItem[];
 }
 
-export interface SnapshotSummaryItem {
-  snapshot_id: string;
-  capture_timestamp: string | null;
-  live_synchronized: boolean;
-  portfolio_total_tnd: string;
-  available_cash_tnd: string;
-  holdings_count: number;
-  competition_rank: number | null;
-  competition_participants: number | null;
-  overall_performance_pct: string;
-  provenance: string;
-}
+export type SnapshotSummaryItem = WebsiteReportedSummary;
 
 export interface BrowserSnapshotSummaryItem {
   retrieved_at: string;
@@ -123,15 +112,17 @@ export interface SnapshotsResponse {
 
 export interface TransactionItem {
   transaction_id: string;
+  order_id: string;
   instrument_id: string;
   symbol: string;
   side: string;
-  quantity: number;
-  price_tnd: string;
-  gross_amount_tnd: string;
+  filled_shares: number;
+  execution_price_tnd: string;
   fee_tnd: string;
   executed_at: string;
   source: string;
+  source_timestamp: string | null;
+  is_confirmed: boolean;
 }
 
 export interface TransactionsResponse {
@@ -149,6 +140,9 @@ export interface PendingOrderItem {
   limit_price_tnd: string;
   status: string;
   submitted_at: string;
+  source: string;
+  source_timestamp: string | null;
+  is_confirmed: boolean;
 }
 
 export interface PendingOrdersResponse {
@@ -168,23 +162,23 @@ export interface MarketDataStatusResponse {
 }
 
 export interface StockRankingItem {
-  rank: number;
+  rank: number | null;
   instrument_id: string;
   symbol: string;
-  close_tnd: string;
-  short_return_pct: string;
-  long_return_pct: string;
-  volatility_pct: string;
-  trade_frequency_pct: string;
-  median_turnover_tnd: string;
-  composite_score: string;
+  close_tnd: string | null;
+  short_return_pct: string | null;
+  long_return_pct: string | null;
+  volatility_pct: string | null;
+  trade_frequency_pct: string | null;
+  median_turnover_tnd: string | null;
+  composite_score: number | null;
   eligible: boolean;
   eligibility_warnings: string[];
   recommendation_category: string;
   suggested_side: string | null;
   suggested_shares: number;
   blocked_reasons: string[];
-  rationale: string;
+  rationale: string[];
 }
 
 export interface StockRankingsResponse {
@@ -205,37 +199,41 @@ export interface EventSignalItem {
   verbatim_quote: string;
   source_document_id: string;
   quote_verified: boolean;
+  is_synthetic: boolean;
 }
 
 export interface DocumentSearchResultItem {
   chunk_id: string;
   source_document_id: string;
   instrument_ids: string[];
-  published_at: string;
-  language: string;
-  text: string;
-  score: number;
+  published_at: string | null;
+  ingested_at: string | null;
+  section_locator: string;
+  chunk_text: string;
+  score: number | null;
+  method: string;
+  is_synthetic: boolean;
 }
 
 export interface BacktestSummaryItem {
   label: string;
-  window_start: string;
-  window_end: string;
-  sessions_count: number;
-  buy_fee_pct: string;
-  sell_fee_pct: string;
-  full_year_marked_return_pct: string;
-  full_year_liquidated_return_pct: string;
-  benchmark_return_pct: string;
-  max_drawdown_pct: string;
-  competition_window_marked_return_pct: string;
-  competition_window_liquidated_return_pct: string;
-  walk_forward_folds: number;
-  walk_forward_positive_folds: number;
-  walk_forward_mean_return_pct: string;
-  walk_forward_benchmark_pct: string;
-  is_statistically_conclusive: boolean;
-  methodology_note: string;
+  status: "available" | "unavailable";
+  source_label: string | null;
+  generated_at: string | null;
+  start_session: string | null;
+  end_session: string | null;
+  session_count: number | null;
+  total_return_pct: string | null;
+  liquidated_total_return_pct: string | null;
+  equal_weight_benchmark_return_pct: string | null;
+  max_drawdown_pct: string | null;
+  walk_forward_total_folds: number | null;
+  walk_forward_mean_fold_return_pct: string | null;
+  walk_forward_mean_liquidated_return_pct: string | null;
+  walk_forward_mean_benchmark_return_pct: string | null;
+  walk_forward_positive_fold_ratio: string | null;
+  is_statistically_conclusive: boolean | null;
+  limitations: string[];
 }
 
 export interface ResearchResponse {
@@ -247,12 +245,14 @@ export interface ResearchResponse {
 
 export interface AlertItem {
   alert_id: string;
+  created_at_utc: string;
+  session_date: string;
   category: string;
   severity: string;
+  instrument_id: string | null;
   title: string;
   message: string;
-  created_at: string;
-  acknowledged: boolean;
+  status: string;
 }
 
 export interface SystemHealthResponse {
@@ -267,11 +267,9 @@ export interface SystemHealthResponse {
 
 export interface PositionDeltaItem {
   instrument_id: string;
-  symbol: string;
-  shares_before: number;
-  shares_after: number;
-  shares_delta: number;
-  market_value_after_tnd: string;
+  quantity_before: number;
+  quantity_after: number;
+  quantity_delta: number;
 }
 
 export interface ReconciliationPreviewResponse {
@@ -287,16 +285,22 @@ export interface ReconciliationPreviewResponse {
   requires_confirmation: boolean;
 }
 
+export interface ReconciliationSummaryItem {
+  evaluated_at: string;
+  snapshot_as_of: string;
+  is_reconciled: boolean;
+  cash_delta_tnd: string;
+  discrepancy_count: number;
+}
+
 export interface ConfirmSnapshotResponse {
-  confirmed: boolean;
   overview: AccountOverviewResponse;
-  reconciliation_summary: ReconciliationPreviewResponse;
+  reconciliation_summary: ReconciliationSummaryItem;
 }
 
 export interface BrowserSyncTriggerResponse {
-  status: string;
   captured_snapshot: BrowserSnapshotSummaryItem;
-  preview: ReconciliationPreviewResponse;
+  reconciliation_preview: ReconciliationPreviewResponse;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {

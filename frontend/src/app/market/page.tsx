@@ -213,7 +213,7 @@ export default function MarketExplorerPage() {
                         {formatTnd(r.median_turnover_tnd)}
                       </td>
                       <td className="py-2.5 text-right font-mono font-semibold text-sky-300">
-                        {parseFloat(r.composite_score).toFixed(3)}
+                        {r.composite_score !== null ? r.composite_score.toFixed(3) : "N/A"}
                       </td>
                       <td className="py-2.5">
                         <Badge

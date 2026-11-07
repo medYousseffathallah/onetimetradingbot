@@ -1,62 +1,22 @@
 # Working state
 
-## FastAPI backend layer (Codex worktree, 2026-11-07)
-- User-authorized scope: only `src/bvmt/api.py`, `tests/test_api.py`, and this file.
-  No frontend, dashboard, ledger, recommendations, dependency manifest, or launcher changes.
-- Added lazy `create_app(service=None)` / module-level `app`, typed Pydantic v2
-  response contracts, three-decimal Decimal strings, ISO source timestamps,
-  four explicit localhost CORS origins, clean dataset labels, and public-field
-  projection/sanitization. All ten GET routes accept validated portfolio mode
-  with REAL_COMPETITION as default; alternate-mode services preserve path overrides.
-- Added read-only portfolio, holdings, snapshots, transactions, pending orders,
-  market provenance, rankings, research, health and reconciliation preview routes.
-  Browser collection stays capture-only; confirmation requires a strict true boolean
-  before invoking PortfolioStateService persistence. Sync POSTs reject demo services.
-  All real-account rankings using synthetic bars explicitly carry the synthetic blocker.
-- Research projects whitelisted metrics from the existing local
-  `artifacts/backtest_audit_2026.json` execution audit, including seven walk-forward
-  folds, as historical hypothetical simulation. Missing/invalid audits return
-  unavailable metrics; no historical returns are invented or embedded in API code.
-  This does not independently revalidate the historical strategy or its input license.
-- Added 46 TestClient cases covering opening 49998.050 TND baseline, pending
-  sync_20261107_122006.json detection without ledger changes, rejected confirmation,
-  confirmed 50000.750 TND equity / 49608.050 TND cash / 392.700 TND BH BANK value /
-  0.750 TND unrealized gain / rank 118 of 14530, fresh-service restart persistence,
-  all routes, CORS, custom paths, source cutoffs, synthetic blockers, mocked browser
-  success/errors, local fills, browser movements, search and safe error responses.
-- Read-only skill-requested review identified source-availability filtering,
-  JSON credential/query sanitization and synthetic-mode sync boundaries. All were
-  fixed with regression tests; verified prices in both holdings branches use only
-  eligible source quotes, returning null for unavailable or synthetic quotes.
-- Verification: `uv run --no-sync ruff format src/bvmt/api.py tests/test_api.py`,
-  `uv run --no-sync ruff check src/bvmt/api.py tests/test_api.py`, and
-  `uv run --no-sync mypy src/bvmt` passed. Targeted pytest: **46 passed**.
-  Full `scripts/check.py` gate: format/check, mypy (16 modules), skill validation,
-  and **252 passed**, exit 0. One installed-Starlette TestClient/httpx deprecation
-  warning; full suite also emitted a Windows temporary-directory cleanup
-  PermissionError at interpreter exit, without test failures or a nonzero exit.
-- Environment/reproduction constraints: `uv sync --locked --group dev --extra
-  dashboard --extra data` failed because the configured package proxy was unreachable;
-  the worktree environment lacks FastAPI. Checks used workspace-local
-  `UV_CACHE_DIR=$PWD/.uv-cache` and
-  `PYTHONPATH=$PWD/src;$PWD/../bvmt-starter-kit/.venv/Lib/site-packages` to read the
-  already-installed integration environment (FastAPI 0.162.1, Pydantic 2.14.3).
-  Pytest needed `PYTEST_ADDOPTS=-p no:cacheprovider --basetemp=artifacts/api-run-8`
-  and an in-memory runner replacing os.mkdir mode 0700 with inherited mode 0777;
-  otherwise this Windows sandbox denies pytest access to its own temporary directories.
-  Full gate ran scripts/check.py via runpy with subprocess.run forwarding only its
-  pytest invocation through that runner, scoped to artifacts/api-full-gate-1.
-  No repository test, check script, assertion or dependency was bypassed/modified.
-- No live browser launch, account authentication, external write, LLM call or order
-  submission was performed. Bind Uvicorn to 127.0.0.1; CORS is browser policy and
-  does not itself restrict the server's network binding. Next exact action:
-  integration review on main; restore package access, sync locked dashboard/data
-  extras, and launch `uvicorn bvmt.api:app --host 127.0.0.1 --port 8000` locally.
-
 ## Current checkpoint
-**P0 Dashboard Data Source Mismatch & Confirmed Live Browser Sync Integration** merged on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
-All **206 automated unit, integration, backtesting, walk-forward, reconciliation, price drift, browser DOM/movements parsing, dataset provenance, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run --no-sync python scripts/check.py`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**Modern Dashboard Migration (Next.js 15 + TypeScript + Tailwind + Recharts Frontend & Localhost FastAPI Backend)** merged and verified end-to-end on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
+All **252 automated Python tests** (including **46 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), and the **Next.js TypeScript + production build** (`npm.cmd run typecheck` and `npm.cmd run build`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+
+## Modern Dashboard Migration & Phase 0 State Service (2026-11-07)
+- **Phase 0 — Canonical Backend Portfolio-State Service (`src/bvmt/portfolio_service.py`, `docs/CANONICAL_DATA_SOURCE_RULES.md`)**:
+  - Created `PortfolioStateService` and `resolve_canonical_portfolio_context` as the single deterministic backend authority shared by both FastAPI (`src/bvmt/api.py`) and the Streamlit fallback (`src/bvmt/dashboard.py`).
+  - Documented canonical data-source selection rules in `docs/CANONICAL_DATA_SOURCE_RULES.md`.
+- **Codex Workstream — Localhost FastAPI Layer (`src/bvmt/api.py`, `tests/test_api.py`)**:
+  - Implemented `create_app(service=None)` and `app = create_app()` with strict localhost-only `CORSMiddleware` (`127.0.0.1:3000`, `localhost:3000`, `127.0.0.1:8000`, `localhost:8000`), Decimal-safe 3-decimal string serialization (`Money`), HTML/credential sanitization (`PlainText`), and clean dataset labels.
+  - Added read-only endpoints (`/api/overview`, `/api/holdings`, `/api/snapshots`, `/api/transactions`, `/api/orders/pending`, `/api/market-status`, `/api/rankings`, `/api/research`, `/api/health`) and confirmation-gated synchronization endpoints (`POST /api/sync/browser`, `GET /api/sync/preview`, `POST /api/sync/confirm`).
+  - Added **46** FastAPI `TestClient` integration tests in `tests/test_api.py`.
+- **Gemini Workstream — Next.js 15 Financial Dashboard (`frontend/`, `start_bvmt.bat`, `src/bvmt/cli.py`)**:
+  - Built a 7-page Next.js App Router + TypeScript + Tailwind CSS + Recharts + Lucide dashboard (`/` Overview, `/portfolio` Portfolio, `/transactions` Transactions & Orders, `/market` Market Explorer, `/research` Stock Research, `/strategy` Strategy Lab, `/health` System Health).
+  - Updated `start_bvmt.bat` to launch both the local FastAPI backend (`127.0.0.1:8000`) and the Next.js frontend (`127.0.0.1:3000`), while keeping `start_bvmt.bat --streamlit` (and `uv run bvmt dashboard`) available as a one-command fallback.
+  - Verified the complete real-account confirmation workflow end to end in Chrome: confirmed `sync_20261107_122006.json` (`browser_sync_20261107_122006`), persisting `50,000.75 TND` total equity, `49,608.05 TND` cash, `392.70 TND` `BH BANK` market value (`30` shares @ `13.09 TND`), `+0.75 TND` (`+0.19%`) unrealized P&L, and rank `#118 / 14,530` to `data/portfolio/real_competition_ledger.json`.
 
 ## P0 Dashboard Data Source Mismatch & Market Dataset Provenance Fix (2026-11-07)
 - **Root-Cause Diagnosis**:

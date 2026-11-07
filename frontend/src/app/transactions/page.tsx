@@ -145,27 +145,32 @@ export default function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {txData.transactions.map((t) => (
-                    <tr key={t.transaction_id} className="hover:bg-slate-800/30">
-                      <td className="py-2.5 font-mono text-slate-200">{t.transaction_id}</td>
-                      <td className="py-2.5 font-semibold text-slate-100">{t.symbol}</td>
-                      <td className="py-2.5">
-                        <Badge variant={t.side === "BUY" ? "success" : "danger"}>{t.side}</Badge>
-                      </td>
-                      <td className="py-2.5 text-right font-mono">{t.quantity}</td>
-                      <td className="py-2.5 text-right font-mono">{formatTnd(t.price_tnd)}</td>
-                      <td className="py-2.5 text-right font-mono font-semibold">
-                        {formatTnd(t.gross_amount_tnd)}
-                      </td>
-                      <td className="py-2.5 text-right font-mono text-slate-400">
-                        {formatTnd(t.fee_tnd)}
-                      </td>
-                      <td className="py-2.5 text-slate-300">{formatTimestamp(t.executed_at)}</td>
-                      <td className="py-2.5 text-right">
-                        <Badge variant="outline">{t.source}</Badge>
-                      </td>
-                    </tr>
-                  ))}
+                  {txData.transactions.map((t) => {
+                    const gross = t.filled_shares * parseFloat(t.execution_price_tnd || "0");
+                    return (
+                      <tr key={t.transaction_id} className="hover:bg-slate-800/30">
+                        <td className="py-2.5 font-mono text-slate-200">{t.transaction_id}</td>
+                        <td className="py-2.5 font-semibold text-slate-100">{t.symbol}</td>
+                        <td className="py-2.5">
+                          <Badge variant={t.side === "BUY" ? "success" : "danger"}>{t.side}</Badge>
+                        </td>
+                        <td className="py-2.5 text-right font-mono">{t.filled_shares}</td>
+                        <td className="py-2.5 text-right font-mono">
+                          {formatTnd(t.execution_price_tnd)}
+                        </td>
+                        <td className="py-2.5 text-right font-mono font-semibold">
+                          {formatTnd(gross)}
+                        </td>
+                        <td className="py-2.5 text-right font-mono text-slate-400">
+                          {formatTnd(t.fee_tnd)}
+                        </td>
+                        <td className="py-2.5 text-slate-300">{formatTimestamp(t.executed_at)}</td>
+                        <td className="py-2.5 text-right">
+                          <Badge variant="outline">{t.source}</Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
