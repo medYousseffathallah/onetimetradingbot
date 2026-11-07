@@ -421,6 +421,8 @@ class ScreenshotHoldingSnapshot:
     displayed_unrealized_pnl_tnd: Decimal
     displayed_unrealized_return_pct: Decimal
     portfolio_allocation_pct: Decimal
+    displayed_symbol: str | None = None
+    displayed_identifier: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -431,7 +433,9 @@ class ScreenshotHoldingSnapshot:
             "displayed_acquisition_price_tnd": str(
                 quantize_tnd(self.displayed_acquisition_price_tnd)
             ),
+            "displayed_identifier": self.displayed_identifier,
             "displayed_last_price_tnd": str(quantize_tnd(self.displayed_last_price_tnd)),
+            "displayed_symbol": self.displayed_symbol,
             "displayed_unrealized_pnl_tnd": str(quantize_tnd(self.displayed_unrealized_pnl_tnd)),
             "displayed_unrealized_return_pct": str(
                 quantize_tnd(self.displayed_unrealized_return_pct)
@@ -463,6 +467,14 @@ class ScreenshotHoldingSnapshot:
                 str(raw["displayed_unrealized_return_pct"])
             ),
             portfolio_allocation_pct=quantize_tnd(str(raw["portfolio_allocation_pct"])),
+            displayed_symbol=(
+                str(raw["displayed_symbol"]) if raw.get("displayed_symbol") is not None else None
+            ),
+            displayed_identifier=(
+                str(raw["displayed_identifier"])
+                if raw.get("displayed_identifier") is not None
+                else None
+            ),
         )
 
 
@@ -670,6 +682,8 @@ def build_snapshot_from_dom(
                 if dom_snap.portfolio_total_tnd > 0
                 else Decimal(0)
             ),
+            displayed_symbol=getattr(h, "displayed_symbol", None),
+            displayed_identifier=getattr(h, "displayed_identifier", None),
         )
         for h in dom_snap.holdings
     ]
@@ -708,6 +722,7 @@ def build_snapshot_from_dom(
     lims = [
         "Extracted directly from authenticated displayp.aspx DOM via local browser session.",
         "Requires confirmation-gated reconciliation before mutating local ledger.",
+        "Displayed gain and acquisition amount fee-inclusion semantics are not assumed without independent verification.",
     ]
     if mov_captured:
         lims.append(
@@ -740,7 +755,7 @@ def build_snapshot_from_dom(
         holdings=holdings,
         transactions_imported=mov_captured,
         pending_orders_verified=mov_captured,
-        acquisition_fee_inclusion_verified=mov_captured and len(imported_txs) > 0,
+        acquisition_fee_inclusion_verified=False,
         live_synchronized=True,
         limitations=lims,
         imported_transactions=imported_txs,
