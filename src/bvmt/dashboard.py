@@ -14,6 +14,7 @@ and prominently distinguishes SYNTHETIC DEMO DATA from real market data.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 from dataclasses import asdict, dataclass, field, replace
@@ -22,6 +23,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import bvmt.browser as _bvmt_browser
+import bvmt.ledger as _bvmt_ledger
 from bvmt import __version__
 from bvmt.browser import (
     AuthenticationExpiredError,
@@ -30,7 +33,6 @@ from bvmt.browser import (
     LayoutChangedError,
     load_latest_browser_snapshot,
     parse_competition_portfolio_html,
-    run_browser_sync_subprocess,
     save_browser_snapshot,
 )
 from bvmt.calendar import (
@@ -48,7 +50,6 @@ from bvmt.ledger import (
     PortfolioLedger,
     PortfolioPriceDriftReport,
     ReconciliationReport,
-    build_snapshot_from_dom,
     build_verified_user_screenshot_snapshot,
     compute_screenshot_price_drift,
     export_ledger_holdings_csv,
@@ -75,6 +76,14 @@ from bvmt.recommendations import (
     generate_recommendations,
 )
 from bvmt.rules import competition_blockers
+
+if not hasattr(_bvmt_browser, "run_browser_sync_subprocess"):
+    _bvmt_browser = importlib.reload(_bvmt_browser)
+if not hasattr(_bvmt_ledger, "build_snapshot_from_dom"):
+    _bvmt_ledger = importlib.reload(_bvmt_ledger)
+
+run_browser_sync_subprocess = _bvmt_browser.run_browser_sync_subprocess
+build_snapshot_from_dom = _bvmt_ledger.build_snapshot_from_dom
 
 DEFAULT_LEDGER_PATH = Path("data/portfolio/ledger.json")
 DEFAULT_REAL_LEDGER_PATH = Path("data/portfolio/real_competition_ledger.json")
@@ -1339,7 +1348,9 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                     st.dataframe(
                         [
                             {
-                                "Symbol": h.symbol,
+                                "Instrument": h.symbol,
+                                "Displayed Symbol": getattr(h, "displayed_symbol", None) or "-",
+                                "Identifier": getattr(h, "displayed_identifier", None) or "-",
                                 "Shares": h.quantity,
                                 "Acquisition Price": f"{h.acquisition_price_tnd} TND",
                                 "Acquisition Total": f"{h.acquisition_amount_tnd} TND",
