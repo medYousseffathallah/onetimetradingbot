@@ -1,43 +1,31 @@
 # Working state
 
 ## Current checkpoint
-**Milestone 2: Operational Trading Research & Real Browser Portfolio Synchronization** merged on `main` on 2026-11-06 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
-All **153 automated unit, integration, backtesting, reconciliation, price drift, browser DOM parsing, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run python scripts/check.py`) pass with **zero live API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**Milestone 3: Production Readiness (Live Browser Sync Subprocess, Movements & Pending Orders, Full 2026 Official BVMT Archive & 7-Fold Walk-Forward Audit)** merged on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
+All **175 automated unit, integration, backtesting, walk-forward, reconciliation, price drift, browser DOM/movements parsing, URL guard, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run --no-sync python scripts/check.py`) pass with **zero live API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
 
 ## Implemented
 - Agent instructions and skills; portable installation helper; real resolved `uv.lock` (including `streamlit 1.66.1` and `playwright 1.64.1`).
 - Content-addressed local snapshots (`src/bvmt/snapshots.py`) with symlink/path-safety checks, explicit `permission_status` and `parser_version` metadata, and atomic file writes with overwrite refusal on differing content.
-- Typed canonical CSV/bar validation, French BVMT CSV source adapter, and official `tunis_stockexchange_ndjson` adapter (`src/bvmt/data.py`).
+- Typed canonical CSV/bar validation, French BVMT CSV source adapter, official `tunis_stockexchange_ndjson` adapter, and full official NDJSON archive coverage auditor `audit_official_ndjson_archive` (`src/bvmt/data.py`).
 - Dated instrument master, official-source-backed BVMT exchange calendar (`Africa/Tunis`), and observation coverage diagnostics (`src/bvmt/calendar.py`).
 - **Windows Launcher Fix (`start_bvmt.bat`)**:
   - Fixed `'Zero' n'est pas reconnu en tant que commande interne ou externe` by escaping CMD shell pipe `^|`.
   - Added `chcp 65001 >nul` to eliminate Unicode character corruption across Windows Command Prompt and PowerShell.
-- **Local-First Read-Only Browser Portfolio Synchronization (`src/bvmt/browser.py`)**:
-  - Secure Playwright-based collector launching dedicated persistent browser context in `data/browser_profile/` (isolated from user's Chrome profile).
-  - Pure DOM extraction from authenticated `displayp.aspx` without storing credentials, cookies, or session tokens.
-  - Robust parser for French number formatting, portfolio total, available cash, holdings, acquisition prices, latest prices, gains/losses, competition rank, and displayed overall performance.
-  - Strict balance equality validation (`cash + sum(holdings) == total` within `0.05 TND` tolerance).
-  - Explicit error handling for `AuthenticationExpiredError`, `LayoutChangedError`, and `BalanceMismatchError`.
-  - Structured local snapshot persistence in `data/portfolio/snapshots/` (strictly gitignored).
-- **Financial Correctness Audit & Strategy Validation (`src/bvmt/execution.py`)**:
-  - Audit of 0.50% buy and 0.50% sell fees (~1.00% round trip).
-  - Added liquidation equity calculation (`liquidated_final_equity_tnd`, `liquidated_total_return_pct`, `unrealized_liquidation_fee_tnd`) showing that net of exit fees on unclosed positions, the previous baseline return adjusts to net liquidated return.
-  - Implemented chronological walk-forward evaluation (`run_walk_forward_evaluation`) and sensitivity analysis grid (`run_sensitivity_analysis`) across commissions (30, 50, 70 bps), volume participation (5%, 10%, 20%), and slippage.
-  - Explicit `data_sufficiency_warning` disclosing that 72 sessions (with 60-session warmup leaving 12 forward sessions) is statistically insufficient to certify strategy alpha without 2022-2025 multi-year data.
-- **Daily Market Data Pipeline & Freshness Checks (`src/bvmt/data.py`)**:
-  - `check_data_freshness` detects stale sessions and untraded instruments without inventing prices.
-  - `refresh_daily_market_pipeline` enables reproducible incremental session ingestion, deduplicating records, updating `DataQualityReport`, and maintaining SHA-256 provenance.
-- **Real Competition Portfolio Tracking & Dashboard Sync UI (`src/bvmt/ledger.py`, `src/bvmt/dashboard.py`)**:
-  - Added `build_snapshot_from_dom` to convert browser DOM extractions into verified `CompetitionScreenshotSnapshot`.
-  - Added **Sync Competition Portfolio** tab in the real portfolio dashboard providing:
-    - **Sync Now (Launch Browser)** button using dedicated Playwright profile.
-    - **Direct HTML Paste** option for instant parsing from DevTools.
-    - Last sync timestamp, retrieved cash, holdings, total equity, and rank metrics.
-    - Preview of synchronized changes vs current local ledger with cash delta.
-    - **Confirmation-Gated Application** checkbox (`chk_confirm_browser_sync`) and button preventing silent ledger mutation.
-    - Archived synchronization history table.
-- **Milestone 1A-1C Foundations**:
+- **Production-Ready Read-Only Browser Portfolio & Movements Synchronization (`src/bvmt/browser.py`, `src/bvmt/cli.py`)**:
+  - Added `validate_readonly_challenge_url` enforcing `ALLOWED_CHALLENGE_HOSTS` (`tunisbourse-challenge.com`) and strictly rejecting `FORBIDDEN_TRADING_PATHS` (`bysell.aspx`, `acheter`, `vendre`, `cancel`).
+  - Added subprocess launcher `run_browser_sync_subprocess` and CLI entrypoint `python -m bvmt.browser` / `bvmt browser-sync` so Streamlit's `Sync Now` button launches a clean child process on Windows without Tornado/asyncio thread conflicts.
+  - Added `BrowserTransactionItem`, `BrowserPendingOrderItem`, and `parse_competition_movements_html` to extract executed transactions (`Achat`/`Vente`, `Exécuté`) and open/pending orders (`En cours`/`En attente`/`Partiel`) from the authorized read-only `display_histo.aspx` (`Mouvements`) page.
+  - Verified live Windows Playwright execution against `https://www.tunisbourse-challenge.com/displayp.aspx` using isolated `data/browser_profile/`: confirmed visible Chrome window launch, redirect detection to `login.aspx?ReturnUrl=%2fdisplayp.aspx` when unauthenticated, and clean `AuthenticationExpiredError` reporting without automating login or extracting credentials/cookies.
+- **Account Sync Freshness, Confirmation-Gated Reconciliation & Restart Persistence (`src/bvmt/ledger.py`, `src/bvmt/dashboard.py`)**:
+  - Added `evaluate_account_sync_freshness` to compute last-sync timestamps and stale-account warnings when the account is on the undated opening screenshot (`SNAP-TBC-USER-001`) or synced prior to the latest market session (`2026-11-06`).
+  - Added `apply_confirmed_browser_sync_to_state` requiring `confirmed_by_user=True`, preserving `data/portfolio/real_account_snapshot.json` and `state.ledger.opening_snapshot` untouched as the historical baseline, recording reconciled account snapshots, and persisting `data/portfolio/real_competition_ledger.json` across restarts.
+- **Full 2026 Official BVMT Archive Audit & Multi-Fold Strategy Evaluation (`src/bvmt/data.py`, `src/bvmt/execution.py`)**:
+  - Downloaded and audited the complete 222.3 MB official BVMT archive (`https://www.tunis-stockexchange.com/sites/default/files/historique/data_json/market_resume.ndjson`, SHA-256 `486761f55253480a0e19e9b7e8300512522316f93f67081c6fa010d86df45c55`, `Last-Modified: Fri, 06 Nov 2026 14:45:02 GMT`).
+  - Verified year-by-year coverage: `2022-2024` have `0` sessions in `market_resume.ndjson` (legacy `bvmt.com.tn` ZIPs return 0 bytes; multi-year history requires an official investor request); `2025` has `12` monthly summary lines (`6,303` / `6,881` rows have `quantites: null`, excluded from daily OHLCV ingestion); `2026` has **`194` unique daily sessions** (`2026-01-02` to **`2026-11-06`**) across `209` lines (`15` duplicate envelopes deduplicated), yielding **`14,480` accepted daily equity bars** across `76` equity instruments (`70` invalid rows quarantined).
+  - Updated full-year 2026 backtest (`2026-01-02`..`2026-11-06`, 194 sessions, 0.50% buy / 0.50% sell fee): **`+46.6321%` marked** / **`+46.0615%` liquidated** vs **`+19.9445%` equal-weight benchmark** (`10.7827%` max drawdown); Oct 1–Nov 6 competition window (26 sessions): **`+0.5061%` marked** / **`+0.2765%` liquidated** vs **`+0.2498%` benchmark**; 7-fold rolling walk-forward evaluation (`train=61`, `test=19`, `step=19`): **`6 / 7` positive folds (`85.71%`)**, mean fold return **`+3.8215%` marked** / **`+3.4428%` liquidated** vs **`+1.9564%` benchmark** (`is_statistically_conclusive: False` because 194 sessions < 250-session multi-year threshold).
+- **Milestone 1A-2 Foundations**:
   - Alibaba Model Studio budget-gated provider (`src/bvmt/llm.py`) with `console_free_quota_only_verified: true`.
   - T04 session-aware quantitative momentum ranking (`src/bvmt/features.py`).
   - 5-state recommendation engine (`src/bvmt/recommendations.py`).
@@ -47,16 +35,15 @@ Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desk
 ## Not implemented
 Live execution against DashScope (intentionally locked behind `network_enabled: false` and `BVMT_ALLOW_LIVE_LLM=1` until authorized); automated order submission (prohibited by design: operator places all orders manually on `tunisbourse-challenge.com`).
 
-## Handoff (Milestone 2 & Browser Synchronization Integration)
+## Handoff (Milestone 3 Production Readiness Integration)
 - **Branches merged into `main`**:
-  - `codex/data-research` (`8c7e50f`) — browser collector, DOM parser, liquidation fee audit, walk-forward, daily data refresh (152 tests passing).
-  - `gemini/dashboard` (`7ec9a88`) — browser sync tab, confirmation-gated update, start_bvmt.bat fix, AppTest UI tests (153 tests passing).
+  - `gemini/dashboard` (`5e96c7a`) — read-only URL guards, subprocess Playwright launcher, `display_histo.aspx` movements/pending-order parser, account freshness warning, confirmation-gated reconciliation and restart persistence.
+  - `codex/data-research` (`385cb33`) — `audit_official_ndjson_archive`, rolling walk-forward training window slice fix, 194-session 2026 dataset ingestion, and 7-fold walk-forward evaluation.
 - **Integrated verification on `main`**:
-  - `uv run --no-sync python scripts/check.py` -> exit `0` (`ruff format --check` across 32 files, `ruff check`, `mypy src/bvmt` across 14 source files, `scripts/validate_skills.py`, `pytest -q` **153 passed** in `16.67s`).
-  - Windows batch launcher tested and verified in CMD and PowerShell without errors or mojibake.
+  - `uv run --no-sync python scripts/check.py` -> exit `0` (`ruff format --check`, `ruff check`, `mypy src/bvmt`, `scripts/validate_skills.py`, `pytest -q` **175 passed**).
 
 ## Next exact action
 1. Launch the local dashboard via `.\start_bvmt.bat` (or `uv run bvmt dashboard`).
-2. Navigate to **Portfolio -> 4. Sync Competition Portfolio (Browser Sync)**.
-3. Synchronize your authenticated Tunis Bourse Challenge portfolio using either **Sync Now (Launch Browser)** or by pasting the HTML from Chrome DevTools.
-4. Review the change preview and check the confirmation box to update your local real portfolio ledger.
+2. Navigate to **Portfolio -> 4. Sync Competition Portfolio (Browser Sync)** and click **Sync Now (Launch Browser)** (or run `uv run bvmt browser-sync`).
+3. Log in manually to `https://www.tunisbourse-challenge.com` in the opened Chrome window; once `displayp.aspx` loads, the collector automatically captures your portfolio and `display_histo.aspx` movements.
+4. Review the reconciliation preview in Tab 4 and check the confirmation box to persist your updated account state.
