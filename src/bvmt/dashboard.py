@@ -40,7 +40,7 @@ from bvmt.calendar import (
     read_exchange_calendar,
     read_instrument_master,
 )
-from bvmt.data import aware_timestamp, read_bars_csv
+from bvmt.data import aware_timestamp, inspect_market_dataset_provenance, read_bars_csv
 from bvmt.features import rank_session_baseline
 from bvmt.ledger import (
     OPEN_ORDER_STATUSES,
@@ -598,35 +598,8 @@ def build_dashboard_state(
     ):
         pending_browser_snap = latest_browser_snap
 
-    mkt_source_url: str | None = None
-    mkt_retrieved_at: str | None = None
-    prov_file = bars_path.parent / "provenance.json"
-    if prov_file.is_file():
-        try:
-            prov_raw = json.loads(prov_file.read_text(encoding="utf-8"))
-            if isinstance(prov_raw, dict):
-                mkt_source_url = str(prov_raw["source_url"]) if prov_raw.get("source_url") else None
-                mkt_retrieved_at = (
-                    str(prov_raw["retrieved_at"]) if prov_raw.get("retrieved_at") else None
-                )
-        except Exception:
-            pass
-    imp_ts_file = bars_path.parent / "import_timestamp.json"
-    if mkt_retrieved_at is None and imp_ts_file.is_file():
-        try:
-            imp_raw = json.loads(imp_ts_file.read_text(encoding="utf-8"))
-            if isinstance(imp_raw, dict) and imp_raw.get("retrieved_at"):
-                mkt_retrieved_at = str(imp_raw["retrieved_at"])
-        except Exception:
-            pass
-    market_data_provenance: dict[str, object] = {
-        "bars_path": bars_path.as_posix(),
-        "is_synthetic": data_is_synthetic,
-        "latest_session_date": latest_bar_date.isoformat() if latest_bar_date else None,
-        "retrieved_at": mkt_retrieved_at,
-        "source_ids": sorted({b.source_id for b in bars}),
-        "source_url": mkt_source_url,
-    }
+    market_data_provenance = inspect_market_dataset_provenance(bars_path)
+    market_data_provenance["bars_path"] = bars_path.as_posix()
 
     return DashboardAppState(
         ledger=ledger,

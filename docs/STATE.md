@@ -1,37 +1,24 @@
 # Working state
 
-## Market dataset provenance helper (Codex worktree, 2026-11-07)
-- Added `inspect_market_dataset_provenance(Path)` in `src/bvmt/data.py`, with
-  deterministic regression tests in `tests/test_data_import.py`. Gemini-owned
-  dashboard, ledger, and recommendations files are unchanged.
-- Validates canonical bars before returning coverage, sorted source IDs, synthetic
-  classification, and sibling metadata source URL/retrieval time. Missing/empty/
-  corrupt datasets raise explicitly; no synthetic fallback. Optional metadata
-  precedence: provenance, import timestamp, manifest, quality report (including
-  nested manifest provenance). Malformed JSON raises ValueError. Import-only
-  timestamps are not relabeled as retrieval timestamps.
-- Inspected local canonical bars, exchange calendar, instrument master, provenance,
-  import timestamp, manifest, and quality report. Helper smoke check found 14,480
-  bars / 194 sessions / 76 instruments, 2026-01-02 through 2026-11-06,
-  `is_synthetic=False`, source `official-bvmt-full-2026`, and explicit provenance
-  `retrieved_at=2026-11-07T11:44:03.365417+00:00`. This reflects saved metadata,
-  not independent source verification: the manifest says original download time
-  is unavailable, while provenance.json labels the processing time retrieved_at.
-- Verification: `uv run --no-sync pytest tests/test_data_import.py` -> 22 passed;
-  `uv run --no-sync ruff check src/bvmt/data.py tests/test_data_import.py`,
-  `uv run --no-sync ruff format --check src/bvmt/data.py tests/test_data_import.py`,
-  and `uv run --no-sync mypy src/bvmt/data.py` -> all passed.
-  `uv run --no-sync python scripts/check.py` -> full gate passed, 205 tests.
-  Windows sandbox denied pytest temp/cache access; successful tests used elevated
-  execution, workspace-local UV_CACHE_DIR, and fresh artifact temp/cache paths via
-  PYTEST_ADDOPTS. No network or live API calls were needed.
-- Next exact action: integration review on main, then Gemini can consume the helper
-  to display quotation provenance separately from portfolio snapshot freshness.
-
 ## Current checkpoint
-**Milestone 3: Production Readiness (Live Browser Sync Subprocess, Movements & Pending Orders, Full 2026 Official BVMT Archive & 7-Fold Walk-Forward Audit)** merged on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
-All **175 automated unit, integration, backtesting, walk-forward, reconciliation, price drift, browser DOM/movements parsing, URL guard, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run --no-sync python scripts/check.py`) pass with **zero live API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**P0 Dashboard Data Source Mismatch & Confirmed Live Browser Sync Integration** merged on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
+All **206 automated unit, integration, backtesting, walk-forward, reconciliation, price drift, browser DOM/movements parsing, dataset provenance, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run --no-sync python scripts/check.py`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+
+## P0 Dashboard Data Source Mismatch & Market Dataset Provenance Fix (2026-11-07)
+- **Root-Cause Diagnosis**:
+  1. **Unconfirmed Browser Snapshot Not Surfaced on Reload (`src/bvmt/dashboard.py`)**: `uv run bvmt browser-sync` wrote `data/portfolio/snapshots/sync_20261107_122006.json` (`49,608.05 TND` cash, `BH BANK` `30` shares @ `13.09 TND` = `392.70 TND` value, `+0.75 TND` / `+0.19%` gain, `50,000.75 TND` total, rank `118 / 14,530`, `reconciliation_gap_tnd = 0.000`) to disk and intentionally did not overwrite `data/portfolio/real_competition_ledger.json` without user confirmation. However, `build_dashboard_state` did not compare `load_latest_browser_snapshot(snapshots_dir)` against `ledger.snapshot_history`, so the dashboard neither displayed `"Snapshot captured — awaiting confirmation"` nor showed the confirmation button in Tab 4 unless `st.session_state["pending_synced_snapshot"]` was populated in memory during the current click. Additionally, `_render_top_banners` had a hardcoded `"NOT LIVE-SYNCHRONIZED"` string even after confirmation.
+  2. **Dashboard Defaulting to `SYNTHETIC DEMO` Market Dataset (`src/bvmt/dashboard.py`)**: `discover_available_bar_datasets()` placed `"SYNTHETIC DEMO: tests/fixtures/daily_bars.csv"` at `index=0`, and `render_streamlit_app()` hardcoded `index=0` on the sidebar selectbox even when `REAL COMPETITION PORTFOLIO` was active and `VERIFIED IMPORT: bvmt_official_2026 (data/processed/bvmt_official_2026/daily_bars.canonical.csv)` (`194` sessions through `2026-11-06`) was present on disk.
+- **Gemini Worktree Changes (`src/bvmt/dashboard.py`, `src/bvmt/recommendations.py`, `tests/test_milestone_1c.py`)**:
+  - Added `select_default_dataset_index(dataset_labels, portfolio_mode=...)` so `REAL_COMPETITION` mode defaults to the latest `VERIFIED IMPORT` dataset (`data/processed/bvmt_official_2026/daily_bars.canonical.csv`, latest session `2026-11-06`) while keeping `SYNTHETIC DEMO` selectable for testing.
+  - Extended `DashboardAppState` with `snapshots_dir`, `latest_browser_snapshot`, `pending_browser_snapshot`, and `market_data_provenance`.
+  - Updated `build_dashboard_state` to detect any unconfirmed snapshot on disk (`pending_browser_snapshot`) without mutating the ledger.
+  - Updated `_render_top_banners`, `_render_overview_page`, and Portfolio Tab 4 (`Sync Competition Portfolio`) to display `"Snapshot captured — awaiting confirmation"` and render the reconciliation preview + confirmation checkbox/button for any unconfirmed snapshot on disk, and to show `"LIVE-SYNCHRONIZED (Confirmed at ...)"` once confirmed.
+  - Explicitly separated **Website-Reported Competition Account Values (`displayp.aspx` Snapshot)** (`50,000.75 TND` total, `392.70 TND` `BH BANK` value, `+0.75 TND` unrealized P&L, `49,608.05 TND` cash, `118 / 14,530` rank) from **Locally Recalculated Mark-to-Market Valuation (`BVMT Official Market Quotations`)**, and displayed portfolio snapshot vs market quotation timestamps separately.
+  - Added `synthetic_data_on_real_portfolio` blocker in `generate_recommendations` (`src/bvmt/recommendations.py`) so synthetic market bars can never generate actionable recommendations on `REAL_COMPETITION` portfolios.
+  - Added `test_p0_acceptance_sync_20261107_122006_and_real_dataset_integration` verifying all 12 acceptance steps end-to-end.
+- **Codex Worktree Changes (`src/bvmt/data.py`, `tests/test_data_import.py`)**:
+  - Added `inspect_market_dataset_provenance(bars_path: Path) -> dict[str, object]` validating canonical bars and returning `is_synthetic`, `latest_session_date` (`2026-11-06`), `first_session_date` (`2026-01-02`), `total_bars` (`14,480`), `unique_sessions` (`194`), `unique_instruments` (`76`), `source_ids` (`['official-bvmt-full-2026']`), `source_url`, and `retrieved_at`, raising explicit `FileNotFoundError` / `ValueError` on missing or corrupt datasets without silent synthetic fallback (14 new tests in `tests/test_data_import.py`).
 
 ## Implemented
 - Agent instructions and skills; portable installation helper; real resolved `uv.lock` (including `streamlit 1.66.1` and `playwright 1.64.1`).
