@@ -482,7 +482,7 @@ def run_historical_backtest(
     liquidated_final_equity = final.total_equity_tnd - unrealized_liquidation_fee
     liquidated_total_return = (liquidated_final_equity / config.initial_cash_tnd - 1) * Decimal(100)
     warning = ""
-    if len(sessions) < 120:
+    if len(sessions) < 250:
         warning = (
             f"Sample size warning: dataset contains only {len(sessions)} sessions (minimum recommended: "
             f"250+ sessions for equity strategies). 2022-2025 multi-year data strictly required before "
@@ -567,11 +567,14 @@ def run_walk_forward_evaluation(
     test_window_sessions: int = 10,
     step_sessions: int = 10,
 ) -> WalkForwardResult:
-    """Rigorous chronological walk-forward evaluation without lookahead bias.
+    """Chronological rolling-window research evaluation.
 
     Splits observed sessions into rolling train/test windows. Tests out-of-sample forward
-    performance. Discloses whether sample size is statistically conclusive.
+    performance. Fold counts alone cannot establish statistical significance.
     """
+    for window in (train_window_sessions, test_window_sessions, step_sessions):
+        if type(window) is not int or window <= 0:
+            raise ValueError("Walk-forward window sizes must be positive integers")
     checked = validate_bars(bars)
     sessions = sorted({b.session_date for b in checked})
     min_required = train_window_sessions + test_window_sessions
@@ -592,7 +595,7 @@ def run_walk_forward_evaluation(
         decision_session = train_sessions[-1]
 
         # Point-in-time bars up to decision session strictly for signals
-        train_bars = [b for b in checked if b.session_date <= decision_session]
+        train_bars = [b for b in checked if train_sessions[0] <= b.session_date <= decision_session]
         signals = signal_builder(train_bars, decision_session)
 
         # Simulation runs over the out-of-sample forward test window
@@ -633,11 +636,12 @@ def run_walk_forward_evaluation(
     pos_folds = sum(1 for f in folds if f.strategy_return_pct > 0)
     pos_ratio = Decimal(pos_folds) / Decimal(len(folds))
 
-    is_conclusive = len(folds) >= 10 and len(sessions) >= 250
+    is_conclusive = False
     conclusion = (
         f"Statistically conclusive: {is_conclusive}. Folds tested: {len(folds)}. "
         f"Mean liquidated return: {mean_liq:.4f}%, Mean excess vs benchmark: {mean_excess:.4f}%. "
-        f"{'Sample size insufficient to certify alpha; 2022-2025 multi-year data requested.' if not is_conclusive else 'Certified.'}"
+        "Descriptive research only; fold counts do not certify alpha. "
+        "Independent multi-year data and statistical validation are required."
     )
 
     return WalkForwardResult(

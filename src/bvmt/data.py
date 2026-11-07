@@ -752,6 +752,14 @@ def _normalize_instrument_token(value: str) -> str:
     return re.sub(r"[^A-Z0-9._-]+", "_", value.strip().upper()).strip("_")
 
 
+def _official_integer(value: object, field_name: str) -> int:
+    """Official JSON encodes integral fields as both 667 and 667.0 across vintages."""
+    number = parse_french_decimal(str(value), field_name)
+    if number < 0 or number != number.to_integral_value():
+        raise ValueError(f"Expected nonnegative integral {field_name}")
+    return int(number)
+
+
 def _parse_official_ndjson(
     text: str, *, source_id: str, ingested_at: datetime
 ) -> tuple[list[DailyBar], list[RejectedRow]]:
@@ -787,8 +795,9 @@ def _parse_official_ndjson(
                         "capitaux": "capitaux",
                     }.items()
                 }
+                row["quantite_negociee"] = str(_official_integer(item["quantites"], "quantites"))
                 bar = _parse_official_row(row, source_id=source_id, ingested_at=ingested_at)
-                trades = parse_french_int(str(item["echanges"]), "echanges")
+                trades = _official_integer(item["echanges"], "echanges")
                 if bar.volume_shares == 0:
                     if trades != 0:
                         raise ValueError("Zero volume with nonzero trades")
@@ -827,6 +836,89 @@ def ingest_bars_csv(
     )
 
 
+def audit_official_ndjson_archive(ndjson_path: Path) -> dict[str, object]:
+    """Inspect coverage without treating monthly summaries as daily bars.
+
+    Row counts include all raw envelopes; unique-session counts use the first
+    envelope. Conflicting duplicate payloads are reported, never resolved here.
+    Positive quantities count as traded rows, not as validated OHLCV bars.
+    Missing years are absent, rather than inferred to have exchange sessions.
+    """
+    ensure_no_symlink_ancestors(ndjson_path)
+    counts: dict[str, Counter[str]] = {}
+    sessions: dict[str, Counter[str]] = {}
+    fingerprints: dict[str, str] = {}
+    conflicts: set[str] = set()
+    with ndjson_path.open(encoding="utf-8-sig") as source:
+        for line_number, line in enumerate(source, 1):
+            try:
+                payload = json.loads(line, parse_float=Decimal)
+                if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+                    raise ValueError("Expected session object with data array")
+                session = date.fromisoformat(payload["seance"]).isoformat()
+                year = session[:4]
+                stats = counts.setdefault(year, Counter())
+                dates = sessions.setdefault(year, Counter())
+                fingerprint = hashlib.sha256(
+                    json.dumps(payload, sort_keys=True, default=str).encode()
+                ).hexdigest()
+                first = session not in fingerprints
+                if not first and fingerprints[session] != fingerprint:
+                    conflicts.add(session)
+                fingerprints.setdefault(session, fingerprint)
+                dates[session] += 1
+                stats["total_lines"] += 1
+                for item in payload["data"]:
+                    if not isinstance(item, dict) or "quantites" not in item:
+                        raise ValueError("Expected quotation object with quantites")
+                    if "dateSeance" in item and item["dateSeance"] != session:
+                        raise ValueError("Quotation date differs from session envelope")
+                    quantity = item["quantites"]
+                    number = Decimal(str(quantity)) if quantity is not None else Decimal(0)
+                    if not number.is_finite() or number < 0 or number != number.to_integral_value():
+                        raise ValueError("Expected nonnegative integral quantity or null")
+                    traded = number > 0
+                    stats["total_rows"] += 1
+                    stats["null_quantity_rows"] += quantity is None
+                    stats["traded_rows"] += traded
+                    if first:
+                        stats["unique_session_rows"] += 1
+                        stats["unique_session_null_quantity_rows"] += quantity is None
+                        stats["unique_session_traded_rows"] += traded
+            except (ValueError, KeyError, TypeError, InvalidOperation) as exc:
+                raise ValueError(f"Invalid official NDJSON at line {line_number}: {exc}") from exc
+    years: dict[str, object] = {}
+    for year, stats in sorted(counts.items()):
+        dates = sessions[year]
+        years[year] = {
+            **{
+                key: stats[key]
+                for key in (
+                    "total_lines",
+                    "total_rows",
+                    "null_quantity_rows",
+                    "traded_rows",
+                    "unique_session_rows",
+                    "unique_session_null_quantity_rows",
+                    "unique_session_traded_rows",
+                )
+            },
+            "unique_sessions": len(dates),
+            "first_session": min(dates),
+            "last_session": max(dates),
+            "duplicate_session_envelopes": sum(dates.values()) - len(dates),
+            "duplicate_sessions": {day: n for day, n in sorted(dates.items()) if n > 1},
+            "conflicting_duplicate_sessions": sorted(d for d in conflicts if d.startswith(year)),
+        }
+    return {
+        "source_sha256": sha256_file(ndjson_path),
+        "source_bytes": ndjson_path.stat().st_size,
+        "total_lines": sum(c["total_lines"] for c in counts.values()),
+        "unique_sessions": len(fingerprints),
+        "years": years,
+    }
+
+
 def export_official_master_and_calendar(
     ndjson_path: Path, output_dir: Path, *, holidays: Sequence[str] = ()
 ) -> tuple[Path, Path]:
@@ -854,7 +946,7 @@ def export_official_master_and_calendar(
             if key in seen:
                 raise ValueError("Duplicate instrument/session in metadata")
             seen.add(key)
-            segment = OFFICIAL_SEGMENTS[str(item["groupe"])]
+            segment = OFFICIAL_SEGMENTS[str(_official_integer(item["groupe"], "groupe"))]
             observation = (session, item["codeISIN"], item["valeur"].strip(), segment)
             previous = [o for o in mappings.get(key, []) if o[0] == session]
             if previous and previous[0] != observation:
