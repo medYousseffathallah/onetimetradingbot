@@ -207,6 +207,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--headless", action="store_true", help="Run without opening a browser tab automatically"
     )
 
+    bsync = commands.add_parser(
+        "browser-sync",
+        help="Launch local read-only Playwright browser collector for Tunis Bourse Challenge",
+    )
+    bsync.add_argument("--user-data-dir", default="data/browser_profile")
+    bsync.add_argument("--snapshots-dir", default="data/portfolio/snapshots")
+    bsync.add_argument("--timeout", type=int, default=180)
+    bsync.add_argument("--no-movements", action="store_true")
+    bsync.add_argument("--output")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "portfolio-init":
@@ -320,6 +330,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.headless:
                 cmd.extend(["--server.headless", "true"])
             return subprocess.call(cmd)
+        if args.command == "browser-sync":
+            from bvmt.browser import (
+                DEFAULT_MOVEMENTS_URL,
+                collect_authenticated_portfolio_snapshot,
+            )
+
+            snap, saved_path = collect_authenticated_portfolio_snapshot(
+                user_data_dir=Path(args.user_data_dir),
+                snapshots_dir=Path(args.snapshots_dir),
+                movements_url=None if args.no_movements else DEFAULT_MOVEMENTS_URL,
+                timeout_seconds=args.timeout,
+            )
+            _emit(
+                {
+                    "status": "ok",
+                    "saved_path": saved_path.as_posix(),
+                    "snapshot": snap.to_dict(),
+                },
+                args.output,
+            )
+            return 0
         if args.command == "llm-dry-run":
             llm_cfg = load_llm_budget_config(Path(args.config))
             payload_text = (
