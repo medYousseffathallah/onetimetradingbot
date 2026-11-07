@@ -47,3 +47,28 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
 2. Navigate to **Portfolio -> 4. Sync Competition Portfolio (Browser Sync)** and click **Sync Now (Launch Browser)** (or run `uv run bvmt browser-sync`).
 3. Log in manually to `https://www.tunisbourse-challenge.com` in the opened Chrome window; once `displayp.aspx` loads, the collector automatically captures your portfolio and `display_histo.aspx` movements.
 4. Review the reconciliation preview in Tab 4 and check the confirmation box to persist your updated account state.
+
+
+## P0 holdings parser fix (Codex worktree, 2026-11-07)
+- Scope: user-authorized fix in `src/bvmt/browser.py` and
+  `tests/test_browser_collector.py`; dashboard and ledger unchanged.
+- Added structured table/header/body/row/cell/link capture; verified 12-cell
+  `tbody.alri` mapping and backward-compatible 9-cell mapping; displayed symbol
+  and identifier survive snapshot serialization (older snapshots still load).
+- Missing holdings tables and malformed holding rows now raise LayoutChangedError.
+  Explicit empty portfolios remain supported; balance validation remains enabled.
+  Latest price is derived only for literal ellipsis placeholders with positive quantity.
+- Regression evidence: tests reproduced the old failures before implementation.
+  Final `uv run --no-sync pytest tests/test_browser_collector.py`: 26 passed.
+  `uv run --no-sync ruff check src/bvmt/browser.py tests/test_browser_collector.py`,
+  `uv run --no-sync ruff format --check src/bvmt/browser.py tests/test_browser_collector.py`,
+  and `uv run --no-sync mypy src/bvmt/browser.py`: all passed.
+  `uv run --no-sync python scripts/check.py`: full gate passed, 190 tests.
+  Read-only parser review found no blocking issues; fixture accent typo corrected
+  and all 26 browser tests rerun successfully afterward.
+- Environment: workspace-local UV_CACHE_DIR used because default cache access was
+  denied; successful pytest runs used fresh temporary/cache directories and
+  elevated execution after sandbox filesystem errors. No live account capture,
+  network calls, order submission, or historical holdings reuse performed.
+- Next exact action: integrate/review this patch on main, then manually authenticate
+  for an authorized read-only sync and review current account reconciliation.

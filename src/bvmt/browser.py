@@ -13,12 +13,12 @@ import re
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 DEFAULT_CHALLENGE_URL = "https://www.tunisbourse-challenge.com/displayp.aspx"
 DEFAULT_MOVEMENTS_URL = "https://www.tunisbourse-challenge.com/display_histo.aspx"
@@ -79,6 +79,8 @@ class BrowserHoldingItem:
     market_value_tnd: Decimal
     gain_tnd: Decimal
     gain_pct: Decimal
+    displayed_symbol: str | None = None
+    displayed_identifier: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,8 @@ class CompetitionPortfolioDOMSnapshot:
             "holdings": [
                 {
                     "symbol": h.symbol,
+                    "displayed_symbol": h.displayed_symbol,
+                    "displayed_identifier": h.displayed_identifier,
                     "quantity": h.quantity,
                     "acquisition_price_tnd": str(h.acquisition_price_tnd),
                     "acquisition_amount_tnd": str(h.acquisition_amount_tnd),
@@ -226,6 +230,14 @@ class CompetitionPortfolioDOMSnapshot:
         holdings = tuple(
             BrowserHoldingItem(
                 symbol=str(h["symbol"]),
+                displayed_symbol=(
+                    str(h["displayed_symbol"]) if h.get("displayed_symbol") is not None else None
+                ),
+                displayed_identifier=(
+                    str(h["displayed_identifier"])
+                    if h.get("displayed_identifier") is not None
+                    else None
+                ),
                 quantity=int(str(h["quantity"])),
                 acquisition_price_tnd=Decimal(str(h["acquisition_price_tnd"])),
                 acquisition_amount_tnd=Decimal(str(h["acquisition_amount_tnd"])),
@@ -284,49 +296,184 @@ def parse_french_number(raw: str) -> Decimal:
         raise ValueError(f"Cannot parse numeric value from '{raw}': {exc}") from exc
 
 
+@dataclass
+class _DOMLink:
+    href: str
+    text: str = ""
+
+
+@dataclass
+class _DOMCell:
+    tag: str
+    attrs: dict[str, str | None]
+    text: str = ""
+    links: list[_DOMLink] = field(default_factory=list)
+
+    @property
+    def classes(self) -> tuple[str, ...]:
+        return tuple((self.attrs.get("class") or "").split())
+
+
+@dataclass
+class _DOMRow:
+    attrs: dict[str, str | None]
+    tbody_attrs: dict[str, str | None]
+    cells: list[_DOMCell] = field(default_factory=list)
+
+
+@dataclass
+class _DOMTable:
+    rows: list[_DOMRow] = field(default_factory=list)
+    bodies: list[dict[str, str | None]] = field(default_factory=list)
+
+
 class _SimpleDOMTableParser(HTMLParser):
-    """Lightweight pure-Python DOM table and text extractor for displayp.aspx and display_histo.aspx."""
+    """Extract table structure while isolating nested layout tables."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.tables: list[list[list[str]]] = []
-        self._current_table: list[list[str]] | None = None
-        self._current_row: list[str] | None = None
-        self._current_cell: list[str] | None = None
+        self.dom_tables: list[_DOMTable] = []
+        self._stack: list[
+            tuple[
+                _DOMTable, dict[str, str | None], _DOMRow | None, _DOMCell | None, _DOMLink | None
+            ]
+        ] = []
         self.all_text: list[str] = []
 
+    @property
+    def tables(self) -> list[list[list[str]]]:
+        # Preserve the text-only interface used by the movements parser.
+        return [
+            [[cell.text.strip() for cell in row.cells] for row in table.rows]
+            for table in self.dom_tables
+        ]
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        tag_lower = tag.lower()
-        if tag_lower == "table":
-            self._current_table = []
-            self.tables.append(self._current_table)
-        elif tag_lower in {"tr"} and self._current_table is not None:
-            self._current_row = []
-            self._current_table.append(self._current_row)
-        elif tag_lower in {"td", "th"} and self._current_row is not None:
-            self._current_cell = []
+        attributes = dict(attrs)
+        if tag == "table":
+            table = _DOMTable()
+            self.dom_tables.append(table)
+            self._stack.append((table, {}, None, None, None))
+        elif self._stack:
+            table, body, row, cell, link = self._stack[-1]
+            if tag == "tbody":
+                body = attributes
+                table.bodies.append(body)
+            elif tag == "tr":
+                row = _DOMRow(attributes, body)
+                table.rows.append(row)
+                cell = None
+                link = None
+            elif tag in {"td", "th"} and row is not None:
+                cell = _DOMCell(tag, attributes)
+                row.cells.append(cell)
+                link = None
+            elif tag == "a" and cell is not None:
+                link = _DOMLink(attributes.get("href") or "")
+                cell.links.append(link)
+            self._stack[-1] = table, body, row, cell, link
 
     def handle_endtag(self, tag: str) -> None:
-        tag_lower = tag.lower()
-        if (
-            tag_lower in {"td", "th"}
-            and self._current_row is not None
-            and self._current_cell is not None
-        ):
-            cell_text = "".join(self._current_cell).strip()
-            self._current_row.append(cell_text)
-            self._current_cell = None
-        elif tag_lower == "tr":
-            self._current_row = None
-        elif tag_lower == "table":
-            self._current_table = None
+        if not self._stack:
+            return
+        if tag == "table":
+            self._stack.pop()
+            return
+        table, body, row, cell, link = self._stack[-1]
+        if tag == "tbody":
+            body = {}
+        elif tag == "tr":
+            row, cell, link = None, None, None
+        elif tag in {"td", "th"}:
+            cell, link = None, None
+        elif tag == "a":
+            link = None
+        self._stack[-1] = table, body, row, cell, link
 
     def handle_data(self, data: str) -> None:
-        text = data.strip()
-        if text:
-            self.all_text.append(text)
-        if self._current_cell is not None:
-            self._current_cell.append(data)
+        if data.strip():
+            self.all_text.append(data.strip())
+        if self._stack:
+            _, _, _, cell, link = self._stack[-1]
+            if cell is not None:
+                cell.text += data
+            if link is not None:
+                link.text += data
+
+
+def _is_holdings_header(row: _DOMRow) -> bool:
+    text = " ".join(cell.text for cell in row.cells).lower()
+    return all(
+        word in text
+        for word in ("nom de valeur", "quantit", "prix", "montant", "dernier", "capital")
+    )
+
+
+def _parse_holding_row(row: _DOMRow) -> BrowserHoldingItem:
+    cells = row.cells
+    if len(cells) not in {9, 12}:
+        raise LayoutChangedError("Invalid holdings row column structure: expected 9 or 12 cells.")
+    extended = len(cells) == 12
+    name_index = 3 if extended else 1
+    qty_index = 4 if extended else 2
+    price_index = 6 if extended else 3
+    name_cell = cells[name_index]
+    name = next(
+        (link.text.strip() for link in name_cell.links if link.text.strip()), name_cell.text.strip()
+    )
+    displayed_symbol = cells[1].text.strip() or None if extended else None
+    identifier = cells[2].text.strip() or None if extended else None
+    if displayed_symbol is None:
+        for link in name_cell.links:
+            symbols = parse_qs(urlparse(link.href).query).get("s", [])
+            if symbols and symbols[0].strip():
+                displayed_symbol = symbols[0].strip()
+                break
+    try:
+        quantity_decimal = parse_french_number(cells[qty_index].text)
+        if (
+            not quantity_decimal.is_finite()
+            or quantity_decimal != quantity_decimal.to_integral_value()
+            or quantity_decimal < 0
+        ):
+            raise ValueError("Invalid quantity")
+        quantity = int(quantity_decimal)
+        values = [
+            parse_french_number(cells[i].text)
+            for i in (
+                price_index,
+                price_index + 1,
+                price_index + 3,
+                price_index + 4,
+                price_index + 5,
+            )
+        ]
+        if not name or not all(value.is_finite() for value in values):
+            raise ValueError("Missing name or non-finite financial value")
+        acquisition_price, acquisition_amount, market_value, gain, gain_pct = values
+        latest_text = cells[price_index + 2].text.strip()
+        if latest_text in {"...", "\u2026"} and quantity > 0:
+            latest = (market_value / Decimal(quantity)).quantize(Decimal("0.001"))
+        else:
+            latest = parse_french_number(latest_text)
+        if not latest.is_finite():
+            raise ValueError("Non-finite latest price")
+    except (ValueError, InvalidOperation) as exc:
+        raise LayoutChangedError(
+            "Malformed holding row: invalid name, quantity or financial value."
+        ) from exc
+    return BrowserHoldingItem(
+        symbol=name,
+        quantity=quantity,
+        acquisition_price_tnd=acquisition_price,
+        acquisition_amount_tnd=acquisition_amount,
+        latest_price_tnd=latest,
+        market_value_tnd=market_value,
+        gain_tnd=gain,
+        gain_pct=gain_pct,
+        displayed_symbol=displayed_symbol,
+        displayed_identifier=identifier,
+    )
 
 
 def parse_competition_movements_html(
@@ -586,58 +733,40 @@ def parse_competition_portfolio_html(
     holdings: list[BrowserHoldingItem] = []
     cash_tnd: Decimal | None = None
 
-    for table in parser.tables:
-        for _row_idx, row in enumerate(table):
-            row_joined = " ".join(row).lower()
+    holdings_tables = [
+        table
+        for table in parser.dom_tables
+        if any(_is_holdings_header(row) for row in table.rows)
+        or any("alri" in (body.get("class") or "").split() for body in table.bodies)
+    ]
+    if not holdings_tables:
+        raise LayoutChangedError("Could not locate holdings table in page HTML.")
 
-            # Detect Cash row (Liquidités)
-            if "liquidit" in row_joined:
-                for cell in reversed(row):
-                    if cell.strip():
-                        try:
-                            cash_tnd = parse_french_number(cell)
-                            break
-                        except ValueError:
-                            continue
-
-            # Check if this row is a holding row
-            # Expected cols: [Vendre, Nom de valeur, Quantité, Prix, Montant, Dernier, Capital, Gain (dt), Gain(%)]
-            if len(row) >= 7:
-                name_cand = row[1] if len(row) > 7 else row[0]
-                if "nom de valeur" in name_cand.lower() or "quantit" in name_cand.lower():
-                    continue
-                if "totaux" in name_cand.lower() or "liquidit" in name_cand.lower():
-                    continue
-
-                try:
-                    qty_cand = int(row[2].replace(" ", ""))
-                    prix_cand = parse_french_number(row[3])
-                    montant_cand = parse_french_number(row[4])
-                    dernier_cand = parse_french_number(row[5])
-                    capital_cand = parse_french_number(row[6])
-                    gain_dt_cand = (
-                        parse_french_number(row[7])
-                        if len(row) > 7
-                        else (capital_cand - montant_cand)
-                    )
-                    gain_pct_cand = parse_french_number(row[8]) if len(row) > 8 else Decimal("0.00")
-
-                    symbol_clean = name_cand.strip()
-                    if symbol_clean:
-                        holdings.append(
-                            BrowserHoldingItem(
-                                symbol=symbol_clean,
-                                quantity=qty_cand,
-                                acquisition_price_tnd=prix_cand,
-                                acquisition_amount_tnd=montant_cand,
-                                latest_price_tnd=dernier_cand,
-                                market_value_tnd=capital_cand,
-                                gain_tnd=gain_dt_cand,
-                                gain_pct=gain_pct_cand,
-                            )
-                        )
-                except (ValueError, IndexError):
-                    continue
+    for table in holdings_tables:
+        for row in table.rows:
+            if _is_holdings_header(row) or (
+                row.cells and all(cell.tag == "th" for cell in row.cells)
+            ):
+                continue
+            texts = [cell.text.strip() for cell in row.cells]
+            label = next((text.lower() for text in texts if text), "")
+            if label.startswith(("liquidit", "totaux")):
+                if label.startswith("liquidit"):
+                    for text in reversed(texts):
+                        if text:
+                            try:
+                                cash_tnd = parse_french_number(text)
+                                break
+                            except ValueError:
+                                continue
+                continue
+            if len(row.cells) == 1 and label in {
+                "aucune valeur",
+                "aucune valeur.",
+                "aucune valeur en portefeuille",
+            }:
+                continue
+            holdings.append(_parse_holding_row(row))
 
     # Fallback search for Cash if not found in table cells
     if cash_tnd is None:
