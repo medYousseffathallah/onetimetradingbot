@@ -44,9 +44,13 @@ data/processed/*
 data/portfolio/
 data/staging/
 
-# External References, Browser Profiles & Editor Skills Copies
+# External References, Browser Profiles, Frontend Builds & Editor Skills Copies
 /references/
 node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
 playwright-report/
 browser-profiles/
 data/browser_profile/
