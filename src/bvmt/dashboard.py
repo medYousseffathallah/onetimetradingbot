@@ -30,7 +30,7 @@ from bvmt.browser import (
     LayoutChangedError,
     load_latest_browser_snapshot,
     parse_competition_portfolio_html,
-    run_interactive_browser_sync,
+    run_browser_sync_subprocess,
     save_browser_snapshot,
 )
 from bvmt.calendar import (
@@ -182,6 +182,97 @@ class DashboardAppState:
     price_drift_report: PortfolioPriceDriftReport | None = None
     existing_ledger_reconciliation_report: ReconciliationReport | None = None
     real_snapshot_path: Path = DEFAULT_REAL_SNAPSHOT_PATH
+
+
+def evaluate_account_sync_freshness(
+    account_snapshot: CompetitionScreenshotSnapshot | None,
+    latest_market_session: str | None,
+) -> dict[str, object]:
+    """Evaluate whether the competition account snapshot is live-synced and current vs the latest market session."""
+    if account_snapshot is None:
+        return {
+            "is_stale": True,
+            "last_sync_timestamp": None,
+            "latest_market_session": latest_market_session,
+            "live_synchronized": False,
+            "warning_message": "No competition account snapshot loaded.",
+        }
+    cap_ts = account_snapshot.capture_timestamp
+    live_sync = bool(account_snapshot.live_synchronized)
+    if not live_sync or not cap_ts:
+        return {
+            "is_stale": True,
+            "last_sync_timestamp": cap_ts,
+            "latest_market_session": latest_market_session,
+            "live_synchronized": False,
+            "warning_message": (
+                f"Stale Account Warning: Portfolio is using the undated opening screenshot baseline "
+                f"(`{account_snapshot.snapshot_id}`) and has not yet been live-synchronized via browser "
+                f"for the latest market session (`{latest_market_session or 'unknown'}`)."
+            ),
+        }
+    sync_date = cap_ts[:10]
+    if latest_market_session and sync_date < latest_market_session:
+        return {
+            "is_stale": True,
+            "last_sync_timestamp": cap_ts,
+            "latest_market_session": latest_market_session,
+            "live_synchronized": True,
+            "warning_message": (
+                f"Stale Account Warning: Last browser sync was `{cap_ts}` (date `{sync_date}`), "
+                f"which precedes the latest verified BVMT market session (`{latest_market_session}`). "
+                f"Run 'Sync Competition Portfolio' to refresh cash, holdings, and movements."
+            ),
+        }
+    return {
+        "is_stale": False,
+        "last_sync_timestamp": cap_ts,
+        "latest_market_session": latest_market_session,
+        "live_synchronized": True,
+        "warning_message": None,
+    }
+
+
+def apply_confirmed_browser_sync_to_state(
+    state: DashboardAppState,
+    dom_snap: CompetitionPortfolioDOMSnapshot,
+    *,
+    confirmed_by_user: bool,
+) -> ReconciliationReport:
+    """Apply a user-confirmed browser DOM snapshot to the local real competition ledger and persist to disk.
+
+    Preserves the original screenshot baseline (`state.real_snapshot_path` and `state.ledger.opening_snapshot`)
+    as immutable historical provenance, while updating `state.ledger` cash, holdings, transactions,
+    pending orders, and `snapshot_history`.
+    """
+    if confirmed_by_user is not True:
+        raise ValueError(
+            "Explicit user confirmation (confirmed_by_user=True) is required before applying browser sync"
+        )
+    new_acct_snap = build_snapshot_from_dom(dom_snap)
+    comp_acct_snap = new_acct_snap.to_competition_account_snapshot(
+        as_of=dom_snap.retrieved_at.isoformat()
+    )
+    recon_report = state.ledger.apply_reconciliation_snapshot(
+        comp_acct_snap,
+        confirmed_by_user=True,
+        applied_at=dom_snap.retrieved_at,
+        notes=f"Browser DOM sync ({new_acct_snap.snapshot_id})",
+    )
+    state.ledger.record_account_snapshot(
+        new_acct_snap,
+        confirmed_by_user=True,
+        recorded_at=dom_snap.retrieved_at,
+        sync_holdings_and_cash=True,
+    )
+    state.ledger.save(state.ledger_path)
+    state.account_snapshot = new_acct_snap
+    state.price_drift_report = compute_screenshot_price_drift(
+        new_acct_snap,
+        state.price_map,
+        verified_session_date=state.latest_bar_session_str,
+    )
+    return recon_report
 
 
 def build_dashboard_state(
@@ -790,6 +881,14 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
 
     if state.portfolio_mode == "REAL_COMPETITION" and state.account_snapshot is not None:
         acct = state.account_snapshot
+        sync_freshness = evaluate_account_sync_freshness(acct, state.latest_bar_session_str)
+        if sync_freshness["is_stale"] and sync_freshness["warning_message"]:
+            st.warning(str(sync_freshness["warning_message"]))
+        else:
+            st.success(
+                f"Account Synchronized: Last browser sync at `{acct.capture_timestamp}` "
+                f"(Latest market session: `{state.latest_bar_session_str}`)."
+            )
         st.markdown(
             "#### Real Competition Portfolio Monitoring: Allocation, 10% Concentration Check & Price Drift"
         )
@@ -1124,9 +1223,16 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                 html_pasted = st.text_area(
                     "Paste full HTML from displayp.aspx (e.g. from Chrome DevTools or Ctrl+U)",
                     value="",
-                    height=90,
+                    height=80,
                     key="txt_pasted_html_sync",
                     placeholder="<html>... Mon portefeuille ... BH BANK ... 49998,05 DT ...</html>",
+                )
+                movements_html_pasted = st.text_area(
+                    "Optional: Paste HTML from display_histo.aspx ('Mouvements' — transactions & pending orders)",
+                    value="",
+                    height=68,
+                    key="txt_pasted_movements_html_sync",
+                    placeholder="<html>... Mouvements ... Achat / Vente ...</html>",
                 )
                 parse_pasted_clicked = st.button(
                     "📥 Parse Pasted HTML", key="btn_parse_pasted_html"
@@ -1136,22 +1242,23 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
             if launch_clicked:
                 try:
                     with st.spinner(
-                        "Opening isolated browser... Please log in and view 'Mon portefeuille' (displayp.aspx)..."
+                        "Opening isolated Chrome window... Please log in manually and view 'Mon portefeuille' (displayp.aspx)..."
                     ):
-                        raw_html = run_interactive_browser_sync(
+                        parsed_snap, _ = run_browser_sync_subprocess(
                             user_data_dir=DEFAULT_BROWSER_PROFILE_DIR,
+                            snapshots_dir=snapshots_dir,
                             timeout_seconds=int(browser_timeout),
                         )
-                        parsed_snap = parse_competition_portfolio_html(raw_html)
-                        save_browser_snapshot(parsed_snap, snapshots_dir)
                         st.session_state["pending_synced_snapshot"] = parsed_snap.to_dict()
                         st.success(
                             f"Extracted authenticated portfolio snapshot successfully from browser! "
                             f"Total: {parsed_snap.portfolio_total_tnd} TND | Cash: {parsed_snap.available_cash_tnd} TND | "
-                            f"{len(parsed_snap.holdings)} holding(s)."
+                            f"{len(parsed_snap.holdings)} holding(s) | "
+                            f"Movements captured: {parsed_snap.movements_page_captured} "
+                            f"({len(parsed_snap.transactions)} tx, {len(parsed_snap.pending_orders)} open order(s))."
                         )
                 except AuthenticationExpiredError as exc:
-                    st.error(f"Authentication Error: {exc}")
+                    st.error(f"Authentication / Timeout Error: {exc}")
                 except BalanceMismatchError as exc:
                     st.error(f"Balance Mismatch Error: {exc}")
                 except LayoutChangedError as exc:
@@ -1165,13 +1272,19 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                     st.error("Please paste HTML content from displayp.aspx first.")
                 else:
                     try:
-                        parsed_snap = parse_competition_portfolio_html(html_pasted)
+                        parsed_snap = parse_competition_portfolio_html(
+                            html_pasted,
+                            movements_html=movements_html_pasted
+                            if movements_html_pasted.strip()
+                            else None,
+                        )
                         save_browser_snapshot(parsed_snap, snapshots_dir)
                         st.session_state["pending_synced_snapshot"] = parsed_snap.to_dict()
                         st.success(
                             f"Successfully parsed HTML snapshot! "
                             f"Total: {parsed_snap.portfolio_total_tnd} TND | Cash: {parsed_snap.available_cash_tnd} TND | "
-                            f"{len(parsed_snap.holdings)} holding(s)."
+                            f"{len(parsed_snap.holdings)} holding(s) | "
+                            f"Movements captured: {parsed_snap.movements_page_captured}."
                         )
                     except AuthenticationExpiredError as exc:
                         st.error(f"Authentication Error: {exc}")
@@ -1188,20 +1301,41 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                 st.markdown("---")
                 st.markdown("##### Preview of Synchronized Changes vs Current Local Ledger")
                 pending_snap = CompetitionPortfolioDOMSnapshot.from_dict(pending_dict)
+                preview_acct_snap = build_snapshot_from_dom(
+                    pending_snap
+                ).to_competition_account_snapshot(as_of=pending_snap.retrieved_at.isoformat())
+                preview_recon = state.ledger.reconcile_with_snapshot(
+                    preview_acct_snap, evaluated_at=pending_snap.retrieved_at
+                )
 
                 cur_cash = state.ledger.settled_cash_tnd
                 new_cash = pending_snap.available_cash_tnd
                 cash_diff = new_cash - cur_cash
 
-                p1, p2, p3 = st.columns(3)
+                p1, p2, p3, p4 = st.columns(4)
                 p1.metric("Local Ledger Cash", f"{cur_cash:,.2f} TND")
                 p2.metric(
                     "Synced Account Cash", f"{new_cash:,.2f} TND", f"{cash_diff:+,.2f} TND delta"
                 )
                 p3.metric("Synced Portfolio Total", f"{pending_snap.portfolio_total_tnd:,.2f} TND")
+                p4.metric(
+                    "Reconciliation Status",
+                    "IN SYNC (0 diffs)"
+                    if preview_recon.is_reconciled
+                    else f"{len(preview_recon.discrepancies)} Discrepancy(ies)",
+                )
+
+                if preview_recon.discrepancies:
+                    st.markdown(
+                        "**Detected Reconciliation Differences (Local Ledger vs Browser DOM):**"
+                    )
+                    st.dataframe(
+                        [d.to_dict() for d in preview_recon.discrepancies],
+                        use_container_width=True,
+                    )
 
                 if pending_snap.holdings:
-                    st.markdown("**Retrieved Holdings from Authenticated DOM:**")
+                    st.markdown("**Retrieved Holdings from Authenticated DOM (`displayp.aspx`):**")
                     st.dataframe(
                         [
                             {
@@ -1221,10 +1355,33 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                 else:
                     st.info("No stock holdings retrieved in this snapshot (100% Cash Portfolio).")
 
+                if pending_snap.movements_page_captured:
+                    st.markdown(
+                        f"**Movements Page (`display_histo.aspx`)**: "
+                        f"`{len(pending_snap.transactions)}` executed transaction(s), "
+                        f"`{len(pending_snap.pending_orders)}` open/pending order(s)."
+                    )
+                    if pending_snap.transactions:
+                        st.dataframe(
+                            [t.to_dict() for t in pending_snap.transactions],
+                            use_container_width=True,
+                        )
+                    if pending_snap.pending_orders:
+                        st.dataframe(
+                            [p.to_dict() for p in pending_snap.pending_orders],
+                            use_container_width=True,
+                        )
+                else:
+                    st.caption(
+                        "Movements page (`display_histo.aspx`) was not captured in this snapshot; "
+                        "transaction history and pending orders remain marked unverified unless imported."
+                    )
+
                 st.warning(
-                    "**Explicit Confirmation Required**: Applying this update updates your local "
-                    "REAL COMPETITION PORTFOLIO ledger cash and holdings to match the synchronized account state. "
-                    "Original baseline screenshot provenance is preserved in snapshot history."
+                    "**Explicit Confirmation Required**: Applying this update reconciles your local "
+                    "REAL COMPETITION PORTFOLIO ledger (`data/portfolio/real_competition_ledger.json`) "
+                    "to match the synchronized account state. The original user screenshot baseline "
+                    "(`data/portfolio/real_account_snapshot.json`) is preserved untouched as historical provenance."
                 )
 
                 confirm_browser_update = st.checkbox(
@@ -1240,16 +1397,15 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                             "You must check the confirmation box above before applying synchronized changes."
                         )
                     else:
-                        new_acct_snap = build_snapshot_from_dom(pending_snap)
-                        save_screenshot_snapshot(
-                            new_acct_snap,
-                            state.real_snapshot_path or DEFAULT_REAL_SNAPSHOT_PATH,
+                        apply_confirmed_browser_sync_to_state(
+                            state,
+                            pending_snap,
+                            confirmed_by_user=True,
                         )
-                        state.ledger.settled_cash_tnd = new_acct_snap.available_cash_tnd
-                        state.ledger.save(state.ledger_path)
                         st.session_state["pending_synced_snapshot"] = None
                         st.success(
-                            "Successfully updated and persisted Real Competition Portfolio ledger!"
+                            "Successfully reconciled and persisted Real Competition Portfolio ledger! "
+                            "Original screenshot baseline preserved."
                         )
                         st.rerun()
 

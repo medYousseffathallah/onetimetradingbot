@@ -11,12 +11,21 @@ import pytest
 from bvmt.browser import (
     AuthenticationExpiredError,
     BalanceMismatchError,
+    BrowserCollectorError,
     LayoutChangedError,
     load_latest_browser_snapshot,
+    parse_competition_movements_html,
     parse_competition_portfolio_html,
     parse_french_number,
     save_browser_snapshot,
+    validate_readonly_challenge_url,
 )
+from bvmt.dashboard import (
+    apply_confirmed_browser_sync_to_state,
+    build_dashboard_state,
+    evaluate_account_sync_freshness,
+)
+from bvmt.ledger import load_screenshot_snapshot
 
 # Deterministic fixture mirroring the user's verified screenshot
 VERIFIED_SCREENSHOT_HTML_FIXTURE = """
@@ -307,3 +316,166 @@ def test_save_and_load_browser_snapshot(tmp_path: Path):
     assert len(loaded.holdings) == 1
     assert loaded.holdings[0].symbol == "BH BANK"
     assert loaded.is_reconciled is True
+
+
+MOVEMENTS_HTML_FIXTURE = """
+<!DOCTYPE html>
+<html>
+<head><title>Tunisbourse Challenge - Mouvements</title></head>
+<body>
+<div class="movements-section">
+    <h3>Mouvements</h3>
+    <table id="table-mouvements">
+        <thead>
+            <tr>
+                <th>Réf</th>
+                <th>Date</th>
+                <th>Nom de valeur</th>
+                <th>Opération</th>
+                <th>Quantité</th>
+                <th>Cours</th>
+                <th>Frais</th>
+                <th>Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1001</td>
+                <td>03/11/2026 10:15</td>
+                <td>BH BANK</td>
+                <td>Achat</td>
+                <td>30</td>
+                <td>13,000</td>
+                <td>1,950</td>
+                <td>Exécuté</td>
+            </tr>
+            <tr>
+                <td>1002</td>
+                <td>06/11/2026 11:30</td>
+                <td>SFBT</td>
+                <td>Achat</td>
+                <td>50</td>
+                <td>12,400</td>
+                <td>3,100</td>
+                <td>En cours</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+</body>
+</html>
+"""
+
+
+def test_validate_readonly_challenge_url():
+    assert (
+        validate_readonly_challenge_url("https://www.tunisbourse-challenge.com/displayp.aspx")
+        == "https://www.tunisbourse-challenge.com/displayp.aspx"
+    )
+    assert (
+        validate_readonly_challenge_url("https://www.tunisbourse-challenge.com/display_histo.aspx")
+        == "https://www.tunisbourse-challenge.com/display_histo.aspx"
+    )
+    with pytest.raises(BrowserCollectorError, match="Forbidden trading endpoint"):
+        validate_readonly_challenge_url("https://www.tunisbourse-challenge.com/bysell.aspx")
+    with pytest.raises(BrowserCollectorError, match="Untrusted or non-competition URL"):
+        validate_readonly_challenge_url("https://evil.example.com/displayp.aspx")
+
+
+def test_parse_competition_movements_html():
+    t0 = datetime(2026, 11, 6, 15, 0, 0, tzinfo=UTC)
+    txs, pends = parse_competition_movements_html(MOVEMENTS_HTML_FIXTURE, retrieved_at=t0)
+    assert len(txs) == 1
+    assert txs[0].symbol == "BH BANK"
+    assert txs[0].instrument_id == "BH_BANK"
+    assert txs[0].side == "BUY"
+    assert txs[0].filled_shares == 30
+    assert txs[0].execution_price_tnd == Decimal("13.000")
+    assert txs[0].fee_tnd == Decimal("1.950")
+    assert txs[0].executed_at == "2026-11-03T10:15:00+01:00"
+
+    assert len(pends) == 1
+    assert pends[0].symbol == "SFBT"
+    assert pends[0].instrument_id == "SFBT"
+    assert pends[0].side == "BUY"
+    assert pends[0].requested_shares == 50
+    assert pends[0].remaining_shares == 50
+    assert pends[0].limit_price_tnd == Decimal("12.400")
+    assert pends[0].status == "PENDING"
+
+
+def test_browser_sync_confirmation_reconciliation_and_restart_persistence(tmp_path: Path):
+    ledger_p = tmp_path / "real_competition_ledger.json"
+    baseline_snap_p = tmp_path / "real_account_snapshot.json"
+    alerts_p = tmp_path / "alerts.json"
+
+    # 1. Initialize dashboard state in REAL_COMPETITION mode (creates baseline_snap_p)
+    state = build_dashboard_state(
+        ledger_path=ledger_p,
+        alerts_path=alerts_p,
+        portfolio_mode="REAL_COMPETITION",
+        real_snapshot_path=baseline_snap_p,
+    )
+    assert baseline_snap_p.exists()
+    original_baseline = load_screenshot_snapshot(baseline_snap_p)
+    assert original_baseline.snapshot_id == "SNAP-TBC-USER-001"
+
+    # Verify undated baseline triggers stale account warning
+    freshness_before = evaluate_account_sync_freshness(state.account_snapshot, "2026-11-06")
+    assert freshness_before["is_stale"] is True
+    assert "Stale Account Warning" in str(freshness_before["warning_message"])
+
+    # 2. Parse a new browser sync snapshot with movements (e.g. updated price/holdings + movements)
+    sync_time = datetime(2026, 11, 6, 16, 30, 0, tzinfo=UTC)
+    dom_snap = parse_competition_portfolio_html(
+        MULTIPLE_HOLDINGS_HTML_FIXTURE,
+        retrieved_at=sync_time,
+        movements_html=MOVEMENTS_HTML_FIXTURE,
+        movements_source_url="https://www.tunisbourse-challenge.com/display_histo.aspx",
+    )
+    assert dom_snap.movements_page_captured is True
+    assert len(dom_snap.transactions) == 1
+    assert len(dom_snap.pending_orders) == 1
+
+    # 3. Unconfirmed apply must be rejected without mutating state
+    with pytest.raises(ValueError, match="Explicit user confirmation"):
+        apply_confirmed_browser_sync_to_state(state, dom_snap, confirmed_by_user=False)
+    assert state.ledger.settled_cash_tnd == Decimal("49608.050")
+
+    # 4. Confirmed apply reconciles cash, holdings, transactions, pending orders, and persists to disk
+    recon_rep = apply_confirmed_browser_sync_to_state(state, dom_snap, confirmed_by_user=True)
+    assert recon_rep.account_settled_cash_tnd == Decimal("50695.500")
+    assert ledger_p.exists()
+
+    # Original baseline screenshot file MUST remain untouched
+    baseline_after = load_screenshot_snapshot(baseline_snap_p)
+    assert baseline_after.snapshot_id == "SNAP-TBC-USER-001"
+    assert baseline_after.available_cash_tnd == Decimal("49608.050")
+
+    # 5. Simulate full dashboard restart by calling build_dashboard_state from disk
+    restarted_state = build_dashboard_state(
+        ledger_path=ledger_p,
+        alerts_path=alerts_p,
+        portfolio_mode="REAL_COMPETITION",
+        real_snapshot_path=baseline_snap_p,
+    )
+    assert restarted_state.ledger.settled_cash_tnd == Decimal("50695.500")
+    assert set(restarted_state.ledger.holdings.keys()) == {"BH_BANK", "SFBT"}
+    assert restarted_state.ledger.holdings["SFBT"].total_shares == 100
+    assert restarted_state.ledger.opening_snapshot is not None
+    assert restarted_state.ledger.opening_snapshot.snapshot_id == "SNAP-TBC-USER-001"
+    assert len(restarted_state.ledger.snapshot_history) == 2
+    assert restarted_state.account_snapshot is not None
+    assert restarted_state.account_snapshot.live_synchronized is True
+    assert restarted_state.account_snapshot.transactions_imported is True
+    assert restarted_state.account_snapshot.pending_orders_verified is True
+    assert "ORD-1001" in restarted_state.ledger.orders
+    assert "ORD-1002" in restarted_state.ledger.orders
+    assert restarted_state.ledger.orders["ORD-1002"].status == "PENDING"
+
+    # Freshness check after 2026-11-06 sync is now fresh
+    freshness_after = evaluate_account_sync_freshness(
+        restarted_state.account_snapshot, "2026-11-06"
+    )
+    assert freshness_after["is_stale"] is False
+    assert freshness_after["warning_message"] is None
