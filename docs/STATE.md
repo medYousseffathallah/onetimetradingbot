@@ -1,5 +1,58 @@
 # Working state
 
+## FastAPI backend layer (Codex worktree, 2026-11-07)
+- User-authorized scope: only `src/bvmt/api.py`, `tests/test_api.py`, and this file.
+  No frontend, dashboard, ledger, recommendations, dependency manifest, or launcher changes.
+- Added lazy `create_app(service=None)` / module-level `app`, typed Pydantic v2
+  response contracts, three-decimal Decimal strings, ISO source timestamps,
+  four explicit localhost CORS origins, clean dataset labels, and public-field
+  projection/sanitization. All ten GET routes accept validated portfolio mode
+  with REAL_COMPETITION as default; alternate-mode services preserve path overrides.
+- Added read-only portfolio, holdings, snapshots, transactions, pending orders,
+  market provenance, rankings, research, health and reconciliation preview routes.
+  Browser collection stays capture-only; confirmation requires a strict true boolean
+  before invoking PortfolioStateService persistence. Sync POSTs reject demo services.
+  All real-account rankings using synthetic bars explicitly carry the synthetic blocker.
+- Research projects whitelisted metrics from the existing local
+  `artifacts/backtest_audit_2026.json` execution audit, including seven walk-forward
+  folds, as historical hypothetical simulation. Missing/invalid audits return
+  unavailable metrics; no historical returns are invented or embedded in API code.
+  This does not independently revalidate the historical strategy or its input license.
+- Added 46 TestClient cases covering opening 49998.050 TND baseline, pending
+  sync_20261107_122006.json detection without ledger changes, rejected confirmation,
+  confirmed 50000.750 TND equity / 49608.050 TND cash / 392.700 TND BH BANK value /
+  0.750 TND unrealized gain / rank 118 of 14530, fresh-service restart persistence,
+  all routes, CORS, custom paths, source cutoffs, synthetic blockers, mocked browser
+  success/errors, local fills, browser movements, search and safe error responses.
+- Read-only skill-requested review identified source-availability filtering,
+  JSON credential/query sanitization and synthetic-mode sync boundaries. All were
+  fixed with regression tests; verified prices in both holdings branches use only
+  eligible source quotes, returning null for unavailable or synthetic quotes.
+- Verification: `uv run --no-sync ruff format src/bvmt/api.py tests/test_api.py`,
+  `uv run --no-sync ruff check src/bvmt/api.py tests/test_api.py`, and
+  `uv run --no-sync mypy src/bvmt` passed. Targeted pytest: **46 passed**.
+  Full `scripts/check.py` gate: format/check, mypy (16 modules), skill validation,
+  and **252 passed**, exit 0. One installed-Starlette TestClient/httpx deprecation
+  warning; full suite also emitted a Windows temporary-directory cleanup
+  PermissionError at interpreter exit, without test failures or a nonzero exit.
+- Environment/reproduction constraints: `uv sync --locked --group dev --extra
+  dashboard --extra data` failed because the configured package proxy was unreachable;
+  the worktree environment lacks FastAPI. Checks used workspace-local
+  `UV_CACHE_DIR=$PWD/.uv-cache` and
+  `PYTHONPATH=$PWD/src;$PWD/../bvmt-starter-kit/.venv/Lib/site-packages` to read the
+  already-installed integration environment (FastAPI 0.162.1, Pydantic 2.14.3).
+  Pytest needed `PYTEST_ADDOPTS=-p no:cacheprovider --basetemp=artifacts/api-run-8`
+  and an in-memory runner replacing os.mkdir mode 0700 with inherited mode 0777;
+  otherwise this Windows sandbox denies pytest access to its own temporary directories.
+  Full gate ran scripts/check.py via runpy with subprocess.run forwarding only its
+  pytest invocation through that runner, scoped to artifacts/api-full-gate-1.
+  No repository test, check script, assertion or dependency was bypassed/modified.
+- No live browser launch, account authentication, external write, LLM call or order
+  submission was performed. Bind Uvicorn to 127.0.0.1; CORS is browser policy and
+  does not itself restrict the server's network binding. Next exact action:
+  integration review on main; restore package access, sync locked dashboard/data
+  extras, and launch `uvicorn bvmt.api:app --host 127.0.0.1 --port 8000` locally.
+
 ## Current checkpoint
 **P0 Dashboard Data Source Mismatch & Confirmed Live Browser Sync Integration** merged on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
 All **206 automated unit, integration, backtesting, walk-forward, reconciliation, price drift, browser DOM/movements parsing, dataset provenance, and Streamlit `AppTest` UI tests** and the full developer quality gate (`uv run --no-sync python scripts/check.py`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
