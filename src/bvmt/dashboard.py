@@ -162,10 +162,36 @@ def discover_available_bar_datasets(
         f"SYNTHETIC DEMO: {default_bars_path.as_posix()}": default_bars_path,
     }
     if processed_root.is_dir():
-        for csv_path in sorted(processed_root.glob("*/daily_bars.canonical.csv")):
-            source_name = csv_path.parent.name
-            datasets[f"VERIFIED IMPORT: {source_name} ({csv_path.as_posix()})"] = csv_path
+        seen_dirs: set[Path] = set()
+        for pattern in ("*/daily_bars.canonical.csv", "*/daily_bars.csv"):
+            for csv_path in sorted(processed_root.glob(pattern)):
+                parent_dir = csv_path.parent.resolve()
+                if parent_dir in seen_dirs:
+                    continue
+                seen_dirs.add(parent_dir)
+                source_name = csv_path.parent.name
+                datasets[f"VERIFIED IMPORT: {source_name} ({csv_path.as_posix()})"] = csv_path
     return datasets
+
+
+def select_default_dataset_index(
+    dataset_labels: list[str],
+    *,
+    portfolio_mode: str = "REAL_COMPETITION",
+) -> int:
+    """Prefer the latest verified real BVMT dataset when REAL_COMPETITION mode is selected."""
+    if not dataset_labels:
+        return 0
+    if portfolio_mode == "REAL_COMPETITION":
+        verified_indices = [
+            idx for idx, label in enumerate(dataset_labels) if label.startswith("VERIFIED IMPORT:")
+        ]
+        if verified_indices:
+            return verified_indices[-1]
+    for idx, label in enumerate(dataset_labels):
+        if label.startswith("SYNTHETIC DEMO:"):
+            return idx
+    return 0
 
 
 @dataclass
@@ -191,6 +217,10 @@ class DashboardAppState:
     price_drift_report: PortfolioPriceDriftReport | None = None
     existing_ledger_reconciliation_report: ReconciliationReport | None = None
     real_snapshot_path: Path = DEFAULT_REAL_SNAPSHOT_PATH
+    snapshots_dir: Path = DEFAULT_SNAPSHOTS_DIR
+    latest_browser_snapshot: CompetitionPortfolioDOMSnapshot | None = None
+    pending_browser_snapshot: CompetitionPortfolioDOMSnapshot | None = None
+    market_data_provenance: dict[str, object] = field(default_factory=dict)
 
 
 def evaluate_account_sync_freshness(
@@ -276,10 +306,24 @@ def apply_confirmed_browser_sync_to_state(
     )
     state.ledger.save(state.ledger_path)
     state.account_snapshot = new_acct_snap
+    state.latest_browser_snapshot = dom_snap
+    state.pending_browser_snapshot = None
+    if state.data_is_synthetic:
+        for h_snap in new_acct_snap.holdings:
+            state.price_map[h_snap.instrument_id] = quantize_tnd(h_snap.displayed_last_price_tnd)
+    else:
+        for h_snap in new_acct_snap.holdings:
+            state.price_map.setdefault(
+                h_snap.instrument_id, quantize_tnd(h_snap.displayed_last_price_tnd)
+            )
+    verified_quotes = {} if state.data_is_synthetic else state.price_map
     state.price_drift_report = compute_screenshot_price_drift(
         new_acct_snap,
-        state.price_map,
-        verified_session_date=state.latest_bar_session_str,
+        verified_quotes,
+        verified_session_date=(
+            state.latest_bar_session_str if not state.data_is_synthetic else None
+        ),
+        concentration_cap_ratio=state.ledger.max_concentration_ratio,
     )
     return recon_report
 
@@ -300,6 +344,7 @@ def build_dashboard_state(
     min_turnover_tnd: Decimal = Decimal("5000"),
     portfolio_mode: str = "SYNTHETIC_DEMO",
     real_snapshot_path: Path = DEFAULT_REAL_SNAPSHOT_PATH,
+    snapshots_dir: Path = DEFAULT_SNAPSHOTS_DIR,
 ) -> DashboardAppState:
     """Load or initialize persistent ledger, notifications, recommendations, and system health state."""
     # Auto-detect sibling instrument_master.csv and exchange_calendar.csv when using an imported official dataset
@@ -539,6 +584,50 @@ def build_dashboard_state(
         "total_models_count": len(llm_cfg.models),
     }
 
+    latest_browser_snap = load_latest_browser_snapshot(snapshots_dir)
+    confirmed_timestamps = {
+        s.capture_timestamp for s in ledger.snapshot_history if s.capture_timestamp
+    }
+    if account_snapshot is not None and account_snapshot.capture_timestamp:
+        confirmed_timestamps.add(account_snapshot.capture_timestamp)
+    pending_browser_snap: CompetitionPortfolioDOMSnapshot | None = None
+    if (
+        portfolio_mode == "REAL_COMPETITION"
+        and latest_browser_snap is not None
+        and latest_browser_snap.retrieved_at.isoformat() not in confirmed_timestamps
+    ):
+        pending_browser_snap = latest_browser_snap
+
+    mkt_source_url: str | None = None
+    mkt_retrieved_at: str | None = None
+    prov_file = bars_path.parent / "provenance.json"
+    if prov_file.is_file():
+        try:
+            prov_raw = json.loads(prov_file.read_text(encoding="utf-8"))
+            if isinstance(prov_raw, dict):
+                mkt_source_url = str(prov_raw["source_url"]) if prov_raw.get("source_url") else None
+                mkt_retrieved_at = (
+                    str(prov_raw["retrieved_at"]) if prov_raw.get("retrieved_at") else None
+                )
+        except Exception:
+            pass
+    imp_ts_file = bars_path.parent / "import_timestamp.json"
+    if mkt_retrieved_at is None and imp_ts_file.is_file():
+        try:
+            imp_raw = json.loads(imp_ts_file.read_text(encoding="utf-8"))
+            if isinstance(imp_raw, dict) and imp_raw.get("retrieved_at"):
+                mkt_retrieved_at = str(imp_raw["retrieved_at"])
+        except Exception:
+            pass
+    market_data_provenance: dict[str, object] = {
+        "bars_path": bars_path.as_posix(),
+        "is_synthetic": data_is_synthetic,
+        "latest_session_date": latest_bar_date.isoformat() if latest_bar_date else None,
+        "retrieved_at": mkt_retrieved_at,
+        "source_ids": sorted({b.source_id for b in bars}),
+        "source_url": mkt_source_url,
+    }
+
     return DashboardAppState(
         ledger=ledger,
         ledger_path=ledger_path,
@@ -562,6 +651,10 @@ def build_dashboard_state(
         price_drift_report=price_drift_report,
         existing_ledger_reconciliation_report=existing_recon_report,
         real_snapshot_path=real_snapshot_path,
+        snapshots_dir=snapshots_dir,
+        latest_browser_snapshot=latest_browser_snap,
+        pending_browser_snapshot=pending_browser_snap,
+        market_data_provenance=market_data_provenance,
     )
 
 
@@ -606,33 +699,71 @@ def _render_top_banners(st: Any, state: DashboardAppState) -> None:
         acct = state.account_snapshot
         cap_ts = acct.capture_timestamp or "unknown (user-supplied screenshot)"
         px_ts = acct.last_price_timestamp or "unknown (displayed on screenshot)"
+        sync_status_str = (
+            f"LIVE-SYNCHRONIZED (Confirmed at {cap_ts})"
+            if acct.live_synchronized
+            else "NOT LIVE-SYNCHRONIZED (manual snapshot tracking only)"
+        )
+        latest_sync_ts = (
+            state.latest_browser_snapshot.retrieved_at.isoformat()
+            if state.latest_browser_snapshot is not None
+            else cap_ts
+        )
         st.info(
             f"**[REAL COMPETITION PORTFOLIO — TUNIS BOURSE CHALLENGE SNAPSHOT]**  \n"
-            f"**Provenance:** `{acct.provenance}` (`{acct.snapshot_id}`) | "
-            f"**Competition Window:** `{acct.competition_window}` | "
-            f"**Capture Timestamp:** `{cap_ts}` | **Displayed Price Timestamp:** `{px_ts}`  \n"
-            f"**Synchronization Status:** `NOT LIVE-SYNCHRONIZED` (manual snapshot tracking only) | "
+            f"**Portfolio Source & Provenance:** `{acct.provenance}` (`{acct.snapshot_id}`) | "
+            f"**Competition Window:** `{acct.competition_window}`  \n"
+            f"**Active Snapshot Timestamp:** `{cap_ts}` | **Displayed Price Timestamp:** `{px_ts}` | "
+            f"**Latest Browser Sync Timestamp:** `{latest_sync_ts}`  \n"
+            f"**Synchronization Status:** `{sync_status_str}` | "
             f"**Transactions:** `{acct.transactions_status_label}` | "
             f"**Pending Orders:** `{acct.pending_orders_status_label}`"
         )
+        if state.pending_browser_snapshot is not None:
+            p = state.pending_browser_snapshot
+            st.warning(
+                f"**Snapshot captured — awaiting confirmation**: A newer authenticated browser snapshot "
+                f"(`{p.retrieved_at.isoformat()}` from `{p.source_url}`) is saved locally "
+                f"(Total: `{p.portfolio_total_tnd:,.2f} TND` | Cash: `{p.available_cash_tnd:,.2f} TND` | "
+                f"Holdings: `{len(p.holdings)}` (`{p.holdings_market_value_tnd:,.2f} TND`) | "
+                f"Rank: `{p.competition_rank} / {p.total_participants}`). "
+                f"Review and confirm the update below or in **Portfolio -> 4. Sync Competition Portfolio** "
+                f"to apply it to your active ledger."
+            )
+        freshness = evaluate_account_sync_freshness(
+            state.account_snapshot, state.latest_bar_session_str
+        )
+        if freshness["is_stale"] and freshness["warning_message"]:
+            st.warning(str(freshness["warning_message"]))
     else:
         st.warning(
             "**[SYNTHETIC DEMO PORTFOLIO]** Currently viewing the isolated synthetic demo ledger (`100,000.000 TND`). "
             "Switch **Portfolio Environment** in the sidebar to **REAL COMPETITION PORTFOLIO** to view your Tunis Bourse Challenge account (`49,998.05 TND`)."
         )
 
+    mkt_prov = state.market_data_provenance
+    raw_sources = mkt_prov.get("source_ids")
+    mkt_sources = (
+        ", ".join(str(x) for x in raw_sources)
+        if isinstance(raw_sources, list) and raw_sources
+        else "unknown"
+    )
+    mkt_retrieved = mkt_prov.get("retrieved_at") or "local fixture"
     if state.data_is_synthetic:
         st.markdown(
             "<div class='bvmt-banner-synthetic'>"
             "<strong>[SYNTHETIC DEMO MODE]</strong> Currently displaying labeled synthetic fixture bars "
-            "(<code>tests/fixtures/daily_bars.csv</code>). Do NOT use synthetic scores for real competition trading. "
+            f"(<code>{state.active_bars_path}</code> | Source: <code>{mkt_sources}</code>). "
+            "Do NOT use synthetic scores for real competition trading. Real-account recommendations are blocked while synthetic market data is selected. "
             "Select an imported <code>VERIFIED IMPORT</code> dataset in the sidebar for real BVMT market prices."
             "</div>",
             unsafe_allow_html=True,
         )
     else:
         st.success(
-            f"[VERIFIED LOCAL MARKET DATA] Latest bar session: {state.latest_bar_session_str} | "
+            f"[VERIFIED LOCAL MARKET DATA] Source: {mkt_sources} ({state.active_bars_path}) | "
+            f"Latest bar session: {state.latest_bar_session_str} | "
+            f"Market data retrieved at: {mkt_retrieved} | "
             f"Profile: {state.recommendations.simulation_profile}"
         )
 
@@ -660,10 +791,40 @@ def _render_overview_page(st: Any, state: DashboardAppState) -> None:
 
     if state.portfolio_mode == "REAL_COMPETITION" and state.account_snapshot is not None:
         acct = state.account_snapshot
-        st.markdown("#### Verified Tunis Bourse Challenge Account Snapshot (`Mon portefeuille`)")
+        if state.pending_browser_snapshot is not None:
+            p = state.pending_browser_snapshot
+            st.warning(
+                f"**Snapshot captured — awaiting confirmation**: Captured at `{p.retrieved_at.isoformat()}` "
+                f"from `{p.source_url}` (Website Total: `{p.portfolio_total_tnd:,.2f} TND` | "
+                f"Cash: `{p.available_cash_tnd:,.2f} TND` | Holdings Value: `{p.holdings_market_value_tnd:,.2f} TND` | "
+                f"Rank: `{p.competition_rank} / {p.total_participants}`). "
+                f"The metrics below reflect your currently confirmed snapshot (`{acct.snapshot_id}`) until you confirm the update."
+            )
+            confirm_ov = st.checkbox(
+                f"I confirm applying the captured browser snapshot ({p.retrieved_at.isoformat()}, Total: {p.portfolio_total_tnd:,.2f} TND) to my active Real Competition Portfolio ledger",
+                value=False,
+                key="chk_confirm_browser_sync_overview",
+            )
+            if st.button(
+                "✅ Confirm & Apply Pending Browser Snapshot",
+                key="btn_apply_browser_sync_overview",
+            ):
+                if not confirm_ov:
+                    st.error(
+                        "Please check the confirmation box above before applying the snapshot."
+                    )
+                else:
+                    apply_confirmed_browser_sync_to_state(state, p, confirmed_by_user=True)
+                    st.session_state["pending_synced_snapshot"] = None
+                    st.success("Confirmed browser snapshot applied and persisted to local ledger!")
+                    st.rerun()
+
+        st.markdown(
+            f"#### Website-Reported Competition Account Values (`Mon portefeuille` — Snapshot `{acct.snapshot_id}`, Captured: `{acct.capture_timestamp or 'undated screenshot baseline'}`)"
+        )
         m1, m2, m3, m4 = st.columns(4)
         m1.metric(
-            "Portfolio Total at Snapshot (TND)",
+            "Website-Reported Portfolio Total (TND)",
             f"{acct.portfolio_total_tnd:,.2f}",
             f"{acct.displayed_overall_performance_pct:+.2f}% (displayed)",
         )
@@ -689,12 +850,12 @@ def _render_overview_page(st: Any, state: DashboardAppState) -> None:
                 f"Montant: {bh.displayed_acquisition_amount_tnd:,.2f} TND",
             )
             h3.metric(
-                "Holding Value at Snapshot",
+                "Website-Reported Holding Value",
                 f"{bh.current_market_value_tnd:,.2f} TND",
                 f"Dernier: {bh.displayed_last_price_tnd:,.2f} TND",
             )
             h4.metric(
-                "Unrealized P&L at Snapshot",
+                "Website-Reported Unrealized P&L",
                 f"{bh.displayed_unrealized_pnl_tnd:+,.2f} TND",
                 f"{bh.displayed_unrealized_return_pct:+.2f}%",
             )
@@ -706,7 +867,7 @@ def _render_overview_page(st: Any, state: DashboardAppState) -> None:
         if state.price_drift_report is not None:
             dr = state.price_drift_report
             st.markdown(
-                f"#### Mark-to-Market Valuation & Price Drift vs. Latest Verified BVMT Market Data (`{dr.verified_session_date or 'Snapshot Baseline'}`)"
+                f"#### Locally Recalculated Mark-to-Market Valuation & Price Drift vs. Latest Verified BVMT Quotations (`{dr.verified_session_date or 'Snapshot Baseline'}`)"
             )
             d1, d2, d3, d4 = st.columns(4)
             d1.metric(
@@ -1169,8 +1330,10 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
                 "Switch to `REAL COMPETITION PORTFOLIO` in the sidebar to synchronize your live account."
             )
         else:
-            snapshots_dir = DEFAULT_SNAPSHOTS_DIR
-            latest_browser_snap = load_latest_browser_snapshot(snapshots_dir)
+            snapshots_dir = state.snapshots_dir
+            latest_browser_snap = state.latest_browser_snapshot or load_latest_browser_snapshot(
+                snapshots_dir
+            )
 
             st.markdown(
                 """
@@ -1306,10 +1469,20 @@ def _render_portfolio_page(st: Any, state: DashboardAppState) -> None:
 
             # Preview Pending Synced Snapshot & Confirmation-Gated Apply
             pending_dict = st.session_state.get("pending_synced_snapshot")
-            if pending_dict:
+            effective_pending_snap: CompetitionPortfolioDOMSnapshot | None = None
+            if isinstance(pending_dict, dict):
+                effective_pending_snap = CompetitionPortfolioDOMSnapshot.from_dict(pending_dict)
+            elif state.pending_browser_snapshot is not None:
+                effective_pending_snap = state.pending_browser_snapshot
+
+            if effective_pending_snap is not None:
+                pending_snap = effective_pending_snap
                 st.markdown("---")
+                st.warning(
+                    f"**Snapshot captured — awaiting confirmation**: Captured at `{pending_snap.retrieved_at.isoformat()}` "
+                    f"from `{pending_snap.source_url}`. Review the reconciliation preview below and check the confirmation box to update your ledger."
+                )
                 st.markdown("##### Preview of Synchronized Changes vs Current Local Ledger")
-                pending_snap = CompetitionPortfolioDOMSnapshot.from_dict(pending_dict)
                 preview_acct_snap = build_snapshot_from_dom(
                     pending_snap
                 ).to_competition_account_snapshot(as_of=pending_snap.retrieved_at.isoformat())
@@ -1760,10 +1933,13 @@ def render_streamlit_app(state: DashboardAppState | None = None) -> DashboardApp
 
     available_datasets = discover_available_bar_datasets()
     dataset_labels = list(available_datasets.keys())
+    default_ds_idx = select_default_dataset_index(
+        dataset_labels, portfolio_mode=selected_portfolio_mode
+    )
     selected_dataset_label = st.sidebar.selectbox(
         "Market Bar Dataset",
         dataset_labels,
-        index=0,
+        index=default_ds_idx,
     )
     selected_bars_path = available_datasets.get(selected_dataset_label, DEFAULT_BARS_PATH)
 

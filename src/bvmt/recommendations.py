@@ -285,6 +285,45 @@ def generate_recommendations(
                 f'ADVERSE EVENT [{aev.event_id} / {aev.source_document_id}]: {aev.summary} ("{aev.verbatim_quote}")'
             )
 
+        # Block synthetic market quotations from driving real competition portfolio recommendations
+        if ledger.portfolio_mode == "REAL_COMPETITION" and data_is_synthetic:
+            cards.append(
+                RecommendationCard(
+                    recommendation_id=_make_rec_id(cand.last_session, cand.symbol, seq),
+                    instrument_id=inst_id,
+                    symbol=cand.symbol,
+                    category="NO TRADE",
+                    signal_generated_at=generated_at.isoformat(),
+                    latest_market_data_session=cand.last_session,
+                    simulation_profile=simulation_profile,
+                    rank=rank,
+                    composite_score=cand.composite_score,
+                    momentum_20s=cand.momentum_20s,
+                    momentum_60s=cand.momentum_60s,
+                    relative_strength_20s=cand.relative_strength_20s,
+                    volatility_20s=cand.volatility_20s,
+                    median_turnover_20s_tnd=str(med_turnover),
+                    trade_frequency_20s=cand.trade_frequency_20s,
+                    reference_price_tnd=str(ref_price),
+                    current_shares=held_shares,
+                    current_weight_pct=str(current_weight_pct),
+                    suggested_side=None,
+                    suggested_shares=0,
+                    suggested_limit_price_tnd=None,
+                    suggested_gross_amount_tnd="0.000",
+                    estimated_fee_tnd="0.000",
+                    projected_weight_pct=str(current_weight_pct),
+                    supporting_evidence=evidence_list,
+                    main_risks=risk_notes,
+                    liquidity_warnings=liq_warnings,
+                    pending_order_warnings=pending_warnings,
+                    blocked_reasons=[
+                        "synthetic_data_on_real_portfolio: Synthetic demo market quotations cannot drive real competition portfolio recommendations. Select a VERIFIED IMPORT BVMT dataset."
+                    ],
+                )
+            )
+            continue
+
         # If an open order already exists for this instrument, block duplicate sizing -> NO TRADE
         if open_orders:
             cards.append(

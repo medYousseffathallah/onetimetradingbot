@@ -655,7 +655,9 @@ def test_streamlit_apptest_full_navigation_and_order_forms():
 
     # Verify default Overview page rendered metrics and banners
     assert any("1. Portfolio & Market Overview" in s.value for s in at.subheader)
-    assert any("SYNTHETIC DEMO MODE" in m.value for m in at.markdown)
+    assert any("SYNTHETIC DEMO MODE" in m.value for m in at.markdown) or any(
+        "VERIFIED LOCAL MARKET DATA" in s.value for s in at.success
+    )
     assert any("COMPETITION RULES STATUS: BLOCKED" in m.value for m in at.markdown)
 
     # Navigate through every required page via sidebar radio and confirm zero exceptions
@@ -1092,3 +1094,162 @@ def test_browser_sync_dom_conversion_and_confirmation_gated_update(tmp_path):
     assert ledger.holdings["BH_BANK"].total_shares == 30
     ledger.save(ledger_path)
     assert ledger_path.exists()
+
+
+def test_p0_acceptance_sync_20261107_122006_and_real_dataset_integration(tmp_path):
+    """End-to-end 12-step P0 acceptance test for browser sync confirmation, persistence, and real dataset selection."""
+    from bvmt.browser import (
+        BrowserHoldingItem,
+        CompetitionPortfolioDOMSnapshot,
+        save_browser_snapshot,
+    )
+    from bvmt.dashboard import (
+        apply_confirmed_browser_sync_to_state,
+        build_dashboard_state,
+        discover_available_bar_datasets,
+        evaluate_account_sync_freshness,
+        select_default_dataset_index,
+    )
+
+    real_ledger_p = tmp_path / "real_competition_ledger.json"
+    real_snap_p = tmp_path / "real_account_snapshot.json"
+    snapshots_dir = tmp_path / "snapshots"
+    alerts_p = tmp_path / "alerts.json"
+
+    # 1. Load the old screenshot baseline (SNAP-TBC-USER-001: 49,998.05 TND, -1.95 TND, 390.00 TND)
+    state_baseline = build_dashboard_state(
+        ledger_path=real_ledger_p,
+        alerts_path=alerts_p,
+        bars_path=BARS_PATH,
+        portfolio_mode="REAL_COMPETITION",
+        real_snapshot_path=real_snap_p,
+        snapshots_dir=snapshots_dir,
+    )
+    assert state_baseline.account_snapshot is not None
+    assert state_baseline.account_snapshot.snapshot_id == "SNAP-TBC-USER-001"
+    assert state_baseline.account_snapshot.portfolio_total_tnd == Decimal("49998.050")
+    assert state_baseline.account_snapshot.holdings[0].current_market_value_tnd == Decimal(
+        "390.000"
+    )
+    assert state_baseline.account_snapshot.holdings[0].displayed_unrealized_pnl_tnd == Decimal(
+        "-1.950"
+    )
+    assert state_baseline.pending_browser_snapshot is None
+
+    # 12. Verify synthetic data cannot drive real-account recommendations
+    assert state_baseline.data_is_synthetic is True
+    assert all(r.category == "NO TRADE" for r in state_baseline.recommendations.recommendations)
+    assert any(
+        any("synthetic_data_on_real_portfolio" in b for b in r.blocked_reasons)
+        for r in state_baseline.recommendations.recommendations
+    )
+
+    # 2. Capture the new browser snapshot (sync_20261107_122006.json)
+    sync_dt = aware_timestamp("2026-11-07T12:20:06+00:00")
+    dom_snap = CompetitionPortfolioDOMSnapshot(
+        source_url="https://www.tunisbourse-challenge.com/displayp.aspx",
+        retrieved_at=sync_dt,
+        portfolio_total_tnd=Decimal("50000.75"),
+        available_cash_tnd=Decimal("49608.05"),
+        holdings_market_value_tnd=Decimal("392.700"),
+        holdings=(
+            BrowserHoldingItem(
+                symbol="BH BANK",
+                displayed_symbol="BH",
+                displayed_identifier="223375",
+                quantity=30,
+                acquisition_price_tnd=Decimal("13.065"),
+                acquisition_amount_tnd=Decimal("391.95"),
+                latest_price_tnd=Decimal("13.09"),
+                market_value_tnd=Decimal("392.70"),
+                gain_tnd=Decimal("0.75"),
+                gain_pct=Decimal("0.19"),
+            ),
+        ),
+        competition_rank=118,
+        total_participants=14530,
+        displayed_overall_performance_pct=Decimal("0.00"),
+        is_reconciled=True,
+        reconciliation_gap_tnd=Decimal("0.000"),
+        challenge_period_text="Tunisbourse Challenge est ouvert, il se déroule du 1er octobre 2026 au 31 mai 2027.",
+        movements_page_captured=True,
+        movements_source_url="https://www.tunisbourse-challenge.com/display_histo.aspx",
+    )
+    saved_snap_file = save_browser_snapshot(dom_snap, snapshots_dir)
+    assert saved_snap_file.name == "sync_20261107_122006.json"
+
+    # 3. Verify preview (unconfirmed snapshot on disk) does NOT mutate the ledger
+    state_preview = build_dashboard_state(
+        ledger_path=real_ledger_p,
+        alerts_path=alerts_p,
+        bars_path=BARS_PATH,
+        portfolio_mode="REAL_COMPETITION",
+        real_snapshot_path=real_snap_p,
+        snapshots_dir=snapshots_dir,
+    )
+    assert state_preview.pending_browser_snapshot is not None
+    assert state_preview.pending_browser_snapshot.portfolio_total_tnd == Decimal("50000.75")
+    assert state_preview.account_snapshot is not None
+    assert state_preview.account_snapshot.snapshot_id == "SNAP-TBC-USER-001"
+    assert state_preview.account_snapshot.portfolio_total_tnd == Decimal("49998.050")
+    assert state_preview.ledger.settled_cash_tnd == Decimal("49608.050")
+
+    # 4. Confirm the update
+    apply_confirmed_browser_sync_to_state(state_preview, dom_snap, confirmed_by_user=True)
+
+    # 5, 6, 7, 8. Verify total equity (50000.75), BH BANK MV (392.70), P&L (+0.75), cash (49608.05)
+    assert state_preview.pending_browser_snapshot is None
+    assert state_preview.account_snapshot.portfolio_total_tnd == Decimal("50000.750")
+    assert state_preview.account_snapshot.available_cash_tnd == Decimal("49608.050")
+    assert state_preview.account_snapshot.competition_rank == 118
+    assert state_preview.account_snapshot.holdings[0].current_market_value_tnd == Decimal("392.700")
+    assert state_preview.account_snapshot.holdings[0].displayed_unrealized_pnl_tnd == Decimal(
+        "0.750"
+    )
+    assert state_preview.account_snapshot.holdings[0].displayed_unrealized_return_pct == Decimal(
+        "0.190"
+    )
+    val_after = state_preview.ledger.valuate(state_preview.price_map)
+    assert val_after.total_equity_tnd == Decimal("50000.750")
+    assert val_after.holdings_market_value_tnd == Decimal("392.700")
+    assert val_after.total_unrealized_pnl_tnd == Decimal("0.750")
+    assert val_after.settled_cash_tnd == Decimal("49608.050")
+
+    # 9 & 10. Restart the dashboard and verify the latest confirmed snapshot persists
+    state_restarted = build_dashboard_state(
+        ledger_path=real_ledger_p,
+        alerts_path=alerts_p,
+        bars_path=BARS_PATH,
+        portfolio_mode="REAL_COMPETITION",
+        real_snapshot_path=real_snap_p,
+        snapshots_dir=snapshots_dir,
+    )
+    assert state_restarted.pending_browser_snapshot is None
+    assert state_restarted.account_snapshot is not None
+    assert state_restarted.account_snapshot.live_synchronized is True
+    assert state_restarted.account_snapshot.portfolio_total_tnd == Decimal("50000.750")
+    assert state_restarted.account_snapshot.holdings[0].current_market_value_tnd == Decimal(
+        "392.700"
+    )
+    assert state_restarted.account_snapshot.holdings[0].displayed_unrealized_pnl_tnd == Decimal(
+        "0.750"
+    )
+    assert state_restarted.ledger.settled_cash_tnd == Decimal("49608.050")
+    fresh_restart = evaluate_account_sync_freshness(state_restarted.account_snapshot, "2026-11-06")
+    assert fresh_restart["is_stale"] is False
+
+    # 11. Verify the real market dataset is selectable and preferred in REAL_COMPETITION mode
+    proc_dir = tmp_path / "processed" / "bvmt_official_2026"
+    proc_dir.mkdir(parents=True)
+    (proc_dir / "daily_bars.canonical.csv").write_text(
+        BARS_PATH.read_text(encoding="utf-8").replace("synthetic-fixture", "official-bvmt-2026"),
+        encoding="utf-8",
+    )
+    datasets = discover_available_bar_datasets(
+        processed_root=tmp_path / "processed", default_bars_path=BARS_PATH
+    )
+    labels = list(datasets.keys())
+    real_idx = select_default_dataset_index(labels, portfolio_mode="REAL_COMPETITION")
+    demo_idx = select_default_dataset_index(labels, portfolio_mode="SYNTHETIC_DEMO")
+    assert labels[real_idx].startswith("VERIFIED IMPORT: bvmt_official_2026")
+    assert labels[demo_idx].startswith("SYNTHETIC DEMO:")
