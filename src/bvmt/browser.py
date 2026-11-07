@@ -421,8 +421,17 @@ def _parse_holding_row(row: _DOMRow) -> BrowserHoldingItem:
     name = next(
         (link.text.strip() for link in name_cell.links if link.text.strip()), name_cell.text.strip()
     )
-    displayed_symbol = cells[1].text.strip() or None if extended else None
-    identifier = cells[2].text.strip() or None if extended else None
+    displayed_symbol: str | None = None
+    identifier: str | None = None
+    if extended:
+        c1 = cells[1].text.strip()
+        c2 = cells[2].text.strip()
+        if c1.isdigit() and not c2.isdigit():
+            identifier = c1 or None
+            displayed_symbol = c2 or None
+        else:
+            displayed_symbol = c1 or None
+            identifier = c2 or None
     if displayed_symbol is None:
         for link in name_cell.links:
             symbols = parse_qs(urlparse(link.href).query).get("s", [])
@@ -706,12 +715,20 @@ def parse_competition_portfolio_html(
 
     # 3. Extract Ranking
     rank_match = re.search(
-        r"Votre\s+classement\s*:\s*(\d+)\s*/\s*(\d+)",
+        r"Votre\s+classement\s*:\s*([0-9\s\xa0\u202f]+?)\s*/\s*([0-9\s\xa0\u202f]+)",
         full_text,
         re.IGNORECASE,
     )
-    rank = int(rank_match.group(1)) if rank_match else None
-    participants = int(rank_match.group(2)) if rank_match else None
+    rank = (
+        int(re.sub(r"\s+", "", rank_match.group(1)))
+        if rank_match and re.sub(r"\s+", "", rank_match.group(1)).isdigit()
+        else None
+    )
+    participants = (
+        int(re.sub(r"\s+", "", rank_match.group(2)))
+        if rank_match and re.sub(r"\s+", "", rank_match.group(2)).isdigit()
+        else None
+    )
 
     # 4. Extract Overall Performance
     perf_match = re.search(
@@ -749,9 +766,14 @@ def parse_competition_portfolio_html(
             ):
                 continue
             texts = [cell.text.strip() for cell in row.cells]
+            row_joined = " ".join(t.lower() for t in texts if t)
             label = next((text.lower() for text in texts if text), "")
-            if label.startswith(("liquidit", "totaux")):
-                if label.startswith("liquidit"):
+            if (
+                label.startswith(("liquidit", "totaux"))
+                or "liquidit" in row_joined
+                or "totaux" in row_joined
+            ):
+                if "liquidit" in row_joined:
                     for text in reversed(texts):
                         if text:
                             try:
@@ -768,10 +790,29 @@ def parse_competition_portfolio_html(
                 continue
             holdings.append(_parse_holding_row(row))
 
-    # Fallback search for Cash if not found in table cells
+    # Also search all tables in the document for the 'Liquidités' summary row if placed in a separate table
+    if cash_tnd is None:
+        for table in parser.dom_tables:
+            for row in table.rows:
+                texts = [cell.text.strip() for cell in row.cells]
+                row_joined = " ".join(t.lower() for t in texts if t)
+                if "liquidit" in row_joined:
+                    for text in reversed(texts):
+                        if text:
+                            try:
+                                cash_tnd = parse_french_number(text)
+                                break
+                            except ValueError:
+                                continue
+                    if cash_tnd is not None:
+                        break
+            if cash_tnd is not None:
+                break
+
+    # Fallback search for Cash if not found in table cells (with or without colon)
     if cash_tnd is None:
         cash_match = re.search(
-            r"Liquidit[ée]s\s*:\s*([0-9\s,\.]+)\s*(?:DT|dt)?",
+            r"Liquidit[ée]s\s*:?\s*([0-9\s,\.]+)\s*(?:DT|dt)?",
             full_text,
             re.IGNORECASE,
         )

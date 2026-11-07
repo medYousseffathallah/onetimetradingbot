@@ -590,3 +590,32 @@ def test_legacy_snapshot_without_displayed_identifiers():
     loaded = type(snap).from_dict(data)
     assert loaded.holdings[0].displayed_symbol is None
     assert loaded.holdings[0].displayed_identifier is None
+
+
+def test_alri_separate_summary_table_and_identifier_first_column():
+    row = VERIFIED_ALRI_ROW.replace(
+        '<td class="no">BH</td><td class="no">223375</td>',
+        '<td class="no">223375</td><td class="no">BH</td>',
+    ).replace("...", "13.09")
+    html = f"""
+    <div>Votre portefeuille : 50000,75 DT</div>
+    <div>Votre classement : 118 / 14530</div>
+    <table><tbody class="alri">{row}</tbody></table>
+    <table>
+      <tr><td>Liquidités</td><td>49608.05</td></tr>
+      <tr><td>Totaux</td><td>50000.75</td><td>0.75</td><td>0.00%</td></tr>
+    </table>
+    """
+    snap = parse_competition_portfolio_html(html)
+    assert len(snap.holdings) == 1
+    bh = snap.holdings[0]
+    assert bh.symbol == "BH BANK"
+    assert bh.displayed_symbol == "BH"
+    assert bh.displayed_identifier == "223375"
+    assert bh.quantity == 30
+    assert bh.market_value_tnd == Decimal("392.70")
+    assert snap.available_cash_tnd == Decimal("49608.05")
+    assert snap.portfolio_total_tnd == Decimal("50000.75")
+    assert snap.competition_rank == 118
+    assert snap.total_participants == 14530
+    assert snap.is_reconciled is True
