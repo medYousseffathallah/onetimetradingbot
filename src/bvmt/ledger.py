@@ -486,6 +486,8 @@ class CompetitionScreenshotSnapshot:
     acquisition_fee_inclusion_verified: bool = False
     live_synchronized: bool = False
     limitations: list[str] = field(default_factory=list)
+    imported_transactions: list[AccountTransactionRecord] = field(default_factory=list)
+    imported_pending_orders: list[AccountPendingOrderRecord] = field(default_factory=list)
 
     @property
     def competition_ranking_display(self) -> str:
@@ -495,9 +497,9 @@ class CompetitionScreenshotSnapshot:
 
     @property
     def pending_orders_status_label(self) -> str:
-        return (
-            "Verified (0 open)" if self.pending_orders_verified else "Pending orders not verified"
-        )
+        if self.pending_orders_verified:
+            return f"Verified ({len(self.imported_pending_orders)} open)"
+        return "Pending orders not verified"
 
     @property
     def transactions_status_label(self) -> str:
@@ -520,8 +522,8 @@ class CompetitionScreenshotSnapshot:
                 )
                 for h in self.holdings
             ],
-            transactions=[],
-            pending_orders=[],
+            transactions=list(self.imported_transactions),
+            pending_orders=list(self.imported_pending_orders),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -538,6 +540,8 @@ class CompetitionScreenshotSnapshot:
             "displayed_total_pnl_tnd": str(quantize_tnd(self.displayed_total_pnl_tnd)),
             "holdings": [h.to_dict() for h in self.holdings],
             "implied_initial_cash_tnd": str(quantize_tnd(self.implied_initial_cash_tnd)),
+            "imported_pending_orders": [p.to_dict() for p in self.imported_pending_orders],
+            "imported_transactions": [t.to_dict() for t in self.imported_transactions],
             "last_price_timestamp": self.last_price_timestamp,
             "limitations": list(self.limitations),
             "live_synchronized": self.live_synchronized,
@@ -558,6 +562,47 @@ class CompetitionScreenshotSnapshot:
         )
         raw_lims = raw.get("limitations", [])
         lims_list = [str(x) for x in raw_lims] if isinstance(raw_lims, list) else []
+        raw_txs = raw.get("imported_transactions", [])
+        tx_list = (
+            [
+                AccountTransactionRecord(
+                    transaction_id=str(t["transaction_id"]),
+                    order_id=str(t["order_id"]),
+                    instrument_id=str(t["instrument_id"]),
+                    symbol=str(t["symbol"]),
+                    side=str(t["side"]),
+                    filled_shares=int(str(t["filled_shares"])),
+                    execution_price_tnd=quantize_tnd(str(t["execution_price_tnd"])),
+                    fee_tnd=quantize_tnd(str(t["fee_tnd"])),
+                    executed_at=str(t["executed_at"]),
+                )
+                for t in raw_txs
+                if isinstance(t, Mapping)
+            ]
+            if isinstance(raw_txs, list)
+            else []
+        )
+        raw_pends = raw.get("imported_pending_orders", [])
+        pend_list = (
+            [
+                AccountPendingOrderRecord(
+                    order_id=str(p["order_id"]),
+                    instrument_id=str(p["instrument_id"]),
+                    symbol=str(p["symbol"]),
+                    side=str(p["side"]),
+                    requested_shares=int(str(p["requested_shares"])),
+                    filled_shares=int(str(p["filled_shares"])),
+                    remaining_shares=int(str(p["remaining_shares"])),
+                    limit_price_tnd=quantize_tnd(str(p["limit_price_tnd"])),
+                    status=str(p["status"]),
+                    submitted_at=str(p["submitted_at"]),
+                )
+                for p in raw_pends
+                if isinstance(p, Mapping)
+            ]
+            if isinstance(raw_pends, list)
+            else []
+        )
         return cls(
             snapshot_id=str(raw["snapshot_id"]),
             provenance=str(raw.get("provenance", "user_supplied_competition_screenshot")),
@@ -597,6 +642,8 @@ class CompetitionScreenshotSnapshot:
             ),
             live_synchronized=bool(raw.get("live_synchronized", False)),
             limitations=lims_list,
+            imported_transactions=tx_list,
+            imported_pending_orders=pend_list,
         )
 
 
@@ -626,8 +673,53 @@ def build_snapshot_from_dom(
         )
         for h in dom_snap.holdings
     ]
+    imported_txs = [
+        AccountTransactionRecord(
+            transaction_id=t.transaction_id,
+            order_id=t.order_id,
+            instrument_id=t.instrument_id,
+            symbol=t.symbol,
+            side=t.side,
+            filled_shares=t.filled_shares,
+            execution_price_tnd=quantize_tnd(t.execution_price_tnd),
+            fee_tnd=quantize_tnd(t.fee_tnd),
+            executed_at=t.executed_at,
+        )
+        for t in dom_snap.transactions
+    ]
+    imported_pends = [
+        AccountPendingOrderRecord(
+            order_id=p.order_id,
+            instrument_id=p.instrument_id,
+            symbol=p.symbol,
+            side=p.side,
+            requested_shares=p.requested_shares,
+            filled_shares=p.filled_shares,
+            remaining_shares=p.remaining_shares,
+            limit_price_tnd=quantize_tnd(p.limit_price_tnd),
+            status=p.status,
+            submitted_at=p.submitted_at,
+        )
+        for p in dom_snap.pending_orders
+    ]
+    mov_captured = bool(dom_snap.movements_page_captured)
     stamp = dom_snap.retrieved_at.isoformat()
     snap_id = snapshot_id or f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    lims = [
+        "Extracted directly from authenticated displayp.aspx DOM via local browser session.",
+        "Requires confirmation-gated reconciliation before mutating local ledger.",
+    ]
+    if mov_captured:
+        lims.append(
+            f"Movements page (display_histo.aspx) captured: {len(imported_txs)} executed transaction(s), {len(imported_pends)} open order(s)."
+        )
+    else:
+        lims.extend(
+            [
+                "Pending orders cannot be proven absent from portfolio balance view alone.",
+                "Historical transaction executions not reconstructed; fee breakdown unverified.",
+            ]
+        )
     return CompetitionScreenshotSnapshot(
         snapshot_id=snap_id,
         provenance=f"browser_dom_sync ({dom_snap.source_url})",
@@ -646,16 +738,13 @@ def build_snapshot_from_dom(
             sum((h.displayed_unrealized_pnl_tnd for h in holdings), Decimal("0.000"))
         ),
         holdings=holdings,
-        transactions_imported=False,
-        pending_orders_verified=False,
-        acquisition_fee_inclusion_verified=False,
+        transactions_imported=mov_captured,
+        pending_orders_verified=mov_captured,
+        acquisition_fee_inclusion_verified=mov_captured and len(imported_txs) > 0,
         live_synchronized=True,
-        limitations=[
-            "Extracted directly from authenticated displayp.aspx DOM via local browser session.",
-            "Pending orders cannot be proven absent from portfolio balance view alone.",
-            "Historical transaction executions not reconstructed; fee breakdown unverified.",
-            "Requires confirmation-gated reconciliation before mutating local ledger.",
-        ],
+        limitations=lims,
+        imported_transactions=imported_txs,
+        imported_pending_orders=imported_pends,
     )
 
 
