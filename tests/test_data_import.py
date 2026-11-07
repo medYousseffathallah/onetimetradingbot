@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -7,7 +8,115 @@ from bvmt.data import (
     _parse_csv_lines,
     audit_official_ndjson_archive,
     export_official_master_and_calendar,
+    inspect_market_dataset_provenance,
 )
+
+FIXTURE_BARS = Path(__file__).parent / "fixtures" / "daily_bars.csv"
+
+
+def test_inspect_imported_market_dataset(tmp_path):
+    # Small deterministic imported-directory fixture; no private local data dependency.
+    bars_path = tmp_path / "daily_bars.canonical.csv"
+    bars_path.write_text(
+        FIXTURE_BARS.read_text().replace("synthetic-fixture", "official-import"),
+        encoding="utf-8",
+    )
+    (tmp_path / "provenance.json").write_text(
+        json.dumps({"source_url": "https://example.test/authorized.csv"})
+    )
+    (tmp_path / "import_timestamp.json").write_text(
+        json.dumps({"retrieved_at": "2026-02-01T12:00:00+00:00"})
+    )
+    result = inspect_market_dataset_provenance(bars_path)
+    assert result == {
+        "is_synthetic": False,
+        "first_session_date": "2026-01-05",
+        "latest_session_date": "2026-01-09",
+        "total_bars": 15,
+        "unique_sessions": 5,
+        "unique_instruments": 3,
+        "source_ids": ["official-import"],
+        "source_url": "https://example.test/authorized.csv",
+        "retrieved_at": "2026-02-01T12:00:00+00:00",
+    }
+
+
+def test_inspect_synthetic_market_dataset():
+    result = inspect_market_dataset_provenance(FIXTURE_BARS)
+    assert result["is_synthetic"] is True
+    assert result["source_ids"] == ["synthetic-fixture"]
+    assert result["source_url"] is None
+    assert result["retrieved_at"] is None
+
+
+@pytest.mark.parametrize("location", ["copied.csv", "tests/fixtures/bars.csv"])
+def test_inspect_detects_synthetic_sources_or_fixture_directory(tmp_path, location):
+    bars_path = tmp_path / location
+    bars_path.parent.mkdir(parents=True, exist_ok=True)
+    text = FIXTURE_BARS.read_text()
+    if location.startswith("tests/"):
+        text = text.replace("synthetic-fixture", "official-import")
+    else:
+        text = text.replace("synthetic-fixture", "Mixed-SYNTHETIC-source", 1)
+    bars_path.write_text(text)
+    assert inspect_market_dataset_provenance(bars_path)["is_synthetic"] is True
+
+
+@pytest.mark.parametrize("filename", ["manifest.json", "quality_report.json"])
+def test_inspect_metadata_fallback_and_precedence(tmp_path, filename):
+    bars_path = tmp_path / "bars.csv"
+    bars_path.write_bytes(FIXTURE_BARS.read_bytes())
+    metadata = {"source_url": "https://example.test/source", "retrieved_at": "2026-02-01Z"}
+    payload = {"provenance": metadata} if filename == "manifest.json" else metadata
+    (tmp_path / filename).write_text(json.dumps(payload))
+    result = inspect_market_dataset_provenance(bars_path)
+    assert result["source_url"] == metadata["source_url"]
+    assert result["retrieved_at"] == metadata["retrieved_at"]
+    (tmp_path / "provenance.json").write_text(
+        json.dumps({"source_url": "https://example.test/primary", "retrieved_at": "primary"})
+    )
+    result = inspect_market_dataset_provenance(bars_path)
+    assert result["source_url"] == "https://example.test/primary"
+    assert result["retrieved_at"] == "primary"
+
+
+def test_inspect_missing_market_dataset_fails(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        inspect_market_dataset_provenance(tmp_path / "missing.csv")
+
+
+def test_inspect_does_not_substitute_import_time_for_retrieval(tmp_path):
+    bars_path = tmp_path / "bars.csv"
+    bars_path.write_bytes(FIXTURE_BARS.read_bytes())
+    (tmp_path / "import_timestamp.json").write_text(
+        json.dumps({"imported_at": "2026-02-01T12:00:00+00:00"})
+    )
+    assert inspect_market_dataset_provenance(bars_path)["retrieved_at"] is None
+
+
+@pytest.mark.parametrize("payload", ["broken json", "[]"])
+def test_inspect_rejects_malformed_metadata(tmp_path, payload):
+    bars_path = tmp_path / "bars.csv"
+    bars_path.write_bytes(FIXTURE_BARS.read_bytes())
+    (tmp_path / "provenance.json").write_text(payload)
+    with pytest.raises(ValueError, match="metadata"):
+        inspect_market_dataset_provenance(bars_path)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",
+        "broken csv",
+        FIXTURE_BARS.read_text().splitlines()[0],
+        FIXTURE_BARS.read_text().replace("10.000", "invalid", 1),
+    ],
+)
+def test_inspect_empty_or_corrupted_market_dataset_fails(tmp_path, content):
+    bars_path = tmp_path / "bars.csv"
+    bars_path.write_text(content)
+    with pytest.raises(ValueError):
+        inspect_market_dataset_provenance(bars_path)
 
 
 @pytest.mark.parametrize("quantity,accepted", [(667.0, 1), (667.5, 0), (True, 0)])
