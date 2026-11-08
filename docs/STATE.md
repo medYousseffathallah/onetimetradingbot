@@ -1,8 +1,8 @@
 # Working state
 
 ## Current checkpoint
-**Modern Dashboard Migration (Next.js 15 + TypeScript + Tailwind + Recharts Frontend & Localhost FastAPI Backend)** merged and verified end-to-end on `main` on 2026-11-07 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`, `codex-cli 0.166.0`).
-All **252 automated Python tests** (including **46 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), and the **Next.js TypeScript + production build** (`npm.cmd run typecheck` and `npm.cmd run build`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**Monday Operational Readiness Audit & Windows Launcher P0 Resolution** verified end-to-end on `main` on 2026-11-08 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
+All **316 automated Python tests** (including **54 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), the **Next.js TypeScript + production build**, and the **Playwright Chrome automated UI audit** pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
 
 ## Modern Dashboard Migration & Phase 0 State Service (2026-11-07)
@@ -327,4 +327,37 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
   - `uv run --no-sync python scripts/check.py`: Ruff format check passed (43 files), Ruff lint passed, strict `mypy src/bvmt` passed (19 source files), skill validation passed (10 skills), and `pytest -q` passed (**316 passed** in 61.64s).
   - `npm.cmd --prefix frontend run typecheck`: Passed.
   - `npm.cmd --prefix frontend run build`: Compiled and statically generated all 10 pages cleanly.
-- **Next exact action**: Monitor automated EOD updates when the exchange session opens on Monday (`2026-11-09`), and continue forward-only paper trading evaluations.
+- **Next exact action**: Launch pre-session checks on Monday morning 2026-11-09 per `docs/DAILY_TRADING_OPERATIONS.md`, monitor trading window (09:00-14:15), and execute post-close EOD ingestion (14:30-15:30).
+
+## Monday Operational Readiness Audit & Windows Launcher P0 Fix (main, 2026-11-08)
+
+- **P0 Windows CMD Batch Launcher Fix (`start_bvmt.bat`)**:
+  - Repaired CMD batch parser error `"was était inattendu."` triggered on line 19 (`echo [ERROR] Python virtual environment (.venv) was not found.` inside an `if not exist ... (...)` block). The unescaped closing parenthesis in `(.venv)` prematurely terminated the `if` block.
+  - Removed all nested parenthesis blocks, added safe quoting `"%PYTHON_EXE%"`, and added non-intrusive TCP listening port checks for ports 8000 (FastAPI), 3000 (Next.js), and 8501 (Streamlit).
+  - Verified clean startup and shutdown in both standard mode (`FastAPI + Next.js`) and fallback mode (`--streamlit`).
+- **Canonical Store In-Place Atomic Overwrite (`src/bvmt/snapshots.py`, `src/bvmt/data.py`, `src/bvmt/gateway.py`)**:
+  - Added `allow_overwrite: bool = False` to `atomic_write_bytes` and `atomic_write_text`.
+  - Raw snapshots in `data/raw/` strictly enforce `allow_overwrite=False` (preserving immutability), while evolving working stores (`daily_bars.canonical.csv`, `quality_report.json`, `provenance.json`) pass `allow_overwrite=True` to enable atomic in-place dataset refreshes.
+- **Codex Workstream Audit (10/10 PASS)**:
+  - Quality gate: `scripts/check.py` passed with 316 tests, strict Mypy (19 files), Ruff clean.
+  - Gateway status & refresh verified on Windows: reports `HEALTHY`, `OFFICIAL_EOD`, `WEEKEND_CLOSED`, latest session `2026-11-06` (194 sessions, 14,480 accepted equity bars, 15,968 total bars, 76 listed instruments).
+  - Idempotency verified: re-running `uv run bvmt market-refresh` detects matching HTTP `ETag` and `Last-Modified` metadata, exiting in 3s with `0` new bars and `0` duplicates.
+  - Competition account isolation verified: SHA-256 of `data/portfolio/real_competition_ledger.json` (`1A5720CEE52701ED19C9D2AD340555023F12757C1AA90DE0FB387D141AA8C20D`) bit-for-bit identical before and after refresh.
+  - Calendar handling: correctly models Monday 2026-11-09 transition from `WEEKEND_CLOSED` to `REGULAR_TRADING_SCHEDULE`.
+  - Paper trading temporal safety: `record_forward_paper_signal` enforces forward-only evaluation and rejects backward or future clock manipulations.
+- **Gemini Workstream Audit (10/10 PASS)**:
+  - Automated Playwright verification in Windows Chrome captured all 7 core pages without errors:
+    1. Overview (`/`): `monday_01_overview.png`
+    2. Portfolio (`/portfolio`): `monday_02_portfolio.png`
+    3. Transactions (`/transactions`): `monday_03_transactions.png`
+    4. Market Explorer (`/market`): `monday_04_market.png`
+    5. Stock Research (`/research`): `monday_05_research.png`
+    6. Strategy Lab (`/strategy`): `monday_06_strategy.png`
+    7. System Health (`/health`): `monday_07_health.png`
+  - Portfolio baseline confirmed: `50,000.75 TND` total equity, `49,608.05 TND` cash, `30` shares `BH BANK` (`392.70 TND`), `+0.75 TND` unrealized gain, rank `#118 / 14,530`.
+  - Streamlit fallback verified: launches cleanly on `http://127.0.0.1:8501`.
+- **Operational Documentation Deliverables**:
+  - `docs/MONDAY_READINESS_REPORT.md`: Comprehensive audit report with test matrices, command outputs, timestamps, and screenshot artifacts.
+  - `docs/DAILY_TRADING_OPERATIONS.md`: Pre-session (08:30-09:00), live session (09:00-14:15), and post-session EOD catch-up (14:30-15:30) operational playbook.
+- **Next exact action**: Execute Pre-Session Checklist at 08:30 Africa/Tunis on Monday 2026-11-09 using `.\start_bvmt.bat`.
+

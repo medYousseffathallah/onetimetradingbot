@@ -1260,7 +1260,9 @@ def refresh_daily_market_pipeline(
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(canonical_csv_path, csv_buffer.getvalue(), allow_identical=True)
+    atomic_write_text(
+        canonical_csv_path, csv_buffer.getvalue(), allow_identical=True, allow_overwrite=True
+    )
 
     # Write rejected rows if any
     if rejected:
@@ -1270,7 +1272,7 @@ def refresh_daily_market_pipeline(
         r_writer.writerow(["line_number", "raw_row", "rejection_reason"])
         for r in rejected:
             r_writer.writerow([r.line_number, r.raw_row, r.reason])
-        atomic_write_text(rej_path, rej_buf.getvalue(), allow_identical=True)
+        atomic_write_text(rej_path, rej_buf.getvalue(), allow_identical=True, allow_overwrite=True)
 
     # Write quality report
     source_sha = sha256_file(new_source_path)
@@ -1288,6 +1290,7 @@ def refresh_daily_market_pipeline(
         quality_report_path,
         json.dumps(asdict(quality), indent=2, sort_keys=True, default=str),
         allow_identical=True,
+        allow_overwrite=True,
     )
 
     # Save provenance metadata
@@ -1306,7 +1309,12 @@ def refresh_daily_market_pipeline(
         ),
     }
     prov_path = output_dir / "provenance.json"
-    atomic_write_text(prov_path, json.dumps(prov, indent=2, sort_keys=True), allow_identical=True)
+    atomic_write_text(
+        prov_path,
+        json.dumps(prov, indent=2, sort_keys=True),
+        allow_identical=True,
+        allow_overwrite=True,
+    )
 
     return DailyMarketRefreshResult(
         source_id=source_id,

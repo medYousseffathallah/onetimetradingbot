@@ -157,7 +157,10 @@ class OfficialBvmtNdjsonProvider:
         self.staging_dir.mkdir(parents=True, exist_ok=True)
         path = self._get_metadata_cache_path()
         atomic_write_text(
-            path, json.dumps(metadata, indent=2, sort_keys=True), allow_identical=True
+            path,
+            json.dumps(metadata, indent=2, sort_keys=True),
+            allow_identical=True,
+            allow_overwrite=True,
         )
 
     def fetch_head(self) -> dict[str, Any]:
@@ -351,7 +354,9 @@ class OfficialBvmtNdjsonProvider:
         # Download trailing bytes and sanitize
         raw_tail = self.fetch_trailing_bytes()
         clean_ndjson = self.sanitize_ndjson_tail(raw_tail)
-        atomic_write_text(staging_tail_path, clean_ndjson, allow_identical=True)
+        atomic_write_text(
+            staging_tail_path, clean_ndjson, allow_identical=True, allow_overwrite=True
+        )
 
         # Ingest incrementally via verified pipeline
         refresh_result = refresh_daily_market_pipeline(
@@ -632,7 +637,10 @@ class LocalArchiveProvider:
         canonical_csv = output_dir / "daily_bars.canonical.csv"
         output_dir.mkdir(parents=True, exist_ok=True)
         atomic_write_text(
-            canonical_csv, self.archive_path.read_text(encoding="utf-8-sig"), allow_identical=True
+            canonical_csv,
+            self.archive_path.read_text(encoding="utf-8-sig"),
+            allow_identical=True,
+            allow_overwrite=True,
         )
         freshness = check_data_freshness(existing_bars, as_of=as_of)
         all_sessions = sorted({b.session_date for b in existing_bars})

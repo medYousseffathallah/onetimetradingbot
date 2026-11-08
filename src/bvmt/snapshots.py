@@ -46,7 +46,9 @@ def ensure_no_symlink_ancestors(path: Path) -> None:
             raise ValueError(f"Ancestor directory must not be a symlink: {parent}")
 
 
-def atomic_write_bytes(target: Path, payload: bytes, *, allow_identical: bool = True) -> None:
+def atomic_write_bytes(
+    target: Path, payload: bytes, *, allow_identical: bool = True, allow_overwrite: bool = False
+) -> None:
     ensure_no_symlink_ancestors(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
@@ -54,7 +56,10 @@ def atomic_write_bytes(target: Path, payload: bytes, *, allow_identical: bool = 
             raise ValueError(f"Target path is not a regular file: {target}")
         if allow_identical and target.read_bytes() == payload:
             return
-        raise ValueError(f"Refusing to overwrite existing file with different content: {target}")
+        if not allow_overwrite:
+            raise ValueError(
+                f"Refusing to overwrite existing file with different content: {target}"
+            )
     temp_path = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
     try:
         with temp_path.open("xb") as handle:
@@ -65,17 +70,25 @@ def atomic_write_bytes(target: Path, payload: bytes, *, allow_identical: bool = 
             if allow_identical and target.read_bytes() == payload:
                 temp_path.unlink(missing_ok=True)
                 return
-            raise ValueError(
-                f"Refusing to overwrite existing file with different content: {target}"
-            )
+            if not allow_overwrite:
+                raise ValueError(
+                    f"Refusing to overwrite existing file with different content: {target}"
+                )
         os.replace(temp_path, target)
     finally:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
 
 
-def atomic_write_text(target: Path, text: str, *, allow_identical: bool = True) -> None:
-    atomic_write_bytes(target, text.encode("utf-8"), allow_identical=allow_identical)
+def atomic_write_text(
+    target: Path, text: str, *, allow_identical: bool = True, allow_overwrite: bool = False
+) -> None:
+    atomic_write_bytes(
+        target,
+        text.encode("utf-8"),
+        allow_identical=allow_identical,
+        allow_overwrite=allow_overwrite,
+    )
 
 
 def sha256_file(path: Path) -> str:
