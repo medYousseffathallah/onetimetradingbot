@@ -188,3 +188,20 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
   Saved registry code checksum verified against final `strategies.py`; real-file
   endpoint smoke test returned HTTP 200 with nine reports. `git diff --check`
   passed. The artifact is 648,820 bytes and remains local/Git-ignored.
+
+## Milestone 4 — Quantitative Research, Strategy Enhancement, Documentation & Strategy Lab Integration (main, 2026-11-08)
+
+- Integrated `codex/data-research` (`68a2be6`) and `gemini/dashboard` (`d75053b`) into `main`.
+- Produced and verified all required Milestone 4 documentation files with Mermaid diagrams and exact mathematical specifications:
+  - `README.md` (Canonical system overview, 4 Mermaid architecture/pipeline diagrams, 10-step daily manual decision workflow, Windows setup/launch/test commands, and security boundaries)
+  - `docs/CURRENT_RESEARCH_AUDIT.md` (Phase 0 source-code audit of formulas, 7 eligibility gates, data provenance, fees, sizing, and biases)
+  - `docs/STRATEGY_RESEARCH.md` (BVMT market microstructure, candidate factor taxonomy, fee drag control, and 10-step operational loop)
+  - `docs/MODEL_CATALOG.md` (Complete catalog of Demo v0.1, Baselines A–G, Multi-Factor Enhancements H–I, and gated ML Ranker)
+  - `docs/BACKTEST_METHODOLOGY.md` (T+1 fill mechanics, 50 bps per-side commission, 10% volume participation cap, 7-fold walk-forward protocol, and 3x3 sensitivity matrix)
+  - `docs/RESEARCH_ROADMAP.md` (Prioritized roadmap for 2020–2025 official data acquisition, dividend adjustment tables, sector caps, and >=250-session ML unblocking)
+  - `docs/EXPERIMENT_REGISTRY.md` (Exact cryptographic hashes and comparative results for Models A–I from `artifacts/strategy_experiments_2026.json`)
+- Upgraded the Next.js 15 Strategy Lab UI (`frontend/src/app/strategy/page.tsx` and `frontend/src/lib/api.ts`) to consume `GET /api/strategy-lab` and render all 9 models (`A`–`I`), interactive 194-session equity curves, underwater drawdown curves, 7-fold walk-forward tables, 3x3 fee/liquidity sensitivity matrices, historical coverage audit (`2020–2026`), ML promotion gate status (`194 < 250` sessions blocked), and cryptographic hashes (`config_hash`, `canonical_sha256`, `code_sha256`, `experiment_id`).
+- Verified full quality gates on `main`:
+  - `uv run --no-sync python scripts/check.py`: Ruff format check passed (39 files), Ruff lint passed, `mypy src/bvmt` passed (17 files), skill validation passed (10 skills), and `pytest -q` passed (**275 passed** in 35.48s).
+  - `npm.cmd run typecheck` and `npm.cmd run build` in `frontend/`: Compiled cleanly (`10/10` static routes generated, `/strategy` route built).
+- Next exact action: Acquire official 2020–2025 annual BVMT historical daily archives (`histo_cotation_YYYY.zip`) and official corporate-action/dividend adjustment tables to expand sample depth beyond 250 sessions.

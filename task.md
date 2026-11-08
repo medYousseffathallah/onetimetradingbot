@@ -1,6 +1,6 @@
 # Task backlog
 
-Status: T01, T02, T03, R01/R02, Milestone 1A, Milestone 1B, Milestone 1C, and Parallel Multi-Agent Cycle (Codex Tasks C1–C3 + Gemini Tasks G1–G3) COMPLETED; 128/128 unit, integration, backtesting, reconciliation, and Streamlit AppTest UI tests passing with zero live API calls.
+Status: T01–T06, R01/R02, Milestones 1A–1C, Milestone 2 (Operational Trading Research), Milestone 3 (Real Browser Portfolio Sync & Modern Next.js 15 + FastAPI Dashboard Migration), and Milestone 4 (Quantitative Research, Strategy Enhancement A–I, Walk-Forward Registry & Technical Documentation) COMPLETED; 275/275 Python tests and Next.js 15 production build passing with zero live API calls.
 
 ## T01 - Reproduce and verify rules [DONE]
 Run the locked quality gate and demo locally. Run the blocked rules check. Inspect official
@@ -54,10 +54,9 @@ Implemented in parallel across `codex/data-research` (`4ebfff1`) and `gemini/das
 - **G3 (`src/bvmt/dashboard.py`)**: Dataset discovery (`discover_available_bar_datasets`), data freshness lag indicators, portfolio valuation history tab, competition account reconciliation UI, and transaction fill history.
 Evidence (2026-11-06): Passed 128/128 tests and full quality gate on `main`.
 
-## T06 - Walk-forward evaluation on imported official BVMT history [NEXT]
-Create cash/equal-weight/momentum benchmarks, purged chronological folds, frozen holdout,
-experiment registry, cost/liquidity sensitivity, and reproducible manifests. Gate: no
-performance claims without actual measured results and a disclosed sample.
+## T06 - Walk-forward evaluation & comparative strategy suite on imported official BVMT history [DONE]
+Implemented in `src/bvmt/strategies.py` (`evaluate_strategy_suite`, `generate_experiment_registry`, `audit_historical_coverage_and_blockers`), `src/bvmt/api.py` (`GET /api/strategy-lab`), `frontend/src/app/strategy/page.tsx`, and `docs/EXPERIMENT_REGISTRY.md`. Evaluates 9 frozen hypotheses (`A_CASH_ONLY` through `I_REGIME_FILTERED_QUALITY_MOMENTUM`) across 194 verified 2026 BVMT sessions with 7-fold chronological walk-forward validation (`train=61, test=19, step=19`), 3x3 fee/volume participation sensitivity matrices (`81` total scenarios), explicit ML promotion gate (`194 < 250` sessions blocked), and cryptographic hashes (`config_hash`, `canonical_sha256`, `code_sha256`).
+Evidence (2026-11-08): Passed 275/275 Python tests (`scripts/check.py`) and Next.js 15 production build.
 
 ## T07 - Event intelligence [TODO]
 Parse permitted official disclosures into schemas/event.schema.json with evidence spans,
