@@ -236,11 +236,157 @@ export interface BacktestSummaryItem {
   limitations: string[];
 }
 
+export interface WalkForwardFoldItem {
+  fold_index: number;
+  train_start: string;
+  train_end: string;
+  test_start: string;
+  test_end: string;
+  train_sessions: number;
+  test_sessions: number;
+  strategy_return_pct: number;
+  liquidated_return_pct: number;
+  benchmark_return_pct: number;
+  excess_return_pct: number;
+  fill_count: number;
+  fees_tnd: number;
+}
+
+export interface WalkForwardSummary {
+  train_sessions: number;
+  test_sessions: number;
+  step_sessions: number;
+  total_folds: number;
+  positive_folds: number;
+  mean_fold_return_pct: number | null;
+  mean_liquidated_return_pct: number | null;
+  mean_excess_return_pct: number | null;
+  classification: string;
+  folds: WalkForwardFoldItem[];
+}
+
+export interface SensitivityScenarioItem {
+  commission_bps: number;
+  max_volume_participation: number;
+  net_return_pct: number;
+  liquidated_return_pct: number;
+  total_fees_tnd: number;
+  trade_count: number;
+}
+
+export interface FeeAndLiquiditySensitivity {
+  scenarios: SensitivityScenarioItem[];
+  min_return_pct: number;
+  max_return_pct: number;
+  method: string;
+}
+
+export interface EquityCurvePoint {
+  session_date: string;
+  total_equity_tnd: number;
+  cash_tnd: number;
+  holdings_value_tnd: number;
+  drawdown_pct: number;
+  benchmark_equity_tnd: number;
+}
+
+export interface WinLossSummary {
+  winning_positions: number;
+  losing_positions: number;
+  flat_positions: number;
+  best_position_return_pct: number | null;
+  worst_position_return_pct: number | null;
+  definition: string;
+}
+
+export interface StrategyEvaluationReport {
+  strategy_id: string;
+  name: string;
+  version: string;
+  family: "baseline" | "enhanced";
+  implementation_status: string;
+  sample_Classification: string;
+  formula_summary: string;
+  assumptions: Record<string, unknown>;
+  failure_modes: string[];
+  start_session: string;
+  end_session: string;
+  session_count: number;
+  net_return_pct: number;
+  liquidated_return_pct: number;
+  benchmark_return_pct: number;
+  excess_return_pct: number;
+  max_drawdown_pct: number;
+  turnover_ratio: number;
+  total_fees_tnd: number;
+  trade_count: number;
+  order_count: number;
+  hit_rate_pct: number;
+  win_loss_Init_summary: WinLossSummary;
+  avg_cash_utilization_pct: number;
+  max_single_stock_weight_pct: number;
+  walk_forward: WalkForwardSummary;
+  fee_and_liquidity_sensitivity: FeeAndLiquiditySensitivity;
+  equity_curve: EquityCurvePoint[];
+  is_statistically_conclusive: boolean;
+  promotion_status: string;
+  config_hash: string;
+  experiment_id: string;
+  diagnostics: Record<string, unknown>;
+}
+
+export interface MlPromotionGate {
+  eligible: boolean;
+  session_count: number;
+  minimum_sessions: number;
+  reason: string;
+}
+
+export interface HistoricalYearCoverage {
+  canonical_sessions: number;
+  instrument_count: number;
+  daily_ohlcv_available: boolean;
+  status: string;
+}
+
+export interface HistoricalAuditSummary {
+  coverage_2020_2026: Record<string, HistoricalYearCoverage>;
+  source_url: string | null;
+  processed_at: string | null;
+  archive_sha256: string | null;
+  canonical_sha256: string | null;
+  canonical_checksum_matches: boolean | null;
+  instrument_count: number;
+  corporate_actions_available: boolean;
+  blockers: string[];
+}
+
+export interface StrategyExperimentRegistry {
+  schema_version: string;
+  status: string;
+  data_hash: string;
+  config_hash: string;
+  code_sha256?: string;
+  canonical_sha256?: string;
+  trial_count: number;
+  reports: StrategyEvaluationReport[];
+  ml_promotion_gate: MlPromotionGate;
+  historical_audit?: HistoricalAuditSummary;
+  limitations: string[];
+}
+
+export interface StrategyLabResponse {
+  status: "available" | "unavailable" | "invalid";
+  registry: StrategyExperimentRegistry | null;
+  limitations: string[];
+}
+
 export interface ResearchResponse {
   query: string | null;
   verified_events: EventSignalItem[];
   document_results: DocumentSearchResultItem[];
   backtest_summary: BacktestSummaryItem;
+  strategy_comparison?: StrategyExperimentRegistry | null;
 }
 
 export interface AlertItem {
@@ -344,6 +490,7 @@ export const api = {
     fetchJson<StockRankingsResponse>(`/api/rankings?mode=${mode}`),
   getResearch: (q = "", mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<ResearchResponse>(`/api/research?mode=${mode}&q=${encodeURIComponent(q)}`),
+  getStrategyLab: () => fetchJson<StrategyLabResponse>(`/api/strategy-lab`),
   getHealth: (mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<SystemHealthResponse>(`/api/health?mode=${mode}`),
   getSyncPreview: (mode: PortfolioMode = "REAL_COMPETITION") =>
