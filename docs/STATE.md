@@ -100,3 +100,91 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
   network calls, order submission, or historical holdings reuse performed.
 - Next exact action: integrate/review this patch on main, then manually authenticate
   for an authorized read-only sync and review current account reconciliation.
+
+## Strategy Lab Phases 2–5 (Codex worktree, 2026-11-08)
+
+- User-authorized scope: new `src/bvmt/strategies.py`, additive `src/bvmt/api.py`
+  endpoints, new `tests/test_strategies.py`, extended `tests/test_api.py`, generated
+  `artifacts/strategy_experiments_2026.json`, and this state entry. No frontend,
+  other strategy documentation, shared configuration, or portfolio modules edited.
+- Implemented nine frozen, interpretable hypotheses A–I with a sequential Decimal
+  cash/share ledger, next-open-only execution, unfavorable 10 bps slippage with
+  observed OHLC bounds, 50 bps per-side fees, 10% purchase concentration capacity,
+  10% shared per-security/session volume capacity, integer shares and .001 TND
+  half-up fees. Orders attempt the next session once; residuals expire. Initial
+  decision follows 61 completed sessions; periodic decisions occur every 19 open
+  sessions. Buy-and-hold has a single initial decision. No parameters were fitted.
+- Added marked/fee-only-terminal-liquidated returns, aligned executable C benchmark,
+  drawdown, fees, fills/orders, average-cost evaluated-slice hit rates (including
+  terminal sleeves after exit fee), turnover, exposure, actual marked concentration,
+  full equity curves and fill diagnostics. Each hypothesis has seven chronological
+  61-train/19-test/19-step fresh-cash folds and nine fully rerun fee/participation
+  scenarios (81 sensitivity scenarios total). Config/experiment identities hash
+  code, formulas, configuration, canonical bar values, master and calendar.
+- Full registry regenerated from 14,480 canonical bars / 76 instruments / 194
+  observed sessions, 2026-01-02 through 2026-11-06. Canonical SHA-256:
+  `cdec16511f5d5ecd937a89656f9cd65746eb6655091447bc0078f7a30b159116`.
+  Archive SHA-256:
+  `486761f55253480a0e19e9b7e8300512522316f93f67081c6fa010d86df45c55`.
+  Registry config hash:
+  `87e57368642da1b01a0cefd7f720e4e200f1d38e2f900374b6699c63285f5927`.
+  Reproduce offline with `generate_experiment_registry(Path('data/processed/bvmt_official_2026'), Path('data/staging/market_resume_full.ndjson'), Path('artifacts/strategy_experiments_2026.json'))`
+  from `bvmt.strategies` using the project Python environment.
+- Observed marked returns (%), descriptive only: A 0.000000; B 14.047960;
+  C 14.026112; D 17.050596; E 14.356077; F 17.050596; G 18.811715;
+  H 15.144953; I 15.735354. Different caps/sizing/execution rules make these
+  different experiments from earlier backtest artifacts; no previous result replaced.
+- Historical audit recomputes archive and canonical checksums and 2020–2026
+  coverage. Pre-2026 daily history and corporate-action adjustment tables remain
+  unavailable; 2025 envelopes are monthly summaries. Original source retrieval time
+  is unknown (null), separately from saved processing/import timestamps. Zero-byte
+  legacy ZIP results are attributed to saved manifest evidence, not a new download.
+  Delisting/suspension completeness and historical universe verification remain
+  blocked. Missing publication timestamps and retrospective ingestion force every
+  result to `exploratory`, despite chronological forward testing. Event overlay is
+  disabled. The explicit 194 < 250 ML promotion gate blocks LightGBM promotion;
+  more sessions alone would not establish multi-year, leak-free evidence.
+- Material unmet acceptance condition: continuous marked concentration <=10% is
+  NOT demonstrated. All invested strategies exceed 10% during price drift; observed
+  maxima range from B 12.808956% to C 14.697064%. The ledger enforces purchase
+  capacity and reports drift honestly; it does not fabricate same-close reductions
+  or alter buy-and-hold into a daily risk-trimming strategy. Diagnostics set
+  `concentration_cap_compliant=false` for B–I. Every report is research-only and
+  requires human approval; none is statistically conclusive or promotable.
+- API: read-only `GET /api/strategy-lab` serves `{status, registry, limitations}`;
+  `GET /api/research` has nullable `strategy_comparison` containing the same saved
+  registry. Missing/invalid artifacts yield explicit safe statuses; GET never runs
+  simulations or writes portfolios. Actual saved-artifact smoke test: HTTP 200,
+  nine reports. The generated artifact remains Git-ignored as required.
+- Verification environment: local `.venv` lacks FastAPI/Pydantic;
+  `uv sync --locked --group dev --extra dashboard --offline` failed because the
+  local cache lacks `annotated-doc==0.0.5`. No downloads or dependency files changed.
+  Native `uv run --no-sync python scripts/check.py` passed formatting/lint then
+  failed mypy on missing FastAPI/Pydantic imports. Used existing integration
+  workspace `.venv/Scripts/python.exe`, with this worktree `src` on PYTHONPATH and
+  bytecode writes disabled, for successful strict mypy and API tests.
+- Windows sandbox workaround for tests: CPython 3.13 `mkdir(mode=0700)` creates
+  pytest ACLs excluding the sandbox token. An ephemeral in-memory launcher changes
+  only workspace temporary-directory creation to inherited permissions and disables
+  pytest cache writes. It runs pytest in-process while the other unchanged
+  `scripts/check.py` gate commands use subprocesses. No test assertions skipped or
+  loosened. Latest targeted strategy/API run: 69 passed, one pre-existing
+  Starlette/httpx deprecation warning. Final full gate result recorded below.
+- Temporary test/probe directories remain untracked: automatic approval review
+  rejected recursive cleanup commands as blocked by policy. Nothing staged or
+  committed; no external writes, network/LLM calls or autonomous orders.
+- Next exact action: integration review of these six deliverables and the saved
+  experiment contract; resolve the continuous concentration-policy requirement
+  before any compliance or promotion claim, and obtain authorized older daily
+  history plus independently verified action/membership/availability evidence.
+- Final verification result: unchanged `scripts/check.py` invoked through the
+  integration-interpreter/sandbox-compatible launcher completed all five gates:
+  39 Python files formatted; Ruff lint passed; strict mypy passed (17 modules);
+  10 skill entrypoints validated; pytest **275 passed**, one Starlette/httpx
+  deprecation warning, 121.02 seconds; launcher exit 0. After successful gate
+  completion, interpreter shutdown emitted a PermissionError from an unrelated
+  standard-temp-directory cleanup finalizer; this was not a failed assertion or
+  test. Native local-environment gate remains blocked as documented above.
+  Saved registry code checksum verified against final `strategies.py`; real-file
+  endpoint smoke test returned HTTP 200 with nine reports. `git diff --check`
+  passed. The artifact is 648,820 bytes and remains local/Git-ignored.

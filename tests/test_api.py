@@ -625,6 +625,7 @@ def test_module_app_and_openapi() -> None:
         "/api/market-status",
         "/api/rankings",
         "/api/research",
+        "/api/strategy-lab",
         "/api/health",
         "/api/sync/browser",
         "/api/sync/preview",
@@ -633,3 +634,59 @@ def test_module_app_and_openapi() -> None:
     assert schema["paths"]["/api/overview"]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"]["$ref"].endswith("AccountOverviewResponse")
+
+
+def test_strategy_lab_missing_registry_is_read_only(
+    service: PortfolioStateService, tmp_path: Path
+) -> None:
+    path = tmp_path / "missing_registry.json"
+    before = ledger_bytes(service)
+    with TestClient(create_app(service, strategy_registry_path=path)) as client:
+        body = client.get("/api/strategy-lab").json()
+        assert body["status"] == "unavailable"
+        assert body["registry"] is None
+        assert client.get("/api/research").json()["strategy_comparison"] is None
+    assert not path.exists()
+    assert ledger_bytes(service) == before
+
+
+@pytest.mark.parametrize("content", ["{broken", "[]", '{"status":"available","reports":[]}'])
+def test_strategy_lab_invalid_registry(
+    service: PortfolioStateService, tmp_path: Path, content: str
+) -> None:
+    path = tmp_path / "invalid_registry.json"
+    path.write_text(content, encoding="utf-8")
+    with TestClient(create_app(service, strategy_registry_path=path)) as client:
+        body = client.get("/api/strategy-lab").json()
+        assert body["status"] == "invalid"
+        assert body["registry"] is None
+
+
+def test_strategy_lab_and_research_share_saved_registry(
+    service: PortfolioStateService, tmp_path: Path
+) -> None:
+    from bvmt.strategies import STRATEGY_IDS
+
+    registry = {
+        "status": "available",
+        "reports": [
+            {
+                "strategy_id": s,
+                "equity_curve": [{"session_date": "2026-01-02", "total_equity_tnd": 100000}],
+                "walk_forward": {"total_folds": 7},
+                "fee_and_liquidity_sensitivity": {"scenarios": []},
+            }
+            for s in STRATEGY_IDS
+        ],
+        "historical_audit": {"retrieved_at": None},
+    }
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(registry), encoding="utf-8")
+    before = ledger_bytes(service)
+    with TestClient(create_app(service, strategy_registry_path=path)) as client:
+        lab = client.get("/api/strategy-lab")
+        assert lab.status_code == 200
+        assert lab.json()["registry"] == registry
+        assert client.get("/api/research").json()["strategy_comparison"] == registry
+        assert client.post("/api/strategy-lab").status_code == 405
+    assert ledger_bytes(service) == before

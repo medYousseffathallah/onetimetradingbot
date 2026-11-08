@@ -13,7 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from html import unescape
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -328,6 +328,13 @@ class ResearchResponse(APIModel):
     verified_events: list[EventSignalItem]
     document_results: list[DocumentSearchResultItem]
     backtest_summary: BacktestSummaryItem
+    strategy_comparison: dict[str, Any] | None = None
+
+
+class StrategyLabResponse(APIModel):
+    status: Literal["available", "unavailable", "invalid"]
+    registry: dict[str, Any] | None = None
+    limitations: list[str] = Field(default_factory=list)
 
 
 class AlertItem(APIModel):
@@ -581,11 +588,50 @@ def _reconciliation(report: ReconciliationReport) -> ReconciliationSummaryItem:
     )
 
 
-def create_app(service: PortfolioStateService | None = None) -> FastAPI:
+def create_app(
+    service: PortfolioStateService | None = None,
+    *,
+    strategy_registry_path: Path = Path("artifacts/strategy_experiments_2026.json"),
+) -> FastAPI:
     """Create an offline-default app; supplied services keep all custom path overrides."""
     base = service if service is not None else PortfolioStateService()
     application = FastAPI(title="BVMT local research API", version=__version__)
     application.state.portfolio_service = base
+
+    def load_strategy_lab() -> StrategyLabResponse:
+        # GET only serves saved research; never runs experiments or changes portfolios.
+        try:
+            registry = json.loads(strategy_registry_path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(registry, dict)
+                or registry.get("status") != "available"
+                or not isinstance(registry.get("reports"), list)
+                or len(registry["reports"]) != 9
+                or any(
+                    not isinstance(r, dict) or "strategy_id" not in r for r in registry["reports"]
+                )
+            ):
+                raise ValueError("Invalid registry structure")
+            return StrategyLabResponse(status="available", registry=registry)
+        except FileNotFoundError:
+            return StrategyLabResponse(
+                status="unavailable",
+                limitations=[
+                    "Run the offline comparative evaluation to generate the experiment registry."
+                ],
+            )
+        except (OSError, ValueError, TypeError):
+            return StrategyLabResponse(
+                status="invalid",
+                limitations=[
+                    "Saved experiment registry is unreadable or invalid; regenerate offline."
+                ],
+            )
+
+    @application.get("/api/strategy-lab")
+    def strategy_lab() -> StrategyLabResponse:
+        return load_strategy_lab()
+
     application.add_middleware(
         CORSMiddleware,
         allow_origins=LOCAL_ORIGINS,
@@ -907,6 +953,7 @@ def create_app(service: PortfolioStateService | None = None) -> FastAPI:
                 for c in results
             ],
             backtest_summary=_backtest_summary(),
+            strategy_comparison=load_strategy_lab().registry,
         )
 
     @application.get("/api/health")
