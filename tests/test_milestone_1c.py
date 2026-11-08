@@ -969,8 +969,11 @@ def test_g1_g2_real_competition_screenshot_snapshot_and_reconciliation(tmp_path)
     assert len(demo_ledger.holdings) == 0
 
 
-def test_g3_g4_real_competition_dashboard_and_price_drift(tmp_path):
+def test_g3_g4_real_competition_dashboard_and_price_drift(tmp_path, monkeypatch):
     """Tasks G3 & G4: Verify price-drift calculation against verified BVMT price (13.500 TND) and real portfolio dashboard rendering."""
+    monkeypatch.setenv("BVMT_REAL_LEDGER_PATH", str(tmp_path / "real_competition_ledger.json"))
+    monkeypatch.setenv("BVMT_REAL_SNAPSHOT_PATH", str(tmp_path / "real_account_snapshot.json"))
+    monkeypatch.setenv("BVMT_SNAPSHOTS_DIR", str(tmp_path / "snapshots"))
     snap = build_verified_user_screenshot_snapshot()
     # Official BVMT latest traded price for BH BANK (TN0001900604) on 2026-11-04 / 2026-11-05 is 13.500 TND
     drift = compute_screenshot_price_drift(
