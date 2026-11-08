@@ -9,8 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import random
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, replace
+from dataclasses import field as dataclass_field
 from datetime import date, datetime, time
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -158,6 +160,7 @@ class StrategyEvaluationReport:
     config_hash: str
     experiment_id: str
     diagnostics: dict[str, Any]
+    risk_normalized_metrics: dict[str, Any] = dataclass_field(default_factory=dict)
 
 
 def audit_historical_coverage_and_blockers(
@@ -232,7 +235,8 @@ def audit_historical_coverage_and_blockers(
         "missing_publication_timestamps": sum(b.published_at is None for b in bars),
         "blockers": LIMITATIONS[:4]
         + [
-            "Legacy bvmt.com.tn ZIPs reportedly returned 0 bytes; official investor request needed for older history."
+            "2020–2025 local NDJSON contains monthly summaries, not usable daily OHLCV; no authorized older daily archive is present in data/raw. Legacy ZIP zero-byte failures are saved user reports, not newly verified HTTP responses. Request official daily history.",
+            "No verified dated dividend, split or rights adjustment table is locally available; raw closes cannot establish total returns. Request official corporate-action records.",
         ],
     }
 
@@ -365,6 +369,7 @@ def _simulate(
     config: StrategyLabConfig,
     *,
     decision_start: int,
+    continuous_trim: bool = False,
 ) -> _Run:
     """Sequential cash/share ledger. Orders generated at close execute next open once."""
     cash = config.execution.initial_cash_tnd
@@ -472,6 +477,14 @@ def _simulate(
             }
         )
         pending = []
+        if continuous_trim and index >= decision_start and index < len(sessions) - 1:
+            for key, quantity in holdings.items():
+                if D(quantity) * marks[key] > config.execution.max_position_weight * equity:
+                    wanted = int(
+                        equity * min(D(".085"), config.execution.max_position_weight) / marks[key]
+                    )
+                    pending.append(MarketOrder(key, session, "sell", quantity - wanted))
+            orders += len(pending)
         if (
             index >= decision_start
             and (index - decision_start) % config.rebalance_every_sessions == 0
@@ -486,6 +499,13 @@ def _simulate(
             if strategy == STRATEGY_IDS[2] and index != decision_start:
                 continue
             targets = _targets(strategy, metrics, config, initial)
+            # A breached holding is trimmed toward 8.5%, including on rebalance dates.
+            for order in pending:
+                targets[order.instrument_id] = min(
+                    targets.get(order.instrument_id, D(0)), D(".085")
+                )
+            orders -= len(pending)
+            pending = []
             for key in sorted(set(holdings) | set(targets)):
                 if key not in marks:
                     continue
@@ -529,6 +549,7 @@ def _simulate(
             "market_drift_breach_sessions": drift_sessions,
             "stale_holding_marks": stale_marks,
             "terminal_exit_fee_tnd": _number(terminal_fee),
+            "terminal_marks": {k: str(v) for k, v in marks.items()},
             "fills": fills,
         },
     }
@@ -536,6 +557,195 @@ def _simulate(
 
 
 DEFAULT_LAB_CONFIG = StrategyLabConfig()
+
+
+AUDIT_FINDINGS = [
+    "Marked C excess omitted liquidated and B comparisons; cash exposures differ materially.",
+    "Nine hypotheses selected on one 194-session 2026 sample induce specification-selection bias.",
+    "D and F rankings are identical when five names exceed the mean: constant translation preserves order.",
+    "G's approximately 30% active utilization explains much of its low drawdown; SOTETEL dependency is material but not over 100% of profit in the 100000 TND registry.",
+    "Purchase-only 10% checks permit inter-rebalance concentration drift above 14%.",
+    "Traded bars include 32.90% open=close, 25.11% flat OHLC and 21.37% volume below 500.",
+    "Full-day volume used for next-open capacity is intraday lookahead; opening-auction volume is unknown.",
+    "50 bps commissions are rounded to .001 TND; terminal liquidation estimates fees only.",
+    "Missing dividends and corporate actions distort raw momentum and buy-and-hold total returns.",
+    "Seven 61/19 folds test chronological stability, not untouched structural model selection.",
+]
+
+
+def _active_utilization(run: _Run, start: int) -> float:
+    points = run.curve[start:]
+    return (
+        sum(p["holdings_value_tnd"] / p["total_equity_tnd"] * 100 for p in points) / len(points)
+        if points
+        else 0.0
+    )
+
+
+def _active_factors(run: _Run, start: int) -> list[float]:
+    # Include the return into the initial active mark; it is flat in the base run.
+    return [
+        p["total_equity_tnd"]
+        / (run.curve[i - 1]["total_equity_tnd"] if i else p["total_equity_tnd"])
+        for i, p in enumerate(run.curve)
+        if i >= start
+    ]
+
+
+def _bootstrap_interval(factors: Sequence[float]) -> dict[str, Any]:
+    rng = random.Random(42)
+    n = len(factors)
+    block = min(5, n)
+    returns = []
+    for _ in range(500):
+        sample: list[float] = []
+        while len(sample) < n:
+            offset = rng.randrange(n - block + 1)
+            sample.extend(factors[offset : offset + block])
+        returns.append((math.prod(sample[:n]) - 1) * 100)
+    returns.sort()
+
+    def quantile(q: float) -> float:
+        index = q * (len(returns) - 1)
+        lower = int(index)
+        return _number(
+            returns[lower] + (returns[min(lower + 1, 499)] - returns[lower]) * (index - lower)
+        )
+
+    return {
+        "lower_pct": quantile(0.025),
+        "upper_pct": quantile(0.975),
+        "resamples": 500,
+        "block_size": 5,
+        "method": "deterministic_moving_block_bootstrap_active_sessions",
+    }
+
+
+def _winner_pnl(run: _Run) -> tuple[str | None, float]:
+    """Attribute net marked P&L including both realized cash flows and open shares."""
+    shares: dict[str, int] = {}
+    pnl: dict[str, Decimal] = {}
+    for fill in run.fills:
+        key = fill["instrument_id"]
+        sign = 1 if fill["side"] == "sell" else -1
+        shares[key] = shares.get(key, 0) - sign * fill["quantity"]
+        pnl[key] = (
+            pnl.get(key, D(0))
+            + sign * _money(D(fill["quantity"]) * D(fill["price_tnd"]))
+            - D(fill["fee_tnd"])
+        )
+    # _simulate includes final marks for exact open-position attribution.
+    for key, quantity in shares.items():
+        pnl[key] += D(quantity) * D(run.summary["diagnostics"]["terminal_marks"][key])
+    winner = min(pnl, key=lambda key: (-pnl[key], key)) if pnl else None
+    return winner, _number(pnl[winner]) if winner else 0.0
+
+
+def _risk_metrics(
+    strategy: str,
+    run: _Run,
+    base_runs: dict[str, _Run],
+    sessions: Sequence[date],
+    by_date: dict[date, dict[str, DailyBar]],
+    features: dict[date, list[_Metrics]],
+    master: Sequence[InstrumentRecord],
+    cutoffs: dict[date, datetime | None],
+    config: StrategyLabConfig,
+) -> dict[str, Any]:
+    start = config.warmup_sessions - 1
+    util = _number(_active_utilization(run, start))
+    factors = _active_factors(run, start)
+    volatility = (
+        _number(stdev([f - 1 for f in factors]) * math.sqrt(250) * 100) if len(factors) > 1 else 0.0
+    )
+    b, c = base_runs[STRATEGY_IDS[1]], base_runs[STRATEGY_IDS[2]]
+    b_util = _number(_active_utilization(b, start))
+    matched = _number(b.summary["net_return_pct"] * util / b_util) if b_util else 0.0
+    equal = _simulate(
+        strategy,
+        sessions,
+        by_date,
+        features,
+        replace(
+            config,
+            top_k=10,
+            target_weight=D(".095"),
+            execution=replace(config.execution, max_position_weight=D(".10")),
+        ),
+        decision_start=start,
+    )
+    trim = _simulate(
+        strategy, sessions, by_date, features, config, decision_start=start, continuous_trim=True
+    )
+    winner, pnl = _winner_pnl(run)
+    if winner:
+        excluded = {
+            day: {k: v for k, v in today.items() if k != winner} for day, today in by_date.items()
+        }
+        excluded_features = {
+            day: _metrics(sessions[: i + 1], excluded, master, cutoffs[day])
+            for i, day in enumerate(sessions)
+            if i >= start
+        }
+        ex_return = _simulate(
+            strategy, sessions, excluded, excluded_features, config, decision_start=start
+        ).summary["net_return_pct"]
+    else:
+        ex_return = run.summary["net_return_pct"]
+    result: dict[str, Any] = {
+        "active_session_count": len(factors),
+        "active_cash_utilization_pct": _number(util),
+        "realized_annualized_volatility_pct": _number(volatility),
+        "return_to_volatility_ratio": _number(run.summary["net_return_pct"] / volatility)
+        if volatility
+        else 0.0,
+        "cash_matched_benchmark_b_return_pct": _number(matched),
+        "excess_vs_cash_matched_b_pct": _number(run.summary["net_return_pct"] - matched),
+        "equal_budget_10slot_net_return_pct": equal.summary["net_return_pct"],
+        "equal_budget_10slot_liquidated_return_pct": equal.summary["liquidated_return_pct"],
+        "equal_budget_10slot_max_drawdown_pct": equal.summary["max_drawdown_pct"],
+        "equal_budget_10slot_active_utilization_pct": _number(_active_utilization(equal, start)),
+        "continuous_concentration_trim_net_return_pct": trim.summary["net_return_pct"],
+        "continuous_concentration_trim_max_weight_pct": trim.summary["max_single_stock_weight_pct"],
+        "top_winner_instrument_id": winner,
+        "top_winner_net_pnl_tnd": pnl,
+        "ex_top_winner_net_return_pct": ex_return,
+        "bootstrap_return_ci_95": _bootstrap_interval(factors),
+    }
+    for label, source in (
+        ("return", "net_return_pct"),
+        ("liquidated_return", "liquidated_return_pct"),
+        ("max_drawdown", "max_drawdown_pct"),
+    ):
+        result[f"exposure_normalized_{label}_pct"] = (
+            _number(run.summary[source] / (util / 100)) if util else 0.0
+        )
+    for label, bench in (("b", b), ("c", c)):
+        for convention, field in (
+            ("marked", "net_return_pct"),
+            ("liquidated", "liquidated_return_pct"),
+        ):
+            result[f"excess_vs_{label}_{convention}_pct"] = _number(
+                run.summary[field] - bench.summary[field]
+            )
+    subperiods = {}
+    for name, begin, end in (
+        ("h1_2026_spring_rally", "2026-03-30", "2026-06-30"),
+        ("h2_2026_consolidation", "2026-06-30", "2026-11-06"),
+        ("oct_nov_competition_window", "2026-10-01", "2026-11-06"),
+    ):
+        points = [p for p in run.curve[start:] if begin <= p["session_date"] <= end]
+        subperiods[name] = {
+            "start_session": points[0]["session_date"] if points else None,
+            "end_session": points[-1]["session_date"] if points else None,
+            "return_pct": _number(
+                (points[-1]["total_equity_tnd"] / points[0]["total_equity_tnd"] - 1) * 100
+            )
+            if points
+            else 0.0,
+        }
+    result["subperiods"] = subperiods
+    return result
 
 
 def evaluate_strategy_suite(
@@ -734,6 +944,9 @@ def evaluate_strategy_suite(
             config_hash=contract_hash,
             experiment_id=_hash({"config_hash": contract_hash, "strategy_id": strategy}),
             diagnostics=run.summary["diagnostics"],
+            risk_normalized_metrics=_risk_metrics(
+                strategy, run, base_runs, sessions, by_date, features, master, cutoffs, config
+            ),
         )
         reports.append(asdict(report))
     return {
@@ -742,6 +955,16 @@ def evaluate_strategy_suite(
         "data_hash": data_hash,
         "config_hash": contract_hash,
         "trial_count": 9,
+        "audit_summary": {
+            "model_g_audit_status": "exploratory_unvalidated_high_outlier_dependency",
+            "model_g_promotion_eligible": False,
+            "key_findings": AUDIT_FINDINGS.copy(),
+        },
+        "robustness_v2": {
+            "version": "2.0",
+            "metrics_field": "risk_normalized_metrics",
+            "interpretation": "Descriptive selected-sample diagnostics; cash matching is linear scaling, not executable leverage. Next-open trims remain capacity limited; bootstrap intervals do not correct selection bias.",
+        },
         "reports": reports,
         "ml_promotion_gate": {
             "eligible": False,

@@ -375,3 +375,153 @@ def test_initial_sleeves_are_capped_and_ties_are_stable() -> None:
     assert list(
         _targets(STRATEGY_IDS[3], [one, replace(one, instrument_id="A")], replace(cfg, top_k=1), [])
     ) == ["A"]
+
+
+def test_risk_metrics_cash_and_benchmark_conventions() -> None:
+    from bvmt.strategies import _bootstrap_interval
+
+    suite = evaluate_strategy_suite(*sample(194))
+    assert suite["audit_summary"]["model_g_promotion_eligible"] is False
+    assert len(suite["audit_summary"]["key_findings"]) == 10
+    assert suite["robustness_v2"]["version"] == "2.0"
+    b, c = suite["reports"][1:3]
+    for report in suite["reports"]:
+        risk = report["risk_normalized_metrics"]
+        assert risk["active_session_count"] == 134
+        points = report["equity_curve"][60:]
+        util = sum(p["holdings_value_tnd"] / p["total_equity_tnd"] * 100 for p in points) / 134
+        assert risk["active_cash_utilization_pct"] == round(util, 6)
+        for label, field in (
+            ("return", "net_return_pct"),
+            ("liquidated_return", "liquidated_return_pct"),
+            ("max_drawdown", "max_drawdown_pct"),
+        ):
+            assert risk[f"exposure_normalized_{label}_pct"] == (
+                round(report[field] / (risk["active_cash_utilization_pct"] / 100), 6)
+                if util
+                else 0.0
+            )
+        for key, bench in (("b", b), ("c", c)):
+            assert risk[f"excess_vs_{key}_marked_pct"] == round(
+                report["net_return_pct"] - bench["net_return_pct"], 6
+            )
+            assert risk[f"excess_vs_{key}_liquidated_pct"] == round(
+                report["liquidated_return_pct"] - bench["liquidated_return_pct"], 6
+            )
+        ci = risk["bootstrap_return_ci_95"]
+        assert ci["lower_pct"] <= ci["upper_pct"]
+        assert ci["resamples"] == 500 and ci["block_size"] == 5
+    cash = suite["reports"][0]["risk_normalized_metrics"]
+    assert cash["top_winner_instrument_id"] is None
+    assert cash["realized_annualized_volatility_pct"] == 0
+    assert cash["ex_top_winner_net_return_pct"] == 0
+    assert _bootstrap_interval([1.0] * 10)["lower_pct"] == 0
+    factors = [1.01, 0.97, 1.04, 1.02, 0.99] * 4
+    assert _bootstrap_interval(factors) == _bootstrap_interval(factors)
+
+
+def test_continuous_trim_is_later_and_does_not_guarantee_hard_cap() -> None:
+    bars, _, _ = sample(65)
+    days = [b.session_date for b in bars]
+    for i in range(62, 65):
+        bars[i] = replace(bars[i], open=D(20), close=D(20), high=D(21), low=D(19))
+    cfg = StrategyLabConfig(
+        execution=BacktestConfig(
+            initial_cash_tnd=D(1000), max_position_weight=D(".1"), carry_pending_orders=False
+        )
+    )
+    args = (
+        STRATEGY_IDS[3],
+        days,
+        {b.session_date: {"X": b} for b in bars},
+        {days[60]: [_Metrics("X", 0.1, 0.2, 0.01, 1, 100000, 0.01, 0.03, 0.7)]},
+        cfg,
+    )
+    baseline = _simulate(*args, decision_start=60)
+    trimmed = _simulate(*args, decision_start=60, continuous_trim=True)
+    assert len(baseline.fills) == 1
+    assert trimmed.fills[1]["side"] == "sell"
+    assert trimmed.fills[1]["decision_session"] == days[62].isoformat()
+    assert trimmed.fills[1]["session_date"] == days[63].isoformat()
+    assert trimmed.summary["diagnostics"]["market_drift_breach_sessions"] == 1
+    assert trimmed.summary["max_single_stock_weight_pct"] > 10
+
+
+def test_winner_pnl_includes_open_positions_and_fees() -> None:
+    from bvmt.strategies import _winner_pnl
+
+    bars, _, _ = sample(63)
+    days = [b.session_date for b in bars]
+    bars[-1] = replace(bars[-1], open=D(11), close=D(11))
+    config = StrategyLabConfig(
+        execution=BacktestConfig(
+            initial_cash_tnd=D(1000), max_position_weight=D(".1"), carry_pending_orders=False
+        )
+    )
+    run = _simulate(
+        STRATEGY_IDS[3],
+        days,
+        {b.session_date: {"X": b} for b in bars},
+        {days[60]: [_Metrics("X", 0.1, 0.2, 0.01, 1, 100000, 0.01, 0.03, 0.7)]},
+        config,
+        decision_start=60,
+    )
+    key, pnl = _winner_pnl(run)
+    assert key == "X"
+    assert pnl == pytest.approx(run.summary["net_return_pct"] * 10)
+
+
+def test_equal_budget_comparison_is_an_independent_resimulation() -> None:
+    bars, master, calendar = sample(80)
+    # One rising, liquid instrument gives a hand-verifiable difference in share sizing.
+    bars = [replace(b, close=D(10) + D(i) / 100) for i, b in enumerate(bars)]
+    config = StrategyLabConfig(
+        execution=BacktestConfig(
+            initial_cash_tnd=D(10000), max_position_weight=D(".1"), carry_pending_orders=False
+        )
+    )
+    suite = evaluate_strategy_suite(bars, master, calendar, config=config)
+    days = [b.session_date for b in bars]
+    by_date = {b.session_date: {"X": b} for b in bars}
+    features = {d: _metrics(days[: i + 1], by_date, master) for i, d in enumerate(days) if i >= 60}
+    independent = _simulate(
+        STRATEGY_IDS[6],
+        days,
+        by_date,
+        features,
+        replace(config, top_k=10, target_weight=D(".095")),
+        decision_start=60,
+    )
+    report = suite["reports"][6]
+    risk = report["risk_normalized_metrics"]
+    assert risk["equal_budget_10slot_net_return_pct"] == independent.summary["net_return_pct"]
+    assert (
+        risk["equal_budget_10slot_liquidated_return_pct"]
+        == independent.summary["liquidated_return_pct"]
+    )
+    assert risk["equal_budget_10slot_max_drawdown_pct"] == independent.summary["max_drawdown_pct"]
+    assert risk["equal_budget_10slot_active_utilization_pct"] > risk["active_cash_utilization_pct"]
+    assert risk["top_winner_instrument_id"] == "X"
+    assert risk["ex_top_winner_net_return_pct"] == 0
+    b = suite["reports"][1]
+    assert risk["cash_matched_benchmark_b_return_pct"] == pytest.approx(
+        b["net_return_pct"]
+        * risk["active_cash_utilization_pct"]
+        / b["risk_normalized_metrics"]["active_cash_utilization_pct"],
+        abs=1e-6,
+    )
+    assert risk["realized_annualized_volatility_pct"] > 0
+
+
+def test_robustness_supports_lower_base_purchase_caps() -> None:
+    config = StrategyLabConfig(
+        execution=BacktestConfig(max_position_weight=D(".05"), carry_pending_orders=False),
+        target_weight=D(".04"),
+    )
+    suite = evaluate_strategy_suite(*sample(80), config=config)
+    # Equal-budget reruns explicitly use the requested 10% cap / 9.5% target;
+    # the base run and its daily trims retain the user's lower purchase cap.
+    assert (
+        suite["reports"][3]["risk_normalized_metrics"]["equal_budget_10slot_active_utilization_pct"]
+        > suite["reports"][3]["risk_normalized_metrics"]["active_cash_utilization_pct"]
+    )

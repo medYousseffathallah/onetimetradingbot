@@ -626,6 +626,8 @@ def test_module_app_and_openapi() -> None:
         "/api/rankings",
         "/api/research",
         "/api/strategy-lab",
+        "/api/paper-trading",
+        "/api/paper-trading/record-signal",
         "/api/health",
         "/api/sync/browser",
         "/api/sync/preview",
@@ -679,6 +681,8 @@ def test_strategy_lab_and_research_share_saved_registry(
             for s in STRATEGY_IDS
         ],
         "historical_audit": {"retrieved_at": None},
+        "robustness_v2": {"version": "2.0"},
+        "audit_summary": {"model_g_promotion_eligible": False},
     }
     path = tmp_path / "registry.json"
     path.write_text(json.dumps(registry), encoding="utf-8")
@@ -687,6 +691,49 @@ def test_strategy_lab_and_research_share_saved_registry(
         lab = client.get("/api/strategy-lab")
         assert lab.status_code == 200
         assert lab.json()["registry"] == registry
+        assert lab.json()["robustness_v2"] == {"version": "2.0"}
         assert client.get("/api/research").json()["strategy_comparison"] == registry
         assert client.post("/api/strategy-lab").status_code == 405
+    assert ledger_bytes(service) == before
+
+
+def test_paper_api_is_separate_from_competition(service: PortfolioStateService) -> None:
+    from bvmt.paper_trading import PaperJournalState
+
+    before = ledger_bytes(service)
+    state = PaperJournalState()
+    with patch("bvmt.api.load_or_init_paper_journal", return_value=state) as load:
+        with patch("bvmt.api.record_forward_paper_signal", return_value=state) as record:
+            with TestClient(create_app(service)) as client:
+                body = client.get("/api/paper-trading").json()
+                assert body["status"] == "available"
+                assert body["journal"]["is_paper_only"] is True
+                assert body["journal"]["autonomous_trading_enabled"] is False
+                assert client.post("/api/paper-trading/record-signal", json={}).status_code == 200
+                assert (
+                    client.post(
+                        "/api/paper-trading/record-signal", json={"as_of_session": "not-date"}
+                    ).status_code
+                    == 422
+                )
+                assert (
+                    client.post(
+                        "/api/paper-trading/record-signal",
+                        json={"autonomous_trading_enabled": True},
+                    ).status_code
+                    == 422
+                )
+            assert load.call_count == record.call_count == 1
+    assert ledger_bytes(service) == before
+
+
+def test_paper_api_rejects_invalid_signal(service: PortfolioStateService) -> None:
+    before = ledger_bytes(service)
+    with patch(
+        "bvmt.api.record_forward_paper_signal", side_effect=ValueError("secret internal path")
+    ):
+        with TestClient(create_app(service)) as client:
+            response = client.post("/api/paper-trading/record-signal", json={"strategy_id": "bad"})
+            assert response.status_code == 400
+            assert "secret internal path" not in response.text
     assert ledger_bytes(service) == before

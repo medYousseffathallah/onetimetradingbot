@@ -205,3 +205,83 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
   - `uv run --no-sync python scripts/check.py`: Ruff format check passed (39 files), Ruff lint passed, `mypy src/bvmt` passed (17 files), skill validation passed (10 skills), and `pytest -q` passed (**275 passed** in 35.48s).
   - `npm.cmd run typecheck` and `npm.cmd run build` in `frontend/`: Compiled cleanly (`10/10` static routes generated, `/strategy` route built).
 - Next exact action: Acquire official 2020–2025 annual BVMT historical daily archives (`histo_cotation_YYYY.zip`) and official corporate-action/dividend adjustment tables to expand sample depth beyond 250 sessions.
+
+## Milestone 5 — Strategy robustness and forward validation (Codex, 2026-11-08)
+
+- Scope: only the ten authorized deliverables: `docs/INDEPENDENT_STRATEGY_AUDIT.md`,
+  `src/bvmt/strategies.py`, `src/bvmt/paper_trading.py`, `src/bvmt/api.py`,
+  `tests/test_strategies.py`, `tests/test_paper_trading.py`, `tests/test_api.py`,
+  `artifacts/strategy_experiments_2026.json`, its new `_v1_archive.json`, and this STATE.
+  No frontend, competition account, shared config, dependency or other owned modules changed.
+- Phase 0 audit was written before strategy edits, with Milestone 4 code line references,
+  measured OHLC/volume statistics, target-identity checks, attribution/exclusion reruns,
+  concentration reconstruction, and a severity-ranked table covering all ten questions.
+  Two premises required evidence-based corrections: the registry uses **100,000 TND**,
+  so G's **12,097.785 TND** ledger-consistent SOTETEL P&L is about **64.31%** of profit,
+  not >100%; ex-SOTETEL G is **+7.431954%**, not negative. Also the locally saved earlier
+  backtest benchmark **does pay entry costs and apply volume caps**: reviewed current
+  execution code independently reproduces its **19.94452800%**, first mark **49,969.104**,
+  and final mark **59,972.264 TND** exactly. No frictionless prior version is established.
+- Archived original registry bytes before modification; archive SHA-256:
+  `719895467f1c706c687571ee345e93146ff4a206208d9aff0ef3cfe2cc2c637a`.
+  Added all requested per-report `risk_normalized_metrics`, top-level `robustness_v2`
+  and `audit_summary`, preserving original report values/diagnostics and existing fields
+  except deliberately updated provenance hashes. Report dataclass field has a default
+  for backward-compatible construction. Equal-budget reruns explicitly use the 10%
+  purchase cap and ten 9.5% sleeves, including when the base config has a lower cap.
+- G: active utilization **29.787636%**; ten-slot return **25.366662%**, utilization
+  **60.838101%** (95% target does not imply 95% filled exposure); daily next-open trim
+  return **17.673409%**, maximum weight **10.916930%**. Trims are still delayed and
+  capacity limited, not continuous hard-cap compliance. Moving-block bootstrap uses
+  500 resamples, block length 5, fresh `random.Random(42)`, active return factors,
+  compounded returns, and interpolated empirical 2.5/97.5 percentiles. It does not
+  correct structural selection bias. G remains promotion ineligible.
+- Local history audit: raw directory has only `.gitkeep`; processed alternatives are
+  2026 vintages. Older NDJSON summaries do not establish usable 2020–2025 daily bars.
+  No verified dated corporate-action table is available. Saved zero-byte ZIP failure
+  is an attributed user report, not a new network observation. No data was fabricated.
+- New forward journal: 50,000 TND paper-only cash inception at latest completed observed
+  session; immutable decision snapshots and separately settled order records; hashes of
+  config, strategy/journal/execution code and cutoff-bounded inputs; integrity envelope,
+  atomic replace and single-writer lock. Retries are idempotent; backdating, strategy
+  changes during recording, input revisions and future availability are rejected.
+  Only the immediately next calendar open can fill, and it must occur after the actual
+  signal timestamp. Missing/zero-volume sessions block/expire, partial remainders expire,
+  shared volume, cash, 10% purchase cap, 50 bps fees and 10 bps slippage apply. Costs use
+  Decimal. The analytical equal-weight inception-close benchmark is explicitly labeled
+  frictionless/fractional. Missing holding marks retain last close. Daily full-volume
+  opening-price capacity remains an ex-post hypothetical assumption, not auction evidence.
+- Added GET `/api/paper-trading`, POST `/api/paper-trading/record-signal`, injectable
+  journal/data paths and `robustness_v2` exposure in `/api/strategy-lab`. No real paper
+  journal was initialized during development: integration tests use temporary journals.
+  No live LLM calls, network acquisition, competition writes or autonomous submissions.
+- Verification used `C:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/.venv/Scripts/python.exe`
+  with `$env:PYTHONPATH = "$PWD/src"` and bytecode disabled. Ran `-m ruff format` on
+  changed Python files, `-m ruff check`, strict `-m mypy src/bvmt`, then unchanged
+  `scripts/check.py`: **41 files formatted, Ruff passed, mypy passed (18 modules),
+  10 skill entrypoints validated, 305 pytest tests passed** in **47.66s**, exit **0**.
+  One existing Starlette/httpx deprecation warning. First native pytest attempt could
+  not create usable fixtures due Windows `mkdir(mode=0700)` sandbox ACLs; final gate
+  used the previously documented in-memory launcher, changing only workspace mkdir
+  mode to inherited permissions and intercepting the pytest subprocess to run the
+  same pytest suite in-process with cache disabled and a workspace basetemp. No test
+  assertions, production behavior or gate script were loosened. Python shutdown again
+  emitted an unrelated standard-temp-directory cleanup PermissionError after success.
+- Cleanup limitation: automatic approval review rejected both bounded recursive cleanup
+  and the safer individual-file/empty-directory cleanup commands as **blocked by policy**.
+  `.m5-tests-inherited`, `.m5-full-gate`, `.m5-final-gate` remain temporary untracked
+  test outputs. `.m5-test-temp` from the initial native run is ACL-inaccessible; native
+  ACL reset and empty-directory deletion also failed. Pre-existing inaccessible temporary
+  directories were preserved. Nothing staged or committed. Artifacts remain Git-ignored.
+- Next exact action: integrator reviews the additive registry/API contracts and corrected
+  audit, transfers ignored artifact files explicitly, and begins timestamped forward-only
+  paper observation when new verified sessions arrive. Obtain authorized 2020–2025 daily
+  history plus action/membership/availability records before any promotion claim. Remove
+  the listed temporary test directories from an authorized local session.
+- Final artifact verification: regenerated registry source SHA-256
+  `8d08599b213a8f885dc602a9b2fd9114455d8a2dba9ff611231682dc9ffbdd6c`
+  matches final `strategies.py`; byte-level archive checksum remains unchanged. Compared
+  JSON-deserialized old/new report values and every prior diagnostic value: preserved
+  except updated config/experiment hashes. Saved-file `/api/strategy-lab` smoke test
+  returned HTTP 200, `robustness_v2.version=2.0`, and all nine risk-metric reports.
+  `git diff --check` passed. Strict requested file ownership preserved.

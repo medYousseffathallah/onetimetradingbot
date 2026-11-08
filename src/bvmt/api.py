@@ -39,6 +39,13 @@ from bvmt.dashboard import DashboardAppState
 from bvmt.data import inspect_market_dataset_provenance, read_bars_csv
 from bvmt.ledger import CompetitionScreenshotSnapshot, ReconciliationReport
 from bvmt.llm import search_document_index
+from bvmt.paper_trading import (
+    DATA_DIR,
+    DEFAULT_JOURNAL_PATH,
+    DEFAULT_STRATEGY,
+    load_or_init_paper_journal,
+    record_forward_paper_signal,
+)
 from bvmt.portfolio_service import PortfolioStateService
 
 PortfolioMode = Literal["REAL_COMPETITION", "SYNTHETIC_DEMO"]
@@ -335,6 +342,18 @@ class StrategyLabResponse(APIModel):
     status: Literal["available", "unavailable", "invalid"]
     registry: dict[str, Any] | None = None
     limitations: list[str] = Field(default_factory=list)
+    robustness_v2: dict[str, Any] | None = None
+
+
+class PaperTradingResponse(APIModel):
+    status: Literal["available"] = "available"
+    journal: dict[str, Any]
+
+
+class RecordPaperSignalRequest(APIModel):
+    model_config = ConfigDict(extra="forbid")
+    strategy_id: str = DEFAULT_STRATEGY
+    as_of_session: date | None = None
 
 
 class AlertItem(APIModel):
@@ -592,6 +611,10 @@ def create_app(
     service: PortfolioStateService | None = None,
     *,
     strategy_registry_path: Path = Path("artifacts/strategy_experiments_2026.json"),
+    paper_journal_path: Path = DEFAULT_JOURNAL_PATH,
+    paper_bars_path: Path = DATA_DIR / "daily_bars.canonical.csv",
+    paper_instruments_path: Path = DATA_DIR / "instrument_master.csv",
+    paper_calendar_path: Path = DATA_DIR / "exchange_calendar.csv",
 ) -> FastAPI:
     """Create an offline-default app; supplied services keep all custom path overrides."""
     base = service if service is not None else PortfolioStateService()
@@ -612,7 +635,9 @@ def create_app(
                 )
             ):
                 raise ValueError("Invalid registry structure")
-            return StrategyLabResponse(status="available", registry=registry)
+            return StrategyLabResponse(
+                status="available", registry=registry, robustness_v2=registry.get("robustness_v2")
+            )
         except FileNotFoundError:
             return StrategyLabResponse(
                 status="unavailable",
@@ -631,6 +656,34 @@ def create_app(
     @application.get("/api/strategy-lab")
     def strategy_lab() -> StrategyLabResponse:
         return load_strategy_lab()
+
+    @application.get("/api/paper-trading")
+    def paper_trading() -> PaperTradingResponse:
+        journal = load_or_init_paper_journal(
+            paper_journal_path,
+            bars_path=paper_bars_path,
+            instruments_path=paper_instruments_path,
+            calendar_path=paper_calendar_path,
+        )
+        return PaperTradingResponse(journal=asdict(journal))
+
+    @application.post("/api/paper-trading/record-signal")
+    def paper_signal(request: RecordPaperSignalRequest) -> PaperTradingResponse:
+        try:
+            journal = record_forward_paper_signal(
+                paper_journal_path,
+                as_of_session=request.as_of_session,
+                strategy_id=request.strategy_id,
+                bars_path=paper_bars_path,
+                instruments_path=paper_instruments_path,
+                calendar_path=paper_calendar_path,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Paper signal rejected: invalid strategy, date, journal or revised history.",
+            ) from exc
+        return PaperTradingResponse(journal=asdict(journal))
 
     application.add_middleware(
         CORSMiddleware,
