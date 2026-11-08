@@ -5,8 +5,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatTnd(val: string | number | null | undefined): string {
-  if (val === null || val === undefined || val === "") return "0.000 TND";
+export function formatTnd(
+  val: string | number | null | undefined,
+  fallback = "Unavailable"
+): string {
+  if (val === null || val === undefined || val === "") return fallback;
   const num = typeof val === "number" ? val : parseFloat(String(val));
   if (Number.isNaN(num)) return `${val} TND`;
   return `${num.toLocaleString("en-US", {
@@ -15,8 +18,12 @@ export function formatTnd(val: string | number | null | undefined): string {
   })} TND`;
 }
 
-export function formatPct(val: string | number | null | undefined, signed = true): string {
-  if (val === null || val === undefined || val === "") return "0.00%";
+export function formatPct(
+  val: string | number | null | undefined,
+  signed = true,
+  fallback = "N/A"
+): string {
+  if (val === null || val === undefined || val === "") return fallback;
   const num = typeof val === "number" ? val : parseFloat(String(val));
   if (Number.isNaN(num)) return `${val}%`;
   const prefix = signed && num > 0 ? "+" : "";

@@ -75,6 +75,7 @@ from bvmt.recommendations import (
     VerifiedEventSignal,
     generate_recommendations,
 )
+from bvmt.research_coverage import MarketResearchReport, evaluate_market_research_coverage
 from bvmt.rules import competition_blockers
 
 if not hasattr(_bvmt_browser, "run_browser_sync_subprocess"):
@@ -225,6 +226,7 @@ class DashboardAppState:
     latest_browser_snapshot: CompetitionPortfolioDOMSnapshot | None = None
     pending_browser_snapshot: CompetitionPortfolioDOMSnapshot | None = None
     market_data_provenance: dict[str, object] = field(default_factory=dict)
+    research_coverage: MarketResearchReport | None = None
 
 
 def evaluate_account_sync_freshness(
@@ -513,6 +515,15 @@ def build_dashboard_state(
         if b.status == "traded":
             price_map[b.instrument_id] = quantize_tnd(b.close)
 
+    research_report = evaluate_market_research_coverage(
+        instruments,
+        calendar,
+        bars,
+        cutoff,
+        baseline_report=baseline,
+        portfolio_equity=ledger.initial_cash_tnd,
+    )
+
     recs = generate_recommendations(
         baseline,
         ledger,
@@ -521,6 +532,7 @@ def build_dashboard_state(
         data_is_synthetic=data_is_synthetic,
         rule_blocker_count=len(rule_blockers),
         verified_events=events,
+        market_quotes=price_map,
     )
 
     latest_bar_date = max((b.session_date for b in eligible_bars), default=None)
@@ -632,6 +644,7 @@ def build_dashboard_state(
         latest_browser_snapshot=latest_browser_snap,
         pending_browser_snapshot=pending_browser_snap,
         market_data_provenance=market_data_provenance,
+        research_coverage=research_report,
     )
 
 

@@ -631,6 +631,7 @@ def test_module_app_and_openapi() -> None:
         "/api/paper-trading/record-signal",
         "/api/health",
         "/api/glossary",
+        "/api/market-research",
         "/api/sync/browser",
         "/api/sync/preview",
         "/api/sync/confirm",

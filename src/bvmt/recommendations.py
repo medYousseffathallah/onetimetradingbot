@@ -7,7 +7,7 @@ returns, and never submits orders automatically.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -127,6 +127,7 @@ def generate_recommendations(
     top_buy_count: int = 3,
     target_buy_weight_ratio: Decimal = TARGET_BUY_WEIGHT_RATIO,
     reduce_trigger_weight_ratio: Decimal = REDUCE_TRIGGER_WEIGHT_RATIO,
+    market_quotes: Mapping[str, Decimal] | None = None,
 ) -> RecommendationReport:
     """Combine session-aware rankings, verified event signals, and portfolio ledger into 5-state recommendations."""
     if generated_at.tzinfo is None or generated_at.utcoffset() is None:
@@ -134,8 +135,12 @@ def generate_recommendations(
     if top_buy_count < 1:
         raise ValueError("top_buy_count must be >= 1")
 
-    # Build current price map from baseline candidates
+    # Build current price map from market quotes and baseline candidates
     price_map: dict[str, Decimal] = {}
+    if market_quotes:
+        for k, v in market_quotes.items():
+            if v is not None and v > Decimal("0"):
+                price_map[k] = quantize_tnd(v)
     candidate_by_inst: dict[str, tuple[int, SessionCandidate]] = {}
     for idx, cand in enumerate(baseline.candidates, start=1):
         px = quantize_tnd(cand.close)
@@ -238,7 +243,11 @@ def generate_recommendations(
                     volatility_20s=None,
                     median_turnover_20s_tnd=None,
                     trade_frequency_20s=None,
-                    reference_price_tnd=str(pos.average_cost_tnd) if pos else None,
+                    reference_price_tnd=(
+                        str(price_map[inst_id])
+                        if inst_id in price_map and price_map[inst_id] > Decimal("0")
+                        else (str(pos.average_cost_tnd) if pos else None)
+                    ),
                     current_shares=held_shares,
                     current_weight_pct=str(current_weight_pct),
                     suggested_side=None,

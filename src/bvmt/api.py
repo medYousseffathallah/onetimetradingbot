@@ -260,6 +260,8 @@ class StockRankingItem(APIModel):
     rank: int | None
     instrument_id: str
     symbol: str
+    isin: str | None = None
+    market_segment: str | None = None
     close_tnd: Money | None
     short_return_pct: Money | None
     long_return_pct: Money | None
@@ -275,6 +277,23 @@ class StockRankingItem(APIModel):
     blocked_reasons: list[str]
     rationale: list[str]
     eligibility_explanations: list[dict[str, str]] = Field(default_factory=list)
+    # Research coverage & sparse data analytics (P0)
+    last_traded_price_tnd: Money | None = None
+    last_traded_date: date | None = None
+    quote_age_sessions: int | None = None
+    observed_trade_return_pct: Money | None = None
+    observed_trade_interval_sessions: int | None = None
+    observation_coverage_ratio: Money | None = None
+    research_confidence_score: float | None = None
+    continuous_research_score: float | None = None
+    conservative_order_capacity_tnd: Money | None = None
+    hypothetical_order_shares: int = 0
+    research_coverage_status: str = "FULL_COVERAGE"
+    signal_availability: str = "FULL_SIGNALS"
+    data_quality_status: str = "VERIFIED_EOD"
+    competition_eligibility: str = "COMPETITION_PERMITTED"
+    strategy_eligibility: str = "ELIGIBLE"
+    execution_feasibility: str = "FEASIBLE"
 
 
 class StockRankingsResponse(APIModel):
@@ -282,6 +301,9 @@ class StockRankingsResponse(APIModel):
     session_date: date
     data_is_synthetic: bool
     simulation_profile: str
+    total_instruments: int = 0
+    eligible_count: int = 0
+    excluded_count: int = 0
     rankings: list[StockRankingItem]
 
 
@@ -972,60 +994,130 @@ def create_app(
         state = for_mode(mode).load_state()
         report = state.recommendations
         synthetic_on_real = state.data_is_synthetic and state.portfolio_mode == "REAL_COMPETITION"
+        research_map = (
+            state.research_coverage.by_instrument if state.research_coverage is not None else {}
+        )
+        ranking_items: list[StockRankingItem] = []
+        for r in report.recommendations:
+            an = research_map.get(r.instrument_id)
+            if r.reference_price_tnd and Decimal(r.reference_price_tnd) > Decimal("0"):
+                close_val: Decimal | None = Decimal(r.reference_price_tnd)
+            elif (
+                an is not None
+                and an.last_verified_price is not None
+                and an.last_verified_price > Decimal("0")
+            ):
+                close_val = an.last_verified_price
+            elif state.price_map.get(r.instrument_id) and state.price_map[
+                r.instrument_id
+            ] > Decimal("0"):
+                close_val = state.price_map[r.instrument_id]
+            else:
+                close_val = None
+
+            dedup_blocked = list(
+                dict.fromkeys(
+                    r.blocked_reasons
+                    + (["synthetic_data_on_real_portfolio"] if synthetic_on_real else [])
+                )
+            )
+            dedup_warn = [
+                w for w in list(dict.fromkeys(r.liquidity_warnings)) if w not in dedup_blocked
+            ]
+
+            ranking_items.append(
+                StockRankingItem(
+                    rank=r.rank,
+                    instrument_id=r.instrument_id,
+                    symbol=r.symbol,
+                    isin=an.isin if an else None,
+                    market_segment=an.market_segment if an else None,
+                    close_tnd=close_val,
+                    short_return_pct=_percent(r.momentum_20s),
+                    long_return_pct=_percent(r.momentum_60s),
+                    volatility_pct=_percent(r.volatility_20s),
+                    trade_frequency_pct=_percent(r.trade_frequency_20s),
+                    median_turnover_tnd=(
+                        Decimal(r.median_turnover_20s_tnd)
+                        if r.median_turnover_20s_tnd
+                        else (an.median_turnover_20s_tnd if an else None)
+                    ),
+                    composite_score=r.composite_score,
+                    eligible=r.rank is not None,
+                    eligibility_warnings=dedup_warn,
+                    recommendation_category="NO TRADE" if synthetic_on_real else r.category,
+                    suggested_side=None if synthetic_on_real else r.suggested_side,
+                    suggested_shares=0 if synthetic_on_real else r.suggested_shares,
+                    blocked_reasons=dedup_blocked,
+                    rationale=r.supporting_evidence + r.main_risks,
+                    eligibility_explanations=[
+                        get_eligibility_explanation(b).to_dict() for b in dedup_blocked
+                    ],
+                    last_traded_price_tnd=an.last_verified_price if an else None,
+                    last_traded_date=an.last_traded_date if an else None,
+                    quote_age_sessions=an.quote_age_sessions if an else None,
+                    observed_trade_return_pct=an.observed_trade_return_pct if an else None,
+                    observed_trade_interval_sessions=(
+                        an.observed_trade_interval_sessions if an else None
+                    ),
+                    observation_coverage_ratio=(
+                        an.observation_coverage_ratio * Decimal("100") if an else None
+                    ),
+                    research_confidence_score=an.research_confidence_score if an else None,
+                    continuous_research_score=an.continuous_research_score if an else None,
+                    conservative_order_capacity_tnd=(
+                        an.conservative_order_capacity_tnd if an else None
+                    ),
+                    hypothetical_order_shares=an.hypothetical_order_shares if an else 0,
+                    research_coverage_status=(
+                        an.classification.research_coverage_status if an else "FULL_COVERAGE"
+                    ),
+                    signal_availability=(
+                        an.classification.signal_availability if an else "FULL_SIGNALS"
+                    ),
+                    data_quality_status=(
+                        an.classification.data_quality_status if an else "VERIFIED_EOD"
+                    ),
+                    competition_eligibility=(
+                        an.classification.competition_eligibility if an else "COMPETITION_PERMITTED"
+                    ),
+                    strategy_eligibility=(
+                        an.classification.strategy_eligibility
+                        if an
+                        else ("ELIGIBLE" if r.rank is not None else "STRATEGY_EXCLUDED")
+                    ),
+                    execution_feasibility=(
+                        an.classification.execution_feasibility if an else "FEASIBLE"
+                    ),
+                )
+            )
+
         return StockRankingsResponse.model_validate(
             {
                 "as_of": report.generated_at,
                 "session_date": report.latest_open_session,
                 "data_is_synthetic": report.data_is_synthetic,
                 "simulation_profile": report.simulation_profile,
-                "rankings": [
-                    StockRankingItem(
-                        rank=r.rank,
-                        instrument_id=r.instrument_id,
-                        symbol=r.symbol,
-                        close_tnd=Decimal(r.reference_price_tnd) if r.reference_price_tnd else None,
-                        short_return_pct=_percent(r.momentum_20s),
-                        long_return_pct=_percent(r.momentum_60s),
-                        volatility_pct=_percent(r.volatility_20s),
-                        trade_frequency_pct=_percent(r.trade_frequency_20s),
-                        median_turnover_tnd=Decimal(r.median_turnover_20s_tnd)
-                        if r.median_turnover_20s_tnd
-                        else None,
-                        composite_score=r.composite_score,
-                        eligible=r.rank is not None,
-                        eligibility_warnings=r.liquidity_warnings,
-                        recommendation_category="NO TRADE" if synthetic_on_real else r.category,
-                        suggested_side=None if synthetic_on_real else r.suggested_side,
-                        suggested_shares=0 if synthetic_on_real else r.suggested_shares,
-                        blocked_reasons=list(
-                            dict.fromkeys(
-                                r.blocked_reasons
-                                + (
-                                    ["synthetic_data_on_real_portfolio"]
-                                    if synthetic_on_real
-                                    else []
-                                )
-                            )
-                        ),
-                        rationale=r.supporting_evidence + r.main_risks,
-                        eligibility_explanations=[
-                            get_eligibility_explanation(b).to_dict()
-                            for b in list(
-                                dict.fromkeys(
-                                    r.blocked_reasons
-                                    + (
-                                        ["synthetic_data_on_real_portfolio"]
-                                        if synthetic_on_real
-                                        else []
-                                    )
-                                )
-                            )
-                        ],
-                    )
-                    for r in report.recommendations
-                ],
+                "total_instruments": len(ranking_items),
+                "eligible_count": sum(1 for it in ranking_items if it.eligible),
+                "excluded_count": sum(1 for it in ranking_items if not it.eligible),
+                "rankings": ranking_items,
             }
         )
+
+    @application.get("/api/market-research")
+    def market_research(mode: PortfolioMode = "REAL_COMPETITION") -> dict[str, object]:
+        state = for_mode(mode).load_state()
+        if state.research_coverage is not None:
+            return state.research_coverage.to_dict()
+        return {
+            "analytics": [],
+            "as_of": state.recommendations.generated_at,
+            "eligible_count": 0,
+            "excluded_count": 0,
+            "latest_open_session": state.recommendations.latest_open_session,
+            "total_instruments": 0,
+        }
 
     @application.get("/api/research")
     def research(q: str = "", mode: PortfolioMode = "REAL_COMPETITION") -> ResearchResponse:

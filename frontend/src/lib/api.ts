@@ -191,6 +191,8 @@ export interface StockRankingItem {
   rank: number | null;
   instrument_id: string;
   symbol: string;
+  isin?: string | null;
+  market_segment?: string | null;
   close_tnd: string | null;
   short_return_pct: string | null;
   long_return_pct: string | null;
@@ -206,6 +208,23 @@ export interface StockRankingItem {
   blocked_reasons: string[];
   rationale: string[];
   eligibility_explanations?: EligibilityExplanationItem[];
+  // Research coverage & sparse data analytics (P0)
+  last_traded_price_tnd?: string | null;
+  last_traded_date?: string | null;
+  quote_age_sessions?: number | null;
+  observed_trade_return_pct?: string | null;
+  observed_trade_interval_sessions?: number | null;
+  observation_coverage_ratio?: string | null;
+  research_confidence_score?: number | null;
+  continuous_research_score?: number | null;
+  conservative_order_capacity_tnd?: string | null;
+  hypothetical_order_shares?: number;
+  research_coverage_status?: string;
+  signal_availability?: string;
+  data_quality_status?: string;
+  competition_eligibility?: string;
+  strategy_eligibility?: string;
+  execution_feasibility?: string;
 }
 
 export interface StockRankingsResponse {
@@ -213,6 +232,9 @@ export interface StockRankingsResponse {
   session_date: string | null;
   data_is_synthetic: boolean;
   simulation_profile: string;
+  total_instruments?: number;
+  eligible_count?: number;
+  excluded_count?: number;
   rankings: StockRankingItem[];
 }
 

@@ -42,7 +42,7 @@ The **Tunis Bourse Challenge** (`2026-10-01` to `2027-05-31`) is an educational 
 | **Primary Web Interface** | `Next.js 15` (App Router), `TypeScript 5.7`, `Tailwind CSS`, `shadcn/ui` primitives, `Recharts`, `Lucide` icons (`127.0.0.1:3000`) |
 | **Fallback Web Interface** | `Streamlit 1.66+` (`127.0.0.1:8501`) |
 | **Authenticated Collector** | `Playwright` (isolated persistent Chrome context, read-only URL allowlist) |
-| **Quality & Verification** | `pytest` (`324+` tests), `ruff`, `mypy --strict`, `pip-audit`, `uv` lockfile |
+| **Quality & Verification** | `pytest` (`332+` tests), `ruff`, `mypy --strict`, `pip-audit`, `uv` lockfile |
 
 ---
 
@@ -460,5 +460,27 @@ To transform the interface from a dense, developer-oriented tool into an accessi
   - Placed alongside table headers, KPI cards, and strategy matrices.
   - Activates on keyboard focus (`Tab` / `Enter`), mouse hover, and mobile touch.
   - Displays indicator definition, formula code block, interpretation guidance, and prominent amber limitations/caveats box.
+
+---
+
+## 15. Research Coverage Recovery & Sparse-Data Analytics (P0)
+
+### 15.1 Separation of Research Coverage from Strategy Eligibility
+Market Explorer decouples quantitative equity research from active competition execution rules across six independent architectural dimensions:
+- **`research_coverage_status`**: `FULL_COVERAGE`, `PARTIAL_HISTORY`, `SPARSE_DATA`, `UNTRADED_HISTORY`, `MISSING_DATA`
+- **`signal_availability`**: `CONTINUOUS_SIGNALS`, `SPARSE_OBSERVED_SIGNALS`, `BENCHMARK_ONLY`, `NO_SIGNALS`
+- **`data_quality_status`**: `VERIFIED_EOD`, `MISSING_SESSIONS`, `SPARSE_VOLUME`, `STALE_QUOTES`, `UNTRADED_ANCHOR`, `RESTRICTED_SEGMENT`, `NO_DATA`
+- **`competition_eligibility`**: `ELIGIBLE`, `MARKET_RESTRICTED`, `UNLISTED`
+- **`strategy_eligibility`**: `ELIGIBLE`, `EXCLUDED`
+- **`execution_feasibility`**: `CONTINUOUS_LIQUID`, `FIXING_ONLY`, `HIGH_SLIPPAGE`, `UNTRADED_CURRENT`
+
+### 15.2 Sparse-Data Analytics Engine (`src/bvmt/research_coverage.py`)
+- **Preserved Traded Prices**: Excluded stocks preserve their genuine last verified traded price and date; missing prices display as **`Unavailable`** (never `0.000 TND`) and missing momentum as **`N/A`** (never `0.00%`).
+- **Quote Age & Observed-Trade Returns**: Thinly traded stocks report observed-trade return ($\frac{P_t - P_{t-k}}{P_{t-k}}$) over actual traded intervals without forward-filling zero-volume bars.
+- **Continuous Research Score**: Liquidity-scaled ranking combining calendar return, 20-session turnover factor, trading frequency, and observation coverage.
+- **Conservative Hypothetical Order Capacity (Zero Volume Lookahead)**: Sized strictly using pre-session information ($t \le \text{cutoff}$), capping order capacity at $\min(0.10 \times \text{Turnover}_{20s}, 0.085 \times \text{Equity})$ with zero next-day volume lookahead.
+- **7-Tab Explorer Navigation**: Filter equities by `All (76)`, `Strategy Eligible (40)`, `Research Ready (50)`, `Partial Data (12)`, `Illiquid / Stale (14)`, `Restricted (12)`, and `Missing Data (0)`.
+- **Dedicated Endpoint**: `GET /api/market-research` exposes complete sparse analytics and classification matrices across all 76 listed instruments.
+
 
 

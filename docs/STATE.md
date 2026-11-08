@@ -1,9 +1,31 @@
 # Working state
 
 ## Current checkpoint
-**P1 UX Redesign, Financial Indicator Glossary & Explainability System** verified end-to-end on `main` on 2026-11-08 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
-All **324 automated Python tests** (including **8 glossary tests** and **54 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), strict Mypy across 20 source files, the **Next.js TypeScript + production build** (`10/10` static pages), and **12 Playwright visual audit screenshots** pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**P0 Recover Research Coverage for Excluded & N/A Stocks, Sparse-Data Analytics & Market Explorer Redesign** verified end-to-end on `main` on 2026-11-08 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
+All **332 automated Python tests** (including **8 research coverage tests**, **8 glossary tests**, and **54 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), strict Mypy across 21 source files, the **Next.js TypeScript + production build** (`10/10` static pages), and **6 Playwright visual audit screenshots** (`recovered_01_market_all_76.png` through `recovered_06_market_advanced_metrics.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+
+## P0 Recover Research Coverage for Excluded & N/A Stocks (2026-11-08)
+- **Phase 0 — Root-Cause Diagnosis across all 76 Listed Instruments (`artifacts/instrument_diagnostics_report.json`, `docs/INSTRUMENT_DIAGNOSTICS_REPORT.md`)**:
+  - Audited all 76 listed BVMT equities against 194 sessions of canonical data and official NDJSON records.
+  - Identified 4 technical causes: exchange limit reservations (`indicateur: 'H' / 'B'`) causing bounds discrepancy rejections on `BH BANK` and `ATB`; reference price discard (`recommendations.py:241`) passing `None` for unheld excluded stocks; UI formatters (`formatTnd`, `formatPct`) transforming nulls into `"0.000 TND"` and `"0.00%"`; and official feed ticker rename split (`POULINA GROUP HOLDING` vs `POULINA GP HOLDING` under ISIN `TN0005700018`).
+- **Phase 1 — Six-Dimensional Coverage & Eligibility Architecture (`src/bvmt/research_coverage.py`)**:
+  - Implemented `research_coverage_status`, `signal_availability`, `data_quality_status`, `competition_eligibility`, `strategy_eligibility`, and `execution_feasibility`.
+  - Disconnected quantitative research evaluation from trading candidate eligibility.
+- **Phase 2 — Sparse-Data Analytics (`src/bvmt/research_coverage.py`, `src/bvmt/recommendations.py`, `src/bvmt/dashboard.py`)**:
+  - Preserved verified market prices for all 76 instruments (`reference_price_tnd` populated from verified market quotes).
+  - Computed last verified traded price, quote age in sessions, observed-trade return ($\frac{P_t - P_{t-k}}{P_{t-k}}$) over actual trade intervals without forward-filling zero-volume sessions.
+  - Implemented continuous liquidity factor: $\min(1.0, \frac{\text{turnover}_{20s}}{5000}) \times \text{freq}_{20s}$ and continuous research score.
+- **Phase 3 — Market Explorer Redesign & 7 Filter Tabs (`frontend/src/app/market/page.tsx`, `frontend/src/lib/utils.ts`)**:
+  - Displayed missing prices as `"Unavailable"` (never `0.000 TND`) and missing momentum as `"N/A"` (never `0.00%`).
+  - Added 7 filter tabs: `All Equities (76)`, `Strategy Eligible (40)`, `Research Ready (50)`, `Partial Data (12)`, `Illiquid / Stale (14)`, `Restricted (12)`, `Missing Data (0)`.
+  - Expanded stock details drawer into 3 clean sections: Strategy Decisions & Deduplicated Blockers, 8-Card Sparse Analytics Grid, and Zero-Lookahead Hypothetical Order Capacity.
+- **Phase 4 — Conservative Pre-Session Order Sizing (Zero Volume Lookahead)**:
+  - Sized strictly using pre-session information ($t \le \text{cutoff}$), capping hypothetical participation at $\min(0.10 \times \text{turnover}_{20s}, 0.085 \times \text{equity})$ with zero next-day volume lookahead.
+- **Phase 5 — Test Suite & Visual Verification**:
+  - Added 8 tests in `tests/test_research_coverage.py` verifying all 10 diagnostic questions, sparse analytics, zero-lookahead order capacity, and regression tests for `BH BANK`, `ATB`, `POULINA GP HOLDING`, `ASTREE`, `NEW BODY LINE`, `BH ASSURANCE`, and `AETECH`.
+  - Verified with 6 Playwright screenshots in `artifacts/p0_research_coverage_walkthrough.md`. Total Python test suite: **332 passed**.
+
 
 ## Modern Dashboard Migration & Phase 0 State Service (2026-11-07)
 - **Phase 0 — Canonical Backend Portfolio-State Service (`src/bvmt/portfolio_service.py`, `docs/CANONICAL_DATA_SOURCE_RULES.md`)**:
