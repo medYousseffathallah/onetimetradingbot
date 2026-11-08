@@ -285,3 +285,19 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
   except updated config/experiment hashes. Saved-file `/api/strategy-lab` smoke test
   returned HTTP 200, `robustness_v2.version=2.0`, and all nine risk-metric reports.
   `git diff --check` passed. Strict requested file ownership preserved.
+
+## Milestone 5 — Strategy Robustness, Risk-Normalized Comparisons & Forward Paper-Trading Integration (main, 2026-11-08)
+
+- Integrated `codex/data-research` (`cc1c846`) and `gemini/dashboard` (`e3a545f`) into `main` and removed all temporary test directories across worktrees.
+- Completed Phase 0 Independent Strategy Audit in `docs/INDEPENDENT_STRATEGY_AUDIT.md`, establishing Model G as `exploratory_unvalidated_high_outlier_dependency` (`model_g_promotion_eligible: false`) and documenting:
+  1. CRITICAL: Intraday full-day volume lookahead when applying 10% daily volume participation at `next_open` (`32.90%` `open==close`, `25.11%` flat OHLC, `21.37%` `volume < 500` across 11,920 traded bars).
+  2. HIGH: Model G's low `4.9840%` max drawdown is driven by `29.79%` active post-warmup capital utilization (`~70%` cash); its exposure-normalized sleeve drawdown is `16.73%` (matching C's `17.40%` and B's `18.33%`).
+  3. HIGH: Single-stock outlier dependency on `SOTETEL` (`+12,097.785 TND` = `64.31%` of G's total profit on the `100,000 TND` registry capital; excluding `SOTETEL` reduces G's 5-slot return from `+18.8117%` to `+7.4320%`).
+  4. HIGH: Equalized 10-slot (`9.5%` target) capital budget and exposure-normalized return rank `I_REGIME_FILTERED_QUALITY_MOMENTUM` #1 (`+28.8225%` 10-slot return, `10.30%` max drawdown; `+63.85%` exposure-normalized return) ahead of Model G (`+25.3667%` 10-slot return, `10.92%` max drawdown; `+63.15%` exposure-normalized return).
+  5. LOW: Mathematical identity of `D_MOMENTUM_20S` and `F_RELATIVE_STRENGTH_20S` (`+17.0506%`) whenever at least 5 eligible stocks exceed cross-sectional mean `mom_20`.
+- Preserved Milestone 4 registry byte-for-byte in `artifacts/strategy_experiments_2026_v1_archive.json` (`SHA-256: 719895467f1c706c687571ee345e93146ff4a206208d9aff0ef3cfe2cc2c637a`) and regenerated `artifacts/strategy_experiments_2026.json` (`config_hash: 19857c9fc75d78719dee26977ea02bfba4284a5d261cac98f9cfb67f438cf4a9`, `code_sha256: 8d08599b213a8f885dc602a9b2fd9114455d8a2dba9ff611231682dc9ffbdd6c`) with full `risk_normalized_metrics` and `audit_summary`.
+- Implemented immutable forward-only paper-trading journal in `src/bvmt/paper_trading.py`, exposed via `GET /api/paper-trading` and `POST /api/paper-trading/record-signal` in `src/bvmt/api.py`, and integrated into the Next.js 15 Strategy Lab (`frontend/src/app/strategy/page.tsx`).
+- Verified full quality gates on `main`:
+  - `uv run --no-sync python scripts/check.py`: Ruff format check passed (41 files), Ruff lint passed, `mypy src/bvmt` passed (18 source files), skill validation passed (10 skills), and `pytest -q` passed (**305 passed** in 65.84s).
+  - `npm.cmd run typecheck` and `npm.cmd run build` in `frontend/`: Compiled cleanly (`10/10` static routes generated).
+- Next exact action: Accumulate prospective forward-only paper-trading observations as new daily BVMT sessions arrive (`POST /api/paper-trading/record-signal`) and acquire official 2020–2025 daily quotation archives plus CMF corporate-action tables.

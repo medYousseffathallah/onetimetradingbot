@@ -1,6 +1,6 @@
 # Task backlog
 
-Status: T01–T06, R01/R02, Milestones 1A–1C, Milestone 2 (Operational Trading Research), Milestone 3 (Real Browser Portfolio Sync & Modern Next.js 15 + FastAPI Dashboard Migration), and Milestone 4 (Quantitative Research, Strategy Enhancement A–I, Walk-Forward Registry & Technical Documentation) COMPLETED; 275/275 Python tests and Next.js 15 production build passing with zero live API calls.
+Status: T01–T06, R01/R02, Milestones 1A–1C, Milestone 2, Milestone 3, Milestone 4, and Milestone 5 (Independent Strategy Audit, Risk-Normalized & Equal-Budget Comparisons, and Immutable Forward Paper-Trading Journal) COMPLETED; 305/305 Python tests and Next.js 15 production build passing with zero live API calls.
 
 ## T01 - Reproduce and verify rules [DONE]
 Run the locked quality gate and demo locally. Run the blocked rules check. Inspect official
