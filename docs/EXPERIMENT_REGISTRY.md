@@ -16,8 +16,11 @@
 | **Canonical Bars SHA-256 (`canonical_sha256`)** | `cdec16511f5d5ecd937a89656f9cd65746eb6655091447bc0078f7a30b159116` |
 | **Raw NDJSON Archive SHA-256 (`archive_sha256`)** | `486761f55253480a0e19e9b7e8300512522316f93f67081c6fa010d86df45c55` |
 | **Parsed Dataset Hash (`data_hash`)** | `bde44a60246fdaf4540f33dba5579d91b397c5ac061b81100919652b61e000d3` |
+| **Strategy Engine SHA-256 (`code_sha256`)** | `8d08599b213a8f885dc602a9b2fd9114455d8a2dba9ff611231682dc9ffbdd6c` |
+| **Contract & Config Hash (`config_hash`)** | `19857c9fc75d78719dee26977ea02bfba4284a5d261cac98f9cfb67f438cf4a9` |
+| **Milestone 4 Archive SHA-256 (`strategy_experiments_2026_v1_archive.json`)** | `719895467f1c706c687571ee345e93146ff4a206208d9aff0ef3cfe2cc2c637a` |
 | **Evaluation Horizon** | `2026-01-02` to `2026-11-06` (`194` verified open sessions; `61`-session warmup; `134` active decision/mark sessions) |
-| **Initial Capital** | `50,000.000 TND` |
+| **Initial Capital (`StrategyLabConfig`)** | `100,000.000 TND` (Comparative Registry) / `50,000.000 TND` (Paper-Trading & TBC Account) |
 | **Baseline Execution Profile** | T+1 `next_open`, `0.50%` (`50 bps`) buy/sell fee, `10 bps` slippage, `8.5%` target / `10.0%` purchase cap (`top_k = 5`), `10.0%` volume participation cap, rebalance every `19` sessions |
 
 ---
@@ -42,17 +45,17 @@
 
 When we normalize for **active post-warmup capital utilization (`active_cash_utilization_pct`)**, re-simulate at an **equalized 10-slot (`9.5%` target) capital budget**, and test **excluding the single largest outlier (`SOTETEL`, `+202.29%`)**, the true economic structure of Models `A`–`I` emerges:
 
-| Strategy ID | Active Util (%) | Exposure-Normalized Return (%) | Exposure-Normalized Max DD (%) | Realized Ann. Vol (%) | Return / Vol Ratio | Cash-Matched Bench B (%) | Excess vs. Cash-Matched B (%) | Equal-Budget 10-Slot Net Return (%) | Equal-Budget 10-Slot Max DD (%) | Ex-`SOTETEL` Net Return (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **`A_CASH_ONLY`** | `0.00%` | `0.00%` | `0.00%` | `0.00%` | `0.00` | `0.00%` | `0.00%` | `0.0000%` | `0.00%` | `0.0000%` |
-| **`B_EQUAL_WEIGHT_ELIGIBLE`** | `93.81%` | `+14.97%` | `18.33%` | `15.11%` | `0.93` | `+14.05%` | `0.00%` | `+14.0480%` | `17.20%` | `+14.0480%` |
-| **`C_BUY_AND_HOLD_BENCHMARK`** | `72.44%` | `+19.36%` | `17.40%` | `11.89%` | `1.18` | `+10.85%` | `+3.18%` | `+14.0261%` | `12.61%` | `+14.0261%` |
-| **`D_MOMENTUM_20S`** | `26.81%` | `+63.61%` | `19.97%` | `8.89%` | `1.92` | `+4.01%` | `+13.04%` | `+26.9350%` | `12.39%` | `+4.1298%` |
-| **`E_MOMENTUM_60S`** | `31.47%` | `+45.61%` | `25.79%` | `9.92%` | `1.45` | `+4.71%` | `+9.64%` | `+21.1587%` | `14.00%` | `+2.9324%` |
-| **`F_RELATIVE_STRENGTH_20S`** | `26.81%` | `+63.61%` | `19.97%` | `8.89%` | `1.92` | `+4.01%` | `+13.04%` | `+26.9350%` | `12.39%` | `+4.1298%` |
-| **`G_LIQUIDITY_FILTERED_MOMENTUM`** | `29.79%` | `+63.15%` | **`16.73%`** | `8.99%` | **`2.09`** | `+4.46%` | **`+14.35%`** | `+25.3667%` | `10.92%` | **`+7.4320%`** |
-| **`H_DOWNSIDE_RISK_TREND_MULTIFACTOR`** | `27.40%` | `+55.28%` | `22.25%` | `8.85%` | `1.71` | `+4.10%` | `+11.04%` | `+27.7614%` | `11.13%` | `+3.7382%` |
-| **`I_REGIME_FILTERED_QUALITY_MOMENTUM`** | `24.64%` | **`+63.85%`** | `22.18%` | **`8.67%`** | `1.81` | `+3.69%` | `+12.05%` | **`+28.8225%`** | **`10.30%`** | `+4.6046%` |
+| Strategy ID | Active Util (%) | Exposure-Normalized Return (%) | Exposure-Normalized Max DD (%) | Realized Ann. Vol (%) | Return / Vol Ratio | Cash-Matched Bench B (%) | Excess vs. Cash-Matched B (%) | Equal-Budget 10-Slot Net Return (%) | Equal-Budget 10-Slot Max DD (%) | Daily Cap Trim Return / Max Wt (%) | Ex-`SOTETEL` Net Return (%) | 95% Block-Bootstrap CI (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`A_CASH_ONLY`** | `0.00%` | `0.00%` | `0.00%` | `0.00%` | `0.00` | `0.00%` | `0.00%` | `0.0000%` | `0.00%` | `0.00% / 0.00%` | `0.0000%` | `[0.00%, 0.00%]` |
+| **`B_EQUAL_WEIGHT_ELIGIBLE`** | `93.81%` | `+14.97%` | `18.33%` | `15.11%` | `0.93` | `+14.05%` | `0.00%` | `+14.0480%` | `17.20%` | `+12.72% / 10.56%` | `+14.0480%` | `[-14.58%, +51.02%]` |
+| **`C_BUY_AND_HOLD_BENCHMARK`** | `72.44%` | `+19.36%` | `17.40%` | `11.89%` | `1.18` | `+10.85%` | `+3.18%` | `+14.0261%` | `12.61%` | `+13.47% / 10.91%` | `+14.0261%` | `[-7.78%, +39.57%]` |
+| **`D_MOMENTUM_20S`** | `26.81%` | `+63.61%` | `19.97%` | `8.89%` | `1.92` | `+4.01%` | `+13.04%` | `+26.9350%` | `12.39%` | `+15.72% / 10.96%` | `+4.1298%` | `[-0.65%, +41.06%]` |
+| **`E_MOMENTUM_60S`** | `31.47%` | `+45.61%` | `25.79%` | `9.92%` | `1.45` | `+4.71%` | `+9.64%` | `+21.1587%` | `14.00%` | `+13.38% / 10.85%` | `+2.9324%` | `[-4.94%, +40.01%]` |
+| **`F_RELATIVE_STRENGTH_20S`** | `26.81%` | `+63.61%` | `19.97%` | `8.89%` | `1.92` | `+4.01%` | `+13.04%` | `+26.9350%` | `12.39%` | `+15.72% / 10.96%` | `+4.1298%` | `[-0.65%, +41.06%]` |
+| **`G_LIQUIDITY_FILTERED_MOMENTUM`** | `29.79%` | `+63.15%` | **`16.73%`** | `8.96%` | **`2.10`** | `+4.46%` | **`+14.35%`** | `+25.3667%` | `10.92%` | `+17.67% / 10.92%` | **`+7.4320%`** | **`[+0.43%, +45.26%]`** |
+| **`H_DOWNSIDE_RISK_TREND_MULTIFACTOR`** | `27.40%` | `+55.28%` | `22.25%` | `8.85%` | `1.71` | `+4.10%` | `+11.04%` | `+27.7614%` | `11.13%` | `+13.90% / 10.95%` | `+3.7382%` | `[-2.34%, +39.19%]` |
+| **`I_REGIME_FILTERED_QUALITY_MOMENTUM`** | `24.64%` | **`+63.85%`** | `22.18%` | **`8.64%`** | `1.82` | `+3.69%` | `+12.05%` | **`+28.8225%`** | **`10.30%`** | `+14.49% / 10.95%` | `+4.6046%` | `[-1.68%, +40.70%]` |
 
 ### Key Conclusions from Risk-Normalized & Outlier-Adjusted Testing
 1. **Why Model G Had the Lowest Raw Drawdown (`4.98%`)**: Model G only deployed `29.79%` of capital during active post-warmup sessions. Its exposure-normalized sleeve drawdown (`16.73%`) is only marginally lower than Buy-and-Hold `C` (`17.40%`) and Equal-Weight `B` (`18.33%`).
