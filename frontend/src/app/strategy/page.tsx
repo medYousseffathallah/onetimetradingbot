@@ -12,6 +12,11 @@ import {
   Activity,
   Database,
   CheckCircle2,
+  Scale,
+  FileSpreadsheet,
+  History,
+  PlayCircle,
+  ShieldAlert,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -29,6 +34,7 @@ import {
 } from "recharts";
 import {
   api,
+  PaperTradingResponse,
   ResearchResponse,
   StrategyEvaluationReport,
   StrategyExperimentRegistry,
@@ -37,6 +43,7 @@ import {
 import { formatPct, formatTnd } from "@/lib/utils";
 import {
   Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -61,6 +68,8 @@ export default function StrategyLabPage() {
   const { mode, refreshTrigger } = usePortfolioMode();
   const [labData, setLabData] = useState<StrategyLabResponse | null>(null);
   const [researchData, setResearchData] = useState<ResearchResponse | null>(null);
+  const [paperData, setPaperData] = useState<PaperTradingResponse | null>(null);
+  const [recordingPaper, setRecordingPaper] = useState<boolean>(false);
   const [selectedId, setSelectedId] = useState<string>("G_LIQUIDITY_FILTERED_MOMENTUM");
 
   useEffect(() => {
@@ -85,6 +94,25 @@ export default function StrategyLabPage() {
       .catch(() => {});
   }, [mode, refreshTrigger]);
 
+  useEffect(() => {
+    api
+      .getPaperTrading(selectedId)
+      .then((res) => setPaperData(res))
+      .catch(() => {});
+  }, [selectedId, refreshTrigger]);
+
+  const handleRecordForwardSignal = async () => {
+    setRecordingPaper(true);
+    try {
+      const res = await api.recordPaperSignal(selectedId, null);
+      setPaperData(res);
+    } catch {
+      // ignore
+    } finally {
+      setRecordingPaper(false);
+    }
+  };
+
   const registry: StrategyExperimentRegistry | null =
     labData?.registry || researchData?.strategy_comparison || null;
   const reports: StrategyEvaluationReport[] = registry?.reports || [];
@@ -99,9 +127,18 @@ export default function StrategyLabPage() {
   const comparisonChartData = reports.map((r) => ({
     strategy: SHORT_LABELS[r.strategy_id] || r.strategy_id,
     NetReturn: Number(r.net_return_pct.toFixed(2)),
-    LiquidatedReturn: Number(r.liquidated_return_pct.toFixed(2)),
-    MaxDrawdown: Number(r.max_drawdown_pct.toFixed(2)),
+    ExposureNormalizedReturn: Number(
+      (r.risk_normalized_metrics?.exposure_normalized_return_pct ?? r.net_return_pct).toFixed(2)
+    ),
+    EqualBudget10SlotReturn: Number(
+      (r.risk_normalized_metrics?.equal_budget_10slot_net_return_pct ?? r.net_return_pct).toFixed(2)
+    ),
+    ExSotetelReturn: Number(
+      (r.risk_normalized_metrics?.ex_top_winner_net_return_pct ?? r.net_return_pct).toFixed(2)
+    ),
   }));
+
+  const paperJournal = paperData?.journal || null;
 
   return (
     <div className="space-y-6">
@@ -109,53 +146,75 @@ export default function StrategyLabPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-100">
-            Quantitative Strategy Lab & Comparative Experiment Registry
+            Quantitative Strategy Lab, Robustness Audit &amp; Forward Paper Trading
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Source-grounded evaluation of Baselines A–G and Multi-Factor Enhancements H–I on 194
-            verified 2026 BVMT sessions.
+            Milestone 5 independent audit, exposure-normalized evaluation of Models A–I, and
+            immutable forward-only paper-trading journal.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="warning" className="gap-1.5">
             <FlaskConical className="h-3.5 w-3.5" />
-            Exploratory Single-Year Sample (194 &lt; 250d)
+            Exploratory Historical Backtest (194 &lt; 250d)
+          </Badge>
+          <Badge variant="danger" className="gap-1.5">
+            <ShieldAlert className="h-3.5 w-3.5" />
+            Model G Not Validated for Auto-Promotion
           </Badge>
           <Badge variant="info" className="gap-1.5">
             <Lock className="h-3.5 w-3.5" />
-            Human Approval Required for Promotion
+            100% Manual Execution Only
           </Badge>
         </div>
       </div>
 
-      {/* Governance, Separation & Cryptographic Provenance Banner */}
-      <Card className="border-sky-500/40 bg-sky-950/15">
-        <CardContent className="p-4 space-y-3 text-xs text-sky-200">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="h-4 w-4 text-sky-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-semibold">
-                Scientific Governance: Zero Auto-Promotion & Assumption-Explicit T+1 Execution
-              </p>
-              <p className="text-sky-300/85 leading-relaxed">
-                All 9 registered models are evaluated over the exact same 194 trading sessions (
-                <span className="font-mono">2026-01-02</span> to{" "}
-                <span className="font-mono">2026-11-06</span>, 61-session warmup, 19-session
-                rebalance cadence) with T+1 next-open execution,{" "}
-                <span className="font-mono">0.50%</span> buy /{" "}
-                <span className="font-mono">0.50%</span> sell commissions (
-                <span className="font-mono">~1.00%</span> round-trip),{" "}
-                <span className="font-mono">10 bps</span> slippage,{" "}
-                <span className="font-mono">8.5%</span> target /{" "}
-                <span className="font-mono">10.0%</span> purchase concentration cap, and{" "}
-                <span className="font-mono">10.0%</span> daily share-volume participation cap. No
-                research model is ever automatically promoted into live competition trading.
-              </p>
+      {/* Milestone 5 Independent Strategy Audit Banner (Model G Audit Status) */}
+      <Card className="border-amber-500/40 bg-amber-950/15">
+        <CardContent className="p-4 space-y-3 text-xs text-amber-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0" />
+              <span className="font-semibold text-amber-200">
+                Milestone 5 Independent Strategy Audit Status: Model G (
+                <span className="font-mono">
+                  {registry?.audit_summary?.model_g_audit_status ||
+                    "exploratory_unvalidated_high_outlier_dependency"}
+                </span>
+                )
+              </span>
             </div>
+            <Badge variant="warning" className="font-mono text-[10px]">
+              Promotion Eligible:{" "}
+              {registry?.audit_summary?.model_g_promotion_eligible ? "YES" : "NO — BLOCKED"}
+            </Badge>
           </div>
+          <p className="text-amber-200/85 leading-relaxed">
+            Independent audit of the 2026 dataset (<span className="font-mono">194</span> sessions)
+            established four critical findings that prevent treating Model G&apos;s{" "}
+            <span className="font-mono">+18.81%</span> return as a guaranteed forecast: (1){" "}
+            <strong>Low Drawdown Explained by Cash Drag:</strong> Model G&apos;s{" "}
+            <span className="font-mono">4.98%</span> max drawdown reflects{" "}
+            <span className="font-mono">29.79%</span> active capital utilization (~70% cash); its
+            exposure-normalized sleeve drawdown is <span className="font-mono">16.73%</span>{" "}
+            (matching Benchmark C&apos;s <span className="font-mono">17.40%</span>). (2){" "}
+            <strong>Single-Stock Outlier Dependency (SOTETEL):</strong> Excluding{" "}
+            <span className="font-mono">SOTETEL</span> (<span className="font-mono">+202.29%</span>{" "}
+            gain) reduces Model G&apos;s 5-slot return from{" "}
+            <span className="font-mono">+18.81%</span> to{" "}
+            <span className="font-mono">+7.43%</span>. (3){" "}
+            <strong>Equal-Budget Winner is Model I:</strong> At an equalized 10-slot (9.5% target)
+            budget, <span className="font-mono">I_REGIME_FILTERED_QUALITY_MOMENTUM</span> outperforms
+            Model G (<span className="font-mono">+28.82%</span> vs{" "}
+            <span className="font-mono">+25.37%</span>, with lower drawdown{" "}
+            <span className="font-mono">10.30%</span> vs <span className="font-mono">10.92%</span>).
+            (4) <strong>D == F Rank Identity:</strong> Subtracting cross-sectional mean return{" "}
+            <span className="font-mono">bench_20</span> is rank-invariant whenever ≥5 eligible
+            stocks beat the mean.
+          </p>
 
           {registry && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-2 border-t border-sky-800/40 text-[11px]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-2 border-t border-amber-800/40 text-[11px]">
               <div className="rounded bg-slate-950/70 px-2.5 py-1.5 border border-slate-800 flex items-center justify-between">
                 <span className="text-slate-400 flex items-center gap-1">
                   <Hash className="h-3 w-3 text-sky-400" /> Config Hash
@@ -198,59 +257,83 @@ export default function StrategyLabPage() {
         <>
           {/* Top Summary KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-emerald-500/30">
+            <Card className="border-amber-500/30">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center justify-between">
-                  <span>Active Baseline (G: Liq-Mom T04)</span>
-                  <Badge variant="success">Production Baseline</Badge>
+                  <span>Model G (5-Slot vs Ex-SOTETEL)</span>
+                  <Badge variant="warning">Audited Baseline</Badge>
                 </CardDescription>
                 <CardTitle className="text-2xl font-mono font-bold text-emerald-400">
-                  {formatPct(prodBaseline?.net_return_pct ?? 18.81)}
+                  {formatPct(prodBaseline?.net_return_pct ?? 18.81)}{" "}
+                  <span className="text-sm text-amber-300 font-normal">
+                    (Ex-Outlier:{" "}
+                    {formatPct(
+                      prodBaseline?.risk_normalized_metrics?.ex_top_winner_net_return_pct ?? 7.43
+                    )}
+                    )
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Liquidated: {formatPct(prodBaseline?.liquidated_return_pct ?? 18.73)} • Excess:{" "}
-                <span className="text-emerald-300 font-mono">
-                  {formatPct(prodBaseline?.excess_return_pct ?? 4.79)}
-                </span>{" "}
-                • Max DD: -{formatPct(prodBaseline?.max_drawdown_pct ?? 4.98, false)}
+                Active Util:{" "}
+                {formatPct(
+                  prodBaseline?.risk_normalized_metrics?.active_cash_utilization_pct ?? 29.79,
+                  false
+                )}{" "}
+                • Sleeve DD: -
+                {formatPct(
+                  prodBaseline?.risk_normalized_metrics?.exposure_normalized_max_drawdown_pct ??
+                    16.73,
+                  false
+                )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-sky-500/30">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center justify-between">
-                  <span>Regime Quality Enhancement (Model I)</span>
-                  <Badge variant="info">Highest Hit Rate</Badge>
+                  <span>Model I (Equal-Budget 10-Slot Winner)</span>
+                  <Badge variant="info">#1 Risk-Normalized</Badge>
                 </CardDescription>
                 <CardTitle className="text-2xl font-mono font-bold text-sky-300">
-                  {formatPct(regimeModel?.net_return_pct ?? 15.74)}
+                  {formatPct(
+                    regimeModel?.risk_normalized_metrics?.equal_budget_10slot_net_return_pct ??
+                      28.82
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Hit Rate:{" "}
+                Exp-Norm Return:{" "}
                 <span className="text-sky-300 font-mono">
-                  {formatPct(regimeModel?.hit_rate_pct ?? 69.23, false)}
+                  {formatPct(
+                    regimeModel?.risk_normalized_metrics?.exposure_normalized_return_pct ?? 63.85
+                  )}
                 </span>{" "}
-                • Max DD: -{formatPct(regimeModel?.max_drawdown_pct ?? 5.47, false)} • Fees:{" "}
-                {formatTnd(regimeModel?.total_fees_tnd ?? 1089.54)} TND
+                • 10-Slot DD: -
+                {formatPct(
+                  regimeModel?.risk_normalized_metrics?.equal_budget_10slot_max_drawdown_pct ??
+                    10.3,
+                  false
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>
-                  7-Fold Chronological Walk-Forward ({selectedReport?.strategy_id.slice(0, 1)})
+                <CardDescription className="flex items-center justify-between">
+                  <span>Forward Paper-Trading Journal</span>
+                  <Badge variant="success">Prospective T+1</Badge>
                 </CardDescription>
-                <CardTitle className="text-2xl font-mono font-bold text-emerald-400">
-                  {selectedReport?.walk_forward.positive_folds ?? 4} /{" "}
-                  {selectedReport?.walk_forward.total_folds ?? 7} Positive
+                <CardTitle className="text-xl font-mono font-bold text-emerald-400">
+                  {paperJournal
+                    ? `${formatTnd(paperJournal.total_equity_tnd)} TND`
+                    : "50,000.000 TND"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Mean Fold:{" "}
-                {formatPct(selectedReport?.walk_forward.mean_fold_return_pct ?? 1.94)} • Train 61d
-                / Test 19d
+                Snapshots: {paperJournal?.signal_snapshots.length ?? 1} • Pending Next-Open Orders:{" "}
+                {paperJournal?.orders.filter((o) => o.status === "PENDING_NEXT_SESSION").length ??
+                  0}
               </CardContent>
             </Card>
 
@@ -266,12 +349,318 @@ export default function StrategyLabPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-[11px] text-slate-400">
-                Requires ≥250 multi-year sessions &amp; untouched holdout before ML promotion.
+                Requires ≥250 multi-year sessions &amp; forward paper-trading track record.
               </CardContent>
             </Card>
           </div>
 
-          {/* Full Comparative Table (Models A through I) */}
+          {/* Phase 2: Exposure-Normalized, Cash-Matched, Equal-Budget & Outlier-Adjusted Table */}
+          <Card className="border-sky-500/30">
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Scale className="h-4 w-4 text-sky-400" />
+                    <span>
+                      Phase 2: Risk-Normalized, Exposure-Equalized &amp; Outlier-Adjusted Comparison
+                      (Models A–I)
+                    </span>
+                  </CardTitle>
+                  <CardDescription>
+                    Eliminates cash-utilization bias by comparing Active Post-Warmup Utilization,
+                    Exposure-Normalized Sleeve Return/DD, Cash-Matched Benchmark B Excess, 10-Slot
+                    Equal Budget, Daily Concentration Trim, and Ex-SOTETEL Return.
+                  </CardDescription>
+                </div>
+                <Badge variant="warning" className="font-mono text-[10px]">
+                  EXPLORATORY HISTORICAL BACKTEST — NOT FORWARD PERFORMANCE
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                    <th className="py-2.5 px-2">Strategy</th>
+                    <th className="py-2.5 px-2 text-right">5-Slot Net</th>
+                    <th className="py-2.5 px-2 text-right">Active Util</th>
+                    <th className="py-2.5 px-2 text-right">Exp-Norm Ret</th>
+                    <th className="py-2.5 px-2 text-right">Exp-Norm DD</th>
+                    <th className="py-2.5 px-2 text-right">Ann. Vol</th>
+                    <th className="py-2.5 px-2 text-right">Cash-Match B</th>
+                    <th className="py-2.5 px-2 text-right">10-Slot Equal Budget</th>
+                    <th className="py-2.5 px-2 text-right">10-Slot DD</th>
+                    <th className="py-2.5 px-2 text-right">Daily Cap Trim</th>
+                    <th className="py-2.5 px-2 text-right">Ex-SOTETEL</th>
+                    <th className="py-2.5 px-2 text-right">95% Bootstrap CI</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {reports.map((r) => {
+                    const rn = r.risk_normalized_metrics;
+                    const isSelected = r.strategy_id === selectedReport?.strategy_id;
+                    return (
+                      <tr
+                        key={r.strategy_id}
+                        onClick={() => setSelectedId(r.strategy_id)}
+                        className={`cursor-pointer transition-colors ${
+                          isSelected
+                            ? "bg-sky-950/40 hover:bg-sky-950/50"
+                            : "hover:bg-slate-900/60"
+                        }`}
+                      >
+                        <td className="py-2.5 px-2 font-sans">
+                          <div className="font-mono font-semibold text-slate-100">
+                            {SHORT_LABELS[r.strategy_id] || r.strategy_id}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-emerald-400 font-semibold">
+                          {formatPct(r.net_return_pct)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-slate-300">
+                          {formatPct(
+                            rn?.active_cash_utilization_pct ?? r.avg_cash_utilization_pct,
+                            false
+                          )}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-sky-300 font-semibold">
+                          {formatPct(rn?.exposure_normalized_return_pct ?? r.net_return_pct)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-amber-300">
+                          -{formatPct(rn?.exposure_normalized_max_drawdown_pct ?? r.max_drawdown_pct, false)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-slate-300">
+                          {formatPct(rn?.realized_annualized_volatility_pct ?? 0, false)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-emerald-300">
+                          {formatPct(rn?.excess_vs_cash_matched_b_pct ?? 0)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-sky-300 font-semibold">
+                          {formatPct(rn?.equal_budget_10slot_net_return_pct ?? r.net_return_pct)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-amber-300">
+                          -{formatPct(rn?.equal_budget_10slot_max_drawdown_pct ?? r.max_drawdown_pct, false)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-slate-200">
+                          {formatPct(
+                            rn?.continuous_concentration_trim_net_return_pct ?? r.net_return_pct
+                          )}{" "}
+                          <span className="text-[10px] text-slate-400">
+                            ({formatPct(rn?.continuous_concentration_trim_max_weight_pct ?? r.max_single_stock_weight_pct, false)} max)
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-amber-200 font-semibold">
+                          {formatPct(rn?.ex_top_winner_net_return_pct ?? r.net_return_pct)}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-slate-400 text-[11px]">
+                          {rn?.bootstrap_return_ci_95
+                            ? `[${formatPct(rn.bootstrap_return_ci_95.lower_pct)}, ${formatPct(
+                                rn.bootstrap_return_ci_95.upper_pct
+                              )}]`
+                            : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          {/* Phase 3: Forward-Only Paper-Trading Journal (Separated from Real Competition Account) */}
+          <Card className="border-emerald-500/40 bg-emerald-950/10">
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 text-emerald-300">
+                      <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                      <span>
+                        Phase 3: Forward-Only Paper-Trading Journal (Prospective T+1 Validation)
+                      </span>
+                    </CardTitle>
+                    <Badge variant="success" className="text-[10px]">
+                      FORWARD PAPER TRADING — ISOLATED LEDGER
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-slate-300 mt-1">
+                    Generates immutable signals strictly from data available at the decision
+                    timestamp, records cryptographic model/data hashes, and holds intended orders as{" "}
+                    <span className="font-mono text-amber-300">PENDING_NEXT_SESSION</span> until a
+                    strictly newer BVMT market session arrives. Never touches{" "}
+                    <span className="font-mono">real_competition_ledger.json</span> or submits live
+                    orders.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleRecordForwardSignal}
+                  disabled={recordingPaper}
+                  className="gap-1.5 shrink-0"
+                >
+                  <PlayCircle className="h-3.5 w-3.5" />
+                  {recordingPaper
+                    ? "Recording Forward Signal..."
+                    : `Record Forward Signal (${SHORT_LABELS[selectedId] || selectedId})`}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 text-xs">
+              {paperJournal ? (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
+                      <div className="text-[11px] text-slate-400">Journal Mode</div>
+                      <div className="font-mono font-bold text-emerald-400 mt-0.5">
+                        PAPER ONLY (Manual: 100%)
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
+                      <div className="text-[11px] text-slate-400">Paper Total Equity</div>
+                      <div className="font-mono font-bold text-slate-100 mt-0.5">
+                        {formatTnd(paperJournal.total_equity_tnd)} TND (
+                        {formatPct(paperJournal.net_return_pct)})
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
+                      <div className="text-[11px] text-slate-400">Available Paper Cash</div>
+                      <div className="font-mono font-bold text-slate-200 mt-0.5">
+                        {formatTnd(paperJournal.cash_tnd)} TND
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
+                      <div className="text-[11px] text-slate-400">Paper Fees &amp; Turnover</div>
+                      <div className="font-mono font-bold text-slate-200 mt-0.5">
+                        {formatTnd(paperJournal.total_fees_tnd)} TND (
+                        {paperJournal.turnover_ratio.toFixed(2)}x)
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
+                      <div className="text-[11px] text-slate-400">Latest Settled Session</div>
+                      <div className="font-mono font-bold text-sky-300 mt-0.5">
+                        {paperJournal.latest_settled_session || "Awaiting Next Session"}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
+                      <div className="text-[11px] text-slate-400">Immutable Snapshots</div>
+                      <div className="font-mono font-bold text-purple-300 mt-0.5">
+                        {paperJournal.signal_snapshots.length} Recorded
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Immutable Signal Snapshots & Hypothetical Forward Orders */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase text-slate-400">
+                        Immutable Forward Signal Audit Log
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-[11px]">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-400">
+                              <th className="py-1.5 px-1.5">Snapshot ID</th>
+                              <th className="py-1.5 px-1.5">Strategy</th>
+                              <th className="py-1.5 px-1.5">Data Session</th>
+                              <th className="py-1.5 px-1.5">Config / Data Hash</th>
+                              <th className="py-1.5 px-1.5 text-right">Orders</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 font-mono">
+                            {paperJournal.signal_snapshots.map((snap) => (
+                              <tr key={snap.snapshot_id}>
+                                <td className="py-1.5 px-1.5 text-sky-300">{snap.snapshot_id}</td>
+                                <td className="py-1.5 px-1.5 text-slate-200">
+                                  {SHORT_LABELS[snap.strategy_id] || snap.strategy_id} (v
+                                  {snap.model_version})
+                                </td>
+                                <td className="py-1.5 px-1.5 text-emerald-300">
+                                  {snap.market_data_session_date}
+                                </td>
+                                <td
+                                  className="py-1.5 px-1.5 text-slate-400"
+                                  title={`Config: ${snap.config_hash} | Data: ${snap.data_hash}`}
+                                >
+                                  {snap.config_hash.slice(0, 8)}… / {snap.data_hash.slice(0, 8)}…
+                                </td>
+                                <td className="py-1.5 px-1.5 text-right text-slate-200">
+                                  {snap.intended_orders.length}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase text-slate-400">
+                        Hypothetical Paper Orders (Strict T+1 Next-Session Execution)
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-[11px]">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-400">
+                              <th className="py-1.5 px-1.5">Instrument</th>
+                              <th className="py-1.5 px-1.5">Side</th>
+                              <th className="py-1.5 px-1.5">Signal Date</th>
+                              <th className="py-1.5 px-1.5 text-right">Req / Fill</th>
+                              <th className="py-1.5 px-1.5 text-right">Ref / Exec Price</th>
+                              <th className="py-1.5 px-1.5">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 font-mono">
+                            {paperJournal.orders.slice(0, 8).map((ord) => (
+                              <tr key={ord.order_id}>
+                                <td className="py-1.5 px-1.5 text-slate-100 font-semibold">
+                                  {ord.instrument_id}
+                                </td>
+                                <td
+                                  className={`py-1.5 px-1.5 uppercase ${
+                                    ord.side === "buy" ? "text-emerald-400" : "text-rose-400"
+                                  }`}
+                                >
+                                  {ord.side}
+                                </td>
+                                <td className="py-1.5 px-1.5 text-slate-300">
+                                  {ord.signal_session_date}
+                                </td>
+                                <td className="py-1.5 px-1.5 text-right text-slate-200">
+                                  {ord.requested_shares} / {ord.filled_shares}
+                                </td>
+                                <td className="py-1.5 px-1.5 text-right text-slate-300">
+                                  {ord.signal_close_price_tnd} → {ord.execution_price_tnd || "T+1"}
+                                </td>
+                                <td className="py-1.5 px-1.5 font-sans">
+                                  <Badge
+                                    variant={
+                                      ord.status === "FILLED"
+                                        ? "success"
+                                        : ord.status === "PENDING_NEXT_SESSION"
+                                        ? "warning"
+                                        : "outline"
+                                    }
+                                    className="text-[10px]"
+                                  >
+                                    {ord.status}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-slate-400">Initializing forward paper-trading journal...</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Original 5-Slot Baseline & Enhancement Table (Models A through I) */}
           <Card>
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -279,7 +668,7 @@ export default function StrategyLabPage() {
                   <CardTitle className="flex items-center gap-2">
                     <Layers className="h-4 w-4 text-sky-400" />
                     <span>
-                      Comparative Strategy Suite: Baselines (A–G) &amp; Multi-Factor Enhancements
+                      Standard 5-Slot Historical Backtest Suite: Baselines (A–G) &amp; Enhancements
                       (H–I)
                     </span>
                   </CardTitle>
@@ -334,8 +723,8 @@ export default function StrategyLabPage() {
                               {r.strategy_id}
                             </span>
                             {isProd && (
-                              <Badge variant="success" className="text-[10px] px-1.5 py-0">
-                                Active T04
+                              <Badge variant="warning" className="text-[10px] px-1.5 py-0">
+                                Audited T04
                               </Badge>
                             )}
                           </div>
@@ -417,7 +806,7 @@ export default function StrategyLabPage() {
             </CardContent>
           </Card>
 
-          {/* Charts Row: Selected Strategy Equity Curve & Drawdown + Cross-Model Comparison */}
+          {/* Charts Row: Selected Strategy Equity Curve & Exposure-Normalized / Equal-Budget BarChart */}
           {selectedReport && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card>
@@ -425,11 +814,12 @@ export default function StrategyLabPage() {
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-emerald-400" />
                     <span>
-                      Equity Curve vs. Buy-and-Hold Benchmark ({selectedReport.strategy_id})
+                      Historical Equity Curve vs. Buy-and-Hold Benchmark (
+                      {selectedReport.strategy_id})
                     </span>
                   </CardTitle>
                   <CardDescription>
-                    Daily portfolio equity (TND) across {selectedReport.session_count} sessions (
+                    Retrospective 2026 simulation across {selectedReport.session_count} sessions (
                     {selectedReport.start_session} to {selectedReport.end_session})
                   </CardDescription>
                 </CardHeader>
@@ -484,11 +874,13 @@ export default function StrategyLabPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="h-4 w-4 text-sky-400" />
-                    <span>Cross-Strategy Return &amp; Max Drawdown Comparison (A–I)</span>
+                    <span>
+                      5-Slot Raw vs. 10-Slot Equal-Budget vs. Ex-SOTETEL Return (A–I)
+                    </span>
                   </CardTitle>
                   <CardDescription>
-                    Marked Net Return (%), Liquidated Return (%), and Max Drawdown (%) across all 9
-                    models
+                    Demonstrates impact of capital utilization scaling and single-stock outlier
+                    removal
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="h-72">
@@ -506,9 +898,13 @@ export default function StrategyLabPage() {
                         }}
                       />
                       <Legend wrapperStyle={{ fontSize: "12px" }} />
-                      <Bar name="Marked Net (%)" dataKey="NetReturn" fill="#10b981" />
-                      <Bar name="Liquidated (%)" dataKey="LiquidatedReturn" fill="#38bdf8" />
-                      <Bar name="Max Drawdown (%)" dataKey="MaxDrawdown" fill="#f59e0b" />
+                      <Bar name="5-Slot Raw (%)" dataKey="NetReturn" fill="#10b981" />
+                      <Bar
+                        name="10-Slot Equal Budget (%)"
+                        dataKey="EqualBudget10SlotReturn"
+                        fill="#38bdf8"
+                      />
+                      <Bar name="Ex-SOTETEL (%)" dataKey="ExSotetelReturn" fill="#f59e0b" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -525,8 +921,13 @@ export default function StrategyLabPage() {
                     Underwater Drawdown Curve ({selectedReport.strategy_id})
                   </CardTitle>
                   <CardDescription>
-                    Peak-to-trough drawdown (%) across 194 sessions (Max:{" "}
-                    -{formatPct(selectedReport.max_drawdown_pct, false)})
+                    Raw Max DD: -{formatPct(selectedReport.max_drawdown_pct, false)} •
+                    Exposure-Normalized Sleeve DD: -
+                    {formatPct(
+                      selectedReport.risk_normalized_metrics
+                        ?.exposure_normalized_max_drawdown_pct ?? selectedReport.max_drawdown_pct,
+                      false
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="h-56">
@@ -564,7 +965,7 @@ export default function StrategyLabPage() {
               <Card className="lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="text-sm">
-                    Mathematical Formula, Position P&amp;L Distribution &amp; Diagnostics (
+                    Formula, Subperiod Robustness &amp; Outlier Diagnostics (
                     {selectedReport.strategy_id})
                   </CardTitle>
                   <CardDescription>
@@ -586,27 +987,29 @@ export default function StrategyLabPage() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                     <div className="rounded-lg bg-slate-950/60 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Winning / Losing Slices</div>
+                      <div className="text-[11px] text-slate-400">H1 Rally vs H2 Consolidation</div>
                       <div className="font-mono font-bold text-slate-100 mt-0.5">
-                        <span className="text-emerald-400">
-                          {selectedReport.win_loss_Init_summary.winning_positions}W
-                        </span>{" "}
+                        {formatPct(
+                          selectedReport.risk_normalized_metrics?.subperiods
+                            ?.h1_2026_spring_rally?.return_pct ?? 0
+                        )}{" "}
                         /{" "}
-                        <span className="text-rose-400">
-                          {selectedReport.win_loss_Init_summary.losing_positions}L
-                        </span>
+                        {formatPct(
+                          selectedReport.risk_normalized_metrics?.subperiods
+                            ?.h2_2026_consolidation?.return_pct ?? 0
+                        )}
                       </div>
                     </div>
                     <div className="rounded-lg bg-slate-950/60 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Best / Worst Slice</div>
-                      <div className="font-mono font-bold text-slate-100 mt-0.5">
-                        {selectedReport.win_loss_Init_summary.best_position_return_pct !== null
-                          ? `${formatPct(
-                              selectedReport.win_loss_Init_summary.best_position_return_pct
-                            )} / ${formatPct(
-                              selectedReport.win_loss_Init_summary.worst_position_return_pct ?? 0
-                            )}`
-                          : "—"}
+                      <div className="text-[11px] text-slate-400">Top Winner Attribution</div>
+                      <div className="font-mono font-bold text-amber-300 mt-0.5">
+                        {selectedReport.risk_normalized_metrics?.top_winner_instrument_id || "—"}{" "}
+                        (Ex:{" "}
+                        {formatPct(
+                          selectedReport.risk_normalized_metrics?.ex_top_winner_net_return_pct ??
+                            selectedReport.net_return_pct
+                        )}
+                        )
                       </div>
                     </div>
                     <div className="rounded-lg bg-slate-950/60 p-2.5 border border-slate-800">
@@ -766,55 +1169,109 @@ export default function StrategyLabPage() {
             </div>
           )}
 
-          {/* Historical Coverage Audit (2020-2026) & Methodological Limitations */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Strategy Version History, Historical Coverage Audit & Methodological Limitations */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <History className="h-4 w-4 text-purple-400" />
+                  <span>Strategy Suite Version History &amp; Archive</span>
+                </CardTitle>
+                <CardDescription>
+                  Preserved experiment records and audit evolution
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2.5 text-xs">
+                <div className="rounded-lg bg-slate-950/70 p-2.5 border border-emerald-500/30">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-emerald-300">
+                      v1.1.0 / robustness_v2
+                    </span>
+                    <Badge variant="success" className="text-[10px]">
+                      Active Registry
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Milestone 5 Independent Audit + Exposure-Normalized, 10-Slot Equal-Budget,
+                    Daily Concentration Trim, Ex-SOTETEL &amp; Forward Paper Journal (
+                    <span className="font-mono">strategy_experiments_2026.json</span>).
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-950/70 p-2.5 border border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-slate-200">v1.0.0 (Milestone 4)</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      Archived Record
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Initial 9-model (A–I) 5-slot comparative backtest &amp; 7-fold walk-forward
+                    preserved byte-for-byte in{" "}
+                    <span className="font-mono">strategy_experiments_2026_v1_archive.json</span>.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-950/70 p-2.5 border border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-slate-300">
+                      v0.1 (demo-momentum)
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">
+                      Synthetic Only
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    3-bar synthetic fixture smoke test (<span className="font-mono">bvmt demo</span>
+                    ); blocked from real-market evaluation.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             {registry.historical_audit && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Database className="h-4 w-4 text-emerald-400" />
-                    <span>Official BVMT Historical Data Coverage Audit (2020–2026)</span>
+                    <span>Historical Data Coverage &amp; Blockers (2020–2026)</span>
                   </CardTitle>
                   <CardDescription>
-                    Source: {registry.historical_audit.source_url || "Official Bourse de Tunis"} •
                     Checksum Verified:{" "}
-                    {registry.historical_audit.canonical_checksum_matches ? "Yes" : "No"}
+                    {registry.historical_audit.canonical_checksum_matches ? "Yes" : "No"} • Corp
+                    Actions: Absent
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase">
-                        <th className="py-2 px-2">Year</th>
-                        <th className="py-2 px-2 text-right">Canonical Daily Sessions</th>
-                        <th className="py-2 px-2 text-right">Instruments</th>
-                        <th className="py-2 px-2">Daily OHLCV</th>
-                        <th className="py-2 px-2">Audit Status</th>
+                        <th className="py-1.5 px-1.5">Year</th>
+                        <th className="py-1.5 px-1.5 text-right">Sessions</th>
+                        <th className="py-1.5 px-1.5">Daily OHLCV</th>
+                        <th className="py-1.5 px-1.5">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 font-mono">
                       {Object.entries(registry.historical_audit.coverage_2020_2026).map(
                         ([year, cov]) => (
                           <tr key={year} className="hover:bg-slate-900/40">
-                            <td className="py-2 px-2 text-slate-200 font-semibold">{year}</td>
-                            <td className="py-2 px-2 text-right text-slate-300">
+                            <td className="py-1.5 px-1.5 text-slate-200 font-semibold">{year}</td>
+                            <td className="py-1.5 px-1.5 text-right text-slate-300">
                               {cov.canonical_sessions}
                             </td>
-                            <td className="py-2 px-2 text-right text-slate-300">
-                              {cov.instrument_count}
-                            </td>
-                            <td className="py-2 px-2 font-sans">
+                            <td className="py-1.5 px-1.5 font-sans">
                               {cov.daily_ohlcv_available ? (
                                 <Badge variant="success" className="text-[10px]">
                                   Verified (194d)
                                 </Badge>
                               ) : (
                                 <Badge variant="outline" className="text-[10px]">
-                                  Absent in Public Feed
+                                  Blocked
                                 </Badge>
                               )}
                             </td>
-                            <td className="py-2 px-2 text-slate-400 text-[11px]">{cov.status}</td>
+                            <td className="py-1.5 px-1.5 text-slate-400 text-[10px]">
+                              {cov.status}
+                            </td>
                           </tr>
                         )
                       )}
@@ -828,13 +1285,13 @@ export default function StrategyLabPage() {
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-amber-400" />
-                  <span>Disclosed Statistical &amp; Microstructure Limitations</span>
+                  <span>Research Confidence &amp; Disclosed Limitations</span>
                 </CardTitle>
                 <CardDescription>
-                  Explicit failure modes and boundaries enforced across all Strategy Lab reports
+                  Mandatory disclosures enforced across all Strategy Lab views
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2.5 text-xs text-slate-300">
+              <CardContent className="space-y-2 text-xs text-slate-300">
                 <ul className="space-y-1.5 text-[11px] text-slate-300 leading-relaxed">
                   {registry.limitations.map((lim, i) => (
                     <li key={i} className="flex items-start gap-2">

@@ -1,109 +1,74 @@
-# BVMT Backtesting & Walk-Forward Validation Methodology
+# BVMT Backtesting, Risk Normalization & Forward Paper-Trading Methodology
 
-**Document Status**: Verified Milestone 4 Simulation Specification  
-**Core Engine Modules**: [`src/bvmt/execution.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/execution.py), [`src/bvmt/strategies.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/strategies.py)  
-**Configuration Profiles**: [`configs/competition.json`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/configs/competition.json), [`configs/research.json`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/configs/research.json)
+**Document Status**: Verified Milestone 5 Simulation & Forward-Validation Specification  
+**Core Engine Modules**: [`src/bvmt/execution.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/execution.py), [`src/bvmt/strategies.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/strategies.py), [`src/bvmt/paper_trading.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/paper_trading.py)  
+**Independent Audit Reference**: [`docs/INDEPENDENT_STRATEGY_AUDIT.md`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/docs/INDEPENDENT_STRATEGY_AUDIT.md)
 
 ---
 
-## 1. Guiding Principles: Zero Lookahead, Realistic Friction, Auditable Ledgers
+## 1. Historical Backtesting Mechanics & Identified Microstructure Constraints
 
-A backtest on a thin emerging-market exchange like the BVMT is only as trustworthy as its execution constraints. Our simulation engine is built around five non-negotiable guarantees:
+Our historical simulation engine enforces five core execution constraints across all candidate strategies (`A` through `I`):
 
-1. **Strict Point-in-Time Causality (`No Lookahead Bias`)**:
-   - At session $t$, the strategy ranking function receives only market bars with `bar_date <= session_date(t)` and disclosures with `published_at <= decision_cutoff(t)`.
-   - **Same-close fills are physically impossible in code**: orders generated after session $t$'s close are queued as pending orders and can only be matched starting at session $t+1$'s opening auction/session.
+1. **Strict Point-in-Time Causality (`No Same-Close Fills`)**:
+   - Signals computed from session $t$ closing prices can never execute on session $t$. Orders are queued for execution at session $t+1$'s opening price (`b.open`) plus `10 bps` adverse slippage (bounded within `[b.low, b.high]`).
 2. **Zero-Volume Bar Rejection**:
-   - If an instrument records `volume == 0`, `trades == 0`, or `status != "traded"` on session $t+1$, the execution engine executes **zero shares** (`0` fill) and keeps the order pending until a valid trading session occurs or the order's Time-In-Force (`max_pending_sessions = 5`) expires.
-3. **Volume Participation Cap (`10.0%` of Daily Volume)**:
-   - On any traded session $t+1$, the maximum executable share quantity for an order in instrument $i$ is capped at:
-     $$Q_{\max, i}(t+1) = \lfloor \alpha_{\text{vol}} \cdot V_i(t+1) \rfloor, \qquad \alpha_{\text{vol}} = 0.10$$
-   - If the requested order quantity $Q_{\text{req}} > Q_{\max, i}(t+1)$, a **partial fill** occurs for $Q_{\max, i}(t+1)$ shares and the residual quantity remains pending for subsequent sessions (up to `max_pending_sessions = 5`).
+   - Any session where `volume_shares == 0` or `status != "traded"` blocks execution completely (`0` shares filled).
+3. **Daily Volume Participation Cap (`10.0%` of Share Volume)**:
+   - Fills on session $t+1$ are capped at $\lfloor 0.10 \times \text{Volume}_i(t+1) \rfloor$.
+   - **Disclosed Microstructure Limitation**: Because daily OHLCV archives only report full-session volume (`volume_shares` at 14:00 close) rather than opening-auction volume, capping `next_open` fills using `0.10 * volume_shares` relies on end-of-day volume knowledge. Furthermore, across the 11,920 traded bars in 2026, `32.90%` (`3,922` bars) have `open == close`, `25.11%` (`2,993` bars) have flat OHLC (`open == high == low == close`), and `21.37%` (`2,547` bars) trade fewer than `500` shares.
 4. **Verified Competition Commission Model (`0.50%` Buy / `0.50%` Sell)**:
-   - Every buy fill of notional $N_{\text{buy}} = Q_{\text{fill}} \times P_{\text{fill}}$ incurs a commission of $0.005 \times N_{\text{buy}}$ (`50 bps`), deducted immediately from available cash.
-   - Every sell fill of notional $N_{\text{sell}} = Q_{\text{fill}} \times P_{\text{fill}}$ incurs a commission of $0.005 \times N_{\text{sell}}$ (`50 bps`), deducted from sale proceeds.
-   - Additional configurable slippage (`slippage_bps = 15 bps` in stress tests, `0 bps` in pure competition-rule runs) is modeled explicitly.
-5. **Exact `Decimal` Cash & Share Accounting**:
-   - All cash balances, share counts, fill prices, and commissions are tracked using Python `Decimal` arithmetic quantized to `0.001 TND` (millimes), preventing floating-point drift and guaranteeing negative-cash rejection (`cash_tnd >= 0.000` at every step).
+   - Every executed buy and sell fill deducts `50 bps` (`0.50%`) quantized to `0.001 TND` (`ROUND_HALF_UP`).
+   - Terminal valuation reports both **Marked Net Return** and **Liquidated Net Return** (after deducting the `0.50%` exit fee on all terminal holdings).
+5. **Purchase Concentration Cap (`10.0%`) vs. Continuous Drift Enforcement**:
+   - Standard 19-session periodic rebalancing enforces the `10.0%` concentration cap at purchase time (`target_weight = 8.5%`), allowing appreciating winners to drift above `10.0%` between rebalances (`12.81%–14.70%` in 2026).
+   - Milestone 5 adds a parallel **Continuous Daily Concentration Trim Simulation** (`continuous_concentration_trim_net_return_pct`), which checks holdings at every session close and schedules a next-open `sell` order back to `8.5%` whenever any position exceeds `10.0%`.
 
 ---
 
-## 2. Order Lifecycle & T+1 Fill Mechanics
+## 2. Exposure-Normalized & Cash-Adjusted Comparison Methodology
+
+A central finding of the Milestone 5 audit is that raw portfolio returns across Strategies `A`–`I` cannot be compared without accounting for **capital utilization**:
+- Under the default 5-slot (`8.5%` target sleeve) configuration, active strategies `D`–`I` invest only **`24.64%` to `31.47%` of capital during active post-warmup sessions** (`17.02%` to `21.74%` across all 194 sessions), holding `~70%` in cash.
+- By contrast, `B_EQUAL_WEIGHT_ELIGIBLE` (`10` sleeves capped at `10%`) invests **`93.81%` of capital during active sessions** (`64.80%` overall), and `C_BUY_AND_HOLD_BENCHMARK` invests **`72.44%` during active sessions** (`50.04%` overall).
+
+To eliminate cash-drag distortion, [`src/bvmt/strategies.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/strategies.py) computes four normalized comparison metrics for every strategy:
+
+1. **Active Cash Utilization ($U_{\text{active}}$)**:
+   $$U_{\text{active}} = \frac{1}{T - t_0} \sum_{t=t_0}^{T} \frac{\text{HoldingsValue}(t)}{\text{TotalEquity}(t)}$$
+2. **Exposure-Normalized Return & Drawdown (Invested Sleeve Performance)**:
+   $$R_{\text{norm}} = \frac{R_{\text{net}}}{U_{\text{active}}}, \qquad DD_{\text{norm}} = \frac{DD_{\max}}{U_{\text{active}}}$$
+3. **Cash-Matched Benchmark Return ($R_{\text{bench}, B}^{\text{cash-matched}}$)**:
+   Scales the Equal-Weight Eligible Benchmark (`B`) to match Strategy $s$'s exact active capital utilization (since TND cash earns `0.00%`):
+   $$R_{\text{bench}, B}^{\text{cash-matched}}(s) = R_{\text{net}}(B) \cdot \frac{U_{\text{active}}(s)}{U_{\text{active}}(B)}$$
+4. **Equal-Budget 10-Slot Re-Simulation (`top_k = 10`, `target_weight = 9.5%`)**:
+   Re-simulates every strategy at a `95%` target gross capital budget (`10` slots $\times 9.5\%$) so active strategies deploy comparable capital to Benchmarks `B` and `C`.
+
+---
+
+## 3. Forward-Only Paper-Trading Lifecycle (`Phase 3`)
+
+Because retrospective backtesting on a single year (`194` sessions) is vulnerable to specification selection bias and single-stock outliers (`SOTETEL`), Milestone 5 introduces a **Forward-Only Paper-Trading Journal** ([`src/bvmt/paper_trading.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/paper_trading.py)) persisted to `data/portfolio/paper_trading_journal.json` (strictly isolated from `real_competition_ledger.json`):
 
 ```mermaid
-flowchart LR
-    CloseT["Session t Close (14:00 Tunis)"] --> Signal["Compute Signals & Target Weights w_i(t)"]
-    Signal --> Queue["Queue Pending Orders (Sell First, Then Buy)"]
-    Queue --> NextSession["Advance to Session t+1"]
-    NextSession --> CheckVol{"Is Volume(t+1) > 0 & Status == Traded?"}
-    CheckVol -- "No (Zero Volume / Halted)" --> AgeOrder["Increment Pending Age (Expire if Age >= 5)"]
-    CheckVol -- "Yes" --> CapVol["Cap Fill Qty: Q_fill = min(Q_rem, floor(0.10 * Vol(t+1)))"]
-    CapVol --> PriceExec["Execute at Session t+1 Open Price (+ Slippage if Stress)"]
-    PriceExec --> FeeDeduct["Apply 0.50% Buy or 0.50% Sell Commission"]
-    FeeDeduct --> CheckRem{"Is Q_rem > 0?"}
-    CheckRem -- "Yes (Partial Fill)" --> AgeOrder
-    CheckRem -- "No (Filled)" --> MarkToMarket["Mark Portfolio to Session t+1 Close"]
+sequenceDiagram
+    autonumber
+    participant Market as Verified BVMT Bars (Session t)
+    participant Journal as PaperTradingJournal (paper_trading.py)
+    participant Ledger as Paper Ledger (data/portfolio/paper_trading_journal.json)
+    participant NextSession as Subsequent BVMT Bars (Session t+1)
+
+    Market->>Journal: 1. Ingest verified session t bars (bar_date <= t)
+    Journal->>Journal: 2. Settle any prior PENDING_NEXT_SESSION orders from session < t using session t Open
+    Journal->>Journal: 3. Compute signals strictly from bars <= t (Reject any bar > t)
+    Journal->>Ledger: 4. Write immutable PaperSignalSnapshot (model_version, config_hash, code_sha256, data_hash)
+    Journal->>Ledger: 5. Record intended orders as PENDING_NEXT_SESSION (Zero same-session fills)
+    NextSession->>Journal: 6. Next trading day: Session t+1 bars arrive
+    Journal->>Ledger: 7. Simulate T+1 Open fills (50 bps fee, 10 bps slippage, 10% vol cap, 10% concentration cap)
+    Journal->>Ledger: 8. Update paper equity, cash, turnover, drawdown & benchmark comparison
 ```
 
-### Dual Valuation Reporting: Marked-to-Market vs. Net Liquidated Equity
-Because a backtest that holds illiquid positions on the final session can overstate realizable returns by ignoring exit fees, every simulation run reports **two terminal equity metrics**:
-- **Marked-to-Market Net Return**: Values open terminal holdings at the final session's closing price (already net of all entry/rebalance commissions paid to date).
-- **Net Liquidated Return**: Deducts the `0.50%` (`50 bps`) exit commission and terminal liquidation friction required to convert all remaining holdings back into 100% TND cash at the end of the evaluation window.
-
----
-
-## 3. Expanding-Window Walk-Forward Validation Protocol
-
-To evaluate parameter stability and out-of-sample generalization across the `194` verified 2026 trading sessions (`2026-01-02` to `2026-10-08`), the engine runs a **7-Fold Expanding-Window Walk-Forward Evaluation**:
-
-```mermaid
-flowchart TD
-    Data["Verified 2026 BVMT Dataset (194 Trading Sessions: 2026-01-02 to 2026-10-08)"] --> Warmup["Warm-up Window: Sessions 1–60 (Required for 60-Session Lookbacks)"]
-    Warmup --> Active["Active Evaluation Horizon: 134 Sessions (Sessions 61–194)"]
-    Active --> F1["Fold 1: Train [1..60] -> Test [61..79] (19 Sessions)"]
-    Active --> F2["Fold 2: Train [1..79] -> Test [80..98] (19 Sessions)"]
-    Active --> F3["Fold 3: Train [1..98] -> Test [99..117] (19 Sessions)"]
-    Active --> F4["Fold 4: Train [1..117] -> Test [118..136] (19 Sessions)"]
-    Active --> F5["Fold 5: Train [1..136] -> Test [137..155] (19 Sessions)"]
-    Active --> F6["Fold 6: Train [1..155] -> Test [156..174] (19 Sessions)"]
-    Active --> F7["Fold 7: Train [1..174] -> Test [175..194] (20 Sessions)"]
-```
-
-### Walk-Forward Rules
-1. **Strict Temporal Partitioning**: Fold $k$'s test window begins strictly after Fold $k$'s training cutoff.
-2. **Warm-Up Integrity**: Computing $M_{i,60}(t)$ on the first session of Fold $k$'s test window uses the trailing 60 sessions immediately preceding that test session (which belong to the known historical window), ensuring zero cold-start distortion and zero lookahead into future test bars.
-3. **Fold-Level Diagnostics**: For every strategy and fold, we record net return, max drawdown, trade count, hit rate, and excess return versus the equal-weight benchmark.
-
----
-
-## 4. 27-Scenario Fee, Slippage & Liquidity Sensitivity Grid
-
-To verify that strategy rankings are not brittle artifacts of a single friction assumption, [`src/bvmt/execution.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/execution.py) evaluates a **27-scenario sensitivity matrix** ($3 \times 3 \times 3$):
-
-- **Commission Rates (3 levels)**:
-  - `25 bps` (`0.25%` per side — low-fee sensitivity)
-  - `50 bps` (`0.50%` per side — **verified Tunis Bourse Challenge baseline**)
-  - `75 bps` (`0.75%` per side — punitive fee stress test)
-- **Slippage Assumptions (3 levels)**:
-  - `0 bps` (exact next-open print match)
-  - `15 bps` (`0.15%` adverse price impact per trade)
-  - `30 bps` (`0.30%` severe adverse price impact per trade)
-- **Volume Participation Caps (3 levels)**:
-  - `5%` of session volume (`0.05` — strict liquidity stress)
-  - `10%` of session volume (`0.10` — **standard research baseline**)
-  - `20%` of session volume (`0.20` — relaxed liquidity assumption)
-
----
-
-## 5. Known Biases & Statistical Limitations Disclosure
-
-In accordance with our scientific honesty policy (`AGENTS.md`), every backtest report and UI screen surfaces the following limitations:
-
-1. **Sample Depth (`194 < 250` Sessions)**:
-   - The verified official daily dataset spans `2026-01-02` to `2026-10-08` (`194` sessions, `133–134` active post-warmup sessions).
-   - Because `194 < 250`, all strategy comparisons are flagged with `statistically_conclusive: false` (`EXPLORATORY_SINGLE_YEAR_SAMPLE`).
-2. **Survivorship & Point-in-Time Master Scope**:
-   - The 76-instrument master is reconstructed from the 2026 `histo_cotation_2026.zip` archive and cross-checked against `market_resume_full.ndjson`. While suspended/untraded sessions are accurately blocked point-in-time, historical delistings prior to 2026 require multi-year (`2020–2025`) official daily archives.
-3. **Unadjusted Corporate Actions & Cash Dividends**:
-   - Daily OHLCV bars in `histo_cotation_2026.zip` reflect raw exchange prints. Ex-dividend price drops appear as negative raw price returns unless paired with an official point-in-time dividend adjustment table.
-
+### Non-Negotiable Forward Paper-Trading Guarantees
+- **No Historical Backfilling**: Recording a paper-trading signal at session $t$ creates `PENDING_NEXT_SESSION` orders that **cannot fill** until a bar with `session_date > t` is present in the canonical dataset.
+- **Immutable Signal Audit Trail**: Every signal snapshot records `snapshot_id`, `strategy_id`, `model_version`, `config_hash`, `code_sha256`, `data_hash`, `signal_timestamp`, and `market_data_session_date`.
+- **Complete Account Isolation**: Paper-trading state never touches `real_competition_ledger.json` and never submits orders to the Tunis Bourse Challenge website.

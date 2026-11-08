@@ -299,6 +299,125 @@ export interface WinLossSummary {
   definition: string;
 }
 
+export interface SubperiodMetric {
+  start_session: string;
+  end_session: string;
+  return_pct: number;
+}
+
+export interface BootstrapConfidenceInterval {
+  lower_pct: number;
+  upper_pct: number;
+  resamples: number;
+  block_size: number;
+  method: string;
+}
+
+export interface RiskNormalizedMetrics {
+  active_session_count: number;
+  active_cash_utilization_pct: number;
+  exposure_normalized_return_pct: number;
+  exposure_normalized_liquidated_return_pct: number;
+  exposure_normalized_max_drawdown_pct: number;
+  realized_annualized_volatility_pct: number;
+  return_to_volatility_ratio: number;
+  excess_vs_c_marked_pct: number;
+  excess_vs_c_liquidated_pct: number;
+  excess_vs_b_marked_pct: number;
+  excess_vs_b_liquidated_pct: number;
+  cash_matched_benchmark_b_return_pct: number;
+  excess_vs_cash_matched_b_pct: number;
+  equal_budget_10slot_net_return_pct: number;
+  equal_budget_10slot_liquidated_return_pct: number;
+  equal_budget_10slot_max_drawdown_pct: number;
+  equal_budget_10slot_active_utilization_pct: number;
+  continuous_concentration_trim_net_return_pct: number;
+  continuous_concentration_trim_max_weight_pct: number;
+  top_winner_instrument_id: string | null;
+  top_winner_net_pnl_tnd: number;
+  ex_top_winner_net_return_pct: number;
+  subperiods: Record<string, SubperiodMetric>;
+  bootstrap_return_ci_95: BootstrapConfidenceInterval;
+}
+
+export interface AuditSummary {
+  model_g_audit_status: string;
+  model_g_promotion_eligible: boolean;
+  key_findings: string[];
+}
+
+export interface PaperOrderRecord {
+  order_id: string;
+  snapshot_id: string;
+  strategy_id: string;
+  instrument_id: string;
+  side: "buy" | "sell";
+  signal_session_date: string;
+  signal_close_price_tnd: string;
+  requested_shares: number;
+  filled_shares: number;
+  remaining_shares: number;
+  status:
+    | "PENDING_NEXT_SESSION"
+    | "FILLED"
+    | "PARTIALLY_FILLED"
+    | "EXPIRED"
+    | "BLOCKED_ZERO_VOLUME";
+  execution_session_date: string | null;
+  execution_price_tnd: string | null;
+  fee_tnd: string;
+  notes: string;
+}
+
+export interface PaperSignalSnapshot {
+  snapshot_id: string;
+  strategy_id: string;
+  model_version: string;
+  config_hash: string;
+  code_sha256: string;
+  data_hash: string;
+  signal_timestamp: string;
+  market_data_session_date: string;
+  intended_orders: PaperOrderRecord[];
+}
+
+export interface PaperEquityPoint {
+  session_date: string;
+  total_equity_tnd: number;
+  cash_tnd: number;
+  holdings_value_tnd: number;
+  drawdown_pct: number;
+  cash_benchmark_equity_tnd: number;
+  equal_weight_benchmark_equity_tnd: number;
+}
+
+export interface PaperJournalState {
+  journal_id: string;
+  is_paper_only: boolean;
+  autonomous_trading_enabled: boolean;
+  strategy_id: string;
+  initial_cash_tnd: string;
+  cash_tnd: string;
+  holdings: Record<string, number>;
+  average_cost_tnd: Record<string, string>;
+  total_fees_tnd: string;
+  notional_traded_tnd: string;
+  total_equity_tnd: string;
+  net_return_pct: number;
+  max_drawdown_pct: number;
+  turnover_ratio: number;
+  latest_settled_session: string | null;
+  signal_snapshots: PaperSignalSnapshot[];
+  orders: PaperOrderRecord[];
+  equity_history: PaperEquityPoint[];
+}
+
+export interface PaperTradingResponse {
+  status: "available" | "unavailable" | "invalid";
+  journal: PaperJournalState | null;
+  limitations?: string[];
+}
+
 export interface StrategyEvaluationReport {
   strategy_id: string;
   name: string;
@@ -333,6 +452,7 @@ export interface StrategyEvaluationReport {
   config_hash: string;
   experiment_id: string;
   diagnostics: Record<string, unknown>;
+  risk_normalized_metrics?: RiskNormalizedMetrics;
 }
 
 export interface MlPromotionGate {
@@ -369,6 +489,8 @@ export interface StrategyExperimentRegistry {
   code_sha256?: string;
   canonical_sha256?: string;
   trial_count: number;
+  audit_summary?: AuditSummary;
+  robustness_v2?: Record<string, unknown>;
   reports: StrategyEvaluationReport[];
   ml_promotion_gate: MlPromotionGate;
   historical_audit?: HistoricalAuditSummary;
@@ -491,6 +613,21 @@ export const api = {
   getResearch: (q = "", mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<ResearchResponse>(`/api/research?mode=${mode}&q=${encodeURIComponent(q)}`),
   getStrategyLab: () => fetchJson<StrategyLabResponse>(`/api/strategy-lab`),
+  getPaperTrading: (strategyId = "G_LIQUIDITY_FILTERED_MOMENTUM") =>
+    fetchJson<PaperTradingResponse>(
+      `/api/paper-trading?strategy_id=${encodeURIComponent(strategyId)}`
+    ),
+  recordPaperSignal: (
+    strategyId = "G_LIQUIDITY_FILTERED_MOMENTUM",
+    asOfSession: string | null = null
+  ) =>
+    fetchJson<PaperTradingResponse>(`/api/paper-trading/record-signal`, {
+      method: "POST",
+      body: JSON.stringify({
+        strategy_id: strategyId,
+        as_of_session: asOfSession,
+      }),
+    }),
   getHealth: (mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<SystemHealthResponse>(`/api/health?mode=${mode}`),
   getSyncPreview: (mode: PortfolioMode = "REAL_COMPETITION") =>
