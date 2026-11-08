@@ -37,6 +37,7 @@ from bvmt.browser import (
 )
 from bvmt.dashboard import DashboardAppState
 from bvmt.data import inspect_market_dataset_provenance, read_bars_csv
+from bvmt.glossary import export_full_glossary, get_eligibility_explanation
 from bvmt.ledger import CompetitionScreenshotSnapshot, ReconciliationReport
 from bvmt.llm import search_document_index
 from bvmt.paper_trading import (
@@ -273,6 +274,7 @@ class StockRankingItem(APIModel):
     suggested_shares: int
     blocked_reasons: list[str]
     rationale: list[str]
+    eligibility_explanations: list[dict[str, str]] = Field(default_factory=list)
 
 
 class StockRankingsResponse(APIModel):
@@ -734,7 +736,10 @@ def create_app(
 
     @application.exception_handler(OSError)
     @application.exception_handler(ValueError)
-    async def unavailable_data(_request: Request, _exc: Exception) -> JSONResponse:
+    async def unavailable_data(_request: Request, exc: Exception) -> JSONResponse:
+        import logging
+
+        logging.getLogger("uvicorn.error").exception("API 503 error: %s", exc)
         return JSONResponse(
             status_code=503,
             content={"detail": "Local portfolio or research data is unavailable or invalid."},
@@ -1003,6 +1008,19 @@ def create_app(
                             )
                         ),
                         rationale=r.supporting_evidence + r.main_risks,
+                        eligibility_explanations=[
+                            get_eligibility_explanation(b).to_dict()
+                            for b in list(
+                                dict.fromkeys(
+                                    r.blocked_reasons
+                                    + (
+                                        ["synthetic_data_on_real_portfolio"]
+                                        if synthetic_on_real
+                                        else []
+                                    )
+                                )
+                            )
+                        ],
                     )
                     for r in report.recommendations
                 ],
@@ -1117,6 +1135,10 @@ def create_app(
             stale_instruments_count=res.stale_instruments_count,
             canonical_bars_path=res.canonical_bars_path,
         )
+
+    @application.get("/api/glossary")
+    def glossary() -> dict[str, object]:
+        return export_full_glossary()
 
     @application.post("/api/sync/browser")
     def browser_sync(body: BrowserSyncRequest) -> BrowserSyncTriggerResponse:

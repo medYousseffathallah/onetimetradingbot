@@ -42,7 +42,7 @@ The **Tunis Bourse Challenge** (`2026-10-01` to `2027-05-31`) is an educational 
 | **Primary Web Interface** | `Next.js 15` (App Router), `TypeScript 5.7`, `Tailwind CSS`, `shadcn/ui` primitives, `Recharts`, `Lucide` icons (`127.0.0.1:3000`) |
 | **Fallback Web Interface** | `Streamlit 1.66+` (`127.0.0.1:8501`) |
 | **Authenticated Collector** | `Playwright` (isolated persistent Chrome context, read-only URL allowlist) |
-| **Quality & Verification** | `pytest` (`252+` tests), `ruff`, `mypy --strict`, `pip-audit`, `uv` lockfile |
+| **Quality & Verification** | `pytest` (`324+` tests), `ruff`, `mypy --strict`, `pip-audit`, `uv` lockfile |
 
 ---
 
@@ -429,4 +429,36 @@ flowchart TD
    - CLI: `uv run bvmt market-status` and `uv run bvmt market-refresh [--force]`
    - API: `GET /api/market-data/status` and `POST /api/market-data/refresh`
    - UI: Interactive Market Data Health panel on Next.js `/health` page with live status badges and manual refresh trigger.
+
+---
+
+## 14. P1 UX Redesign, Financial Indicator Glossary & Explainability System
+
+To transform the interface from a dense, developer-oriented tool into an accessible, human-understandable financial decision-support terminal, the frontend and explainability architecture were upgraded in Milestone P1:
+
+### 14.1 Visual Design System & Theming
+- **Light Theme by Default:** Warm off-white background (`#f8f9fa`), crisp dark-charcoal typography (`#1e293b`), muted teal/blue accent, and restrained financial badges (`emerald` profit, `amber` caution, `rose` blocker).
+- **Soft-Dark Theme Option:** One-click toggle in the header/sidebar smoothly activates an eye-friendly dark palette (`#090d16`), persisted across browser sessions in `localStorage` (`bvmt-theme`) with anti-FOUC script injection in `<head>`.
+- **WCAG-Accessible Contrast:** Minimum 14px readable table cells, generous component padding, clear border separations, and adaptive high-contrast styling across all data tables (Strategy Lab, Market Explorer, and Portfolio Ledgers).
+- **Responsive Layout:** Desktop sidebar collapses cleanly into a mobile hamburger menu on viewports `< 768px`, ensuring data cards and tables retain full screen width without horizontal squeezing.
+
+### 14.2 Redesigned Market Explorer (`/market`)
+- **Executive Summary KPI Cards:** Total Listed Instruments (`76`), Eligible Stocks (`37`), Needs Human Review (`29`), and Strictest Blocker (`61-session warm-up / no trades`).
+- **Plain-Language Market Introduction:** Explains eligibility rules and decision thresholds in direct financial prose.
+- **4 Status Filter Tabs:** Instant switching between `All (76)`, `Eligible (37)`, `Needs Review (29)`, and `Excluded (39)`.
+- **Simplified 6-Column Core Table:** Focuses on essential decision inputs: Ticker / Name, Sector & Group, Latest Price, 20-Session Momentum, Status Badge, and Action.
+- **Toggleable Advanced Metrics:** Expands to 11 columns on demand, revealing 60-Session Momentum, Relative Strength vs. Market, Volatility, Median Daily Turnover, and Composite Research Score.
+- **Client-Side Pagination:** Ergonomic 12 stocks/page pagination with quick jump controls.
+- **Per-Stock Details Drawer:** Expandable inline drawer displaying a 6-metric card grid and structured blocker explanations (severity, plain diagnosis, and recommended operator action).
+
+### 14.3 Domain-Grounded Metric Glossary & `MetricHelp` Component
+- **Machine-Readable Glossary (`src/bvmt/glossary.py`, `GET /api/glossary`):**
+  - Defines 21 core quantitative metrics across 6 categories (Prices, Momentum, Risk/Volatility, Microstructure, Valuation/Portfolio, and Operational/Data).
+  - Categorizes 13 eligibility blocker codes with plain-language explanations and recommended operational actions.
+  - Implements exact mathematical formulas matching underlying Python implementations in `features.py`, `execution.py`, `recommendations.py`, `gateway.py`, and `ledger.py`.
+- **Accessible `MetricHelp` Popover:**
+  - Placed alongside table headers, KPI cards, and strategy matrices.
+  - Activates on keyboard focus (`Tab` / `Enter`), mouse hover, and mobile touch.
+  - Displays indicator definition, formula code block, interpretation guidance, and prominent amber limitations/caveats box.
+
 

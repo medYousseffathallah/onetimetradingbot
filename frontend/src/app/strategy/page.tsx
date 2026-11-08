@@ -50,6 +50,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/primitives";
+import { MetricHelp } from "@/components/ui/metric-help";
 import { usePortfolioMode } from "@/components/app-shell";
 
 const SHORT_LABELS: Record<string, string> = {
@@ -145,51 +146,54 @@ export default function StrategyLabPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-100">
-            Quantitative Strategy Lab, Robustness Audit &amp; Forward Paper Trading
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Strategy Lab &amp; Robustness Audit
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Milestone 5 independent audit, exposure-normalized evaluation of Models A–I, and
             immutable forward-only paper-trading journal.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="warning" className="gap-1.5">
+          <Badge variant="warning" className="gap-1.5 py-1 px-3">
             <FlaskConical className="h-3.5 w-3.5" />
-            Exploratory Historical Backtest (194 &lt; 250d)
+            Exploratory Backtest (194 &lt; 250d)
           </Badge>
-          <Badge variant="danger" className="gap-1.5">
+          <Badge variant="danger" className="gap-1.5 py-1 px-3">
             <ShieldAlert className="h-3.5 w-3.5" />
             Model G Not Validated for Auto-Promotion
           </Badge>
-          <Badge variant="info" className="gap-1.5">
+          <Badge variant="info" className="gap-1.5 py-1 px-3">
             <Lock className="h-3.5 w-3.5" />
-            100% Manual Execution Only
+            100% Manual Execution
           </Badge>
         </div>
       </div>
 
       {/* Milestone 5 Independent Strategy Audit Banner (Model G Audit Status) */}
-      <Card className="border-amber-500/40 bg-amber-950/15">
-        <CardContent className="p-4 space-y-3 text-xs text-amber-100">
+      <Card className="border-amber-200 dark:border-amber-300 dark:border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/15">
+        <CardContent className="p-4 space-y-3 text-xs text-amber-900 dark:text-amber-100">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
-              <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0" />
-              <span className="font-semibold text-amber-200">
-                Milestone 5 Independent Strategy Audit Status: Model G (
-                <span className="font-mono">
-                  {registry?.audit_summary?.model_g_audit_status ||
-                    "exploratory_unvalidated_high_outlier_dependency"}
+              <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-amber-950 dark:text-amber-200">
+                  Milestone 5 Independent Strategy Audit Status: Model G (
+                  <span className="font-mono">
+                    {registry?.audit_summary?.model_g_audit_status ||
+                      "exploratory_unvalidated_high_outlier_dependency"}
+                  </span>
+                  )
                 </span>
-                )
-              </span>
+                <MetricHelp metricId="walk_forward_testing" />
+              </div>
             </div>
             <Badge variant="warning" className="font-mono text-[10px]">
               Promotion Eligible:{" "}
               {registry?.audit_summary?.model_g_promotion_eligible ? "YES" : "NO — BLOCKED"}
             </Badge>
           </div>
-          <p className="text-amber-200/85 leading-relaxed">
+          <p className="text-amber-900/90 dark:text-amber-200/85 leading-relaxed">
             Independent audit of the 2026 dataset (<span className="font-mono">194</span> sessions)
             established four critical findings that prevent treating Model G&apos;s{" "}
             <span className="font-mono">+18.81%</span> return as a guaranteed forecast: (1){" "}
@@ -215,36 +219,36 @@ export default function StrategyLabPage() {
 
           {registry && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-2 border-t border-amber-800/40 text-[11px]">
-              <div className="rounded bg-slate-950/70 px-2.5 py-1.5 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400 flex items-center gap-1">
-                  <Hash className="h-3 w-3 text-sky-400" /> Config Hash
+              <div className="rounded bg-white dark:bg-white dark:bg-slate-950/70 px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <Hash className="h-3 w-3 text-sky-600 dark:text-sky-400" /> Config Hash
                 </span>
-                <span className="font-mono text-slate-200" title={registry.config_hash}>
+                <span className="font-mono text-slate-800 dark:text-slate-200" title={registry.config_hash}>
                   {registry.config_hash.slice(0, 16)}…
                 </span>
               </div>
-              <div className="rounded bg-slate-950/70 px-2.5 py-1.5 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400 flex items-center gap-1">
-                  <Database className="h-3 w-3 text-emerald-400" /> Canonical Bars SHA
+              <div className="rounded bg-white dark:bg-white dark:bg-slate-950/70 px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <Database className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> Canonical Bars SHA
                 </span>
                 <span
-                  className="font-mono text-slate-200"
+                  className="font-mono text-slate-800 dark:text-slate-200"
                   title={registry.canonical_sha256 || registry.data_hash}
                 >
                   {(registry.canonical_sha256 || registry.data_hash).slice(0, 16)}…
                 </span>
               </div>
-              <div className="rounded bg-slate-950/70 px-2.5 py-1.5 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400 flex items-center gap-1">
+              <div className="rounded bg-white dark:bg-white dark:bg-slate-950/70 px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1">
                   <Hash className="h-3 w-3 text-purple-400" /> Strategy Code SHA
                 </span>
-                <span className="font-mono text-slate-200" title={registry.code_sha256 || ""}>
+                <span className="font-mono text-slate-800 dark:text-slate-200" title={registry.code_sha256 || ""}>
                   {(registry.code_sha256 || registry.data_hash).slice(0, 16)}…
                 </span>
               </div>
-              <div className="rounded bg-slate-950/70 px-2.5 py-1.5 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400">Registered Trials</span>
-                <span className="font-mono text-emerald-300 font-semibold">
+              <div className="rounded bg-white dark:bg-white dark:bg-slate-950/70 px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Registered Trials</span>
+                <span className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
                   {registry.trial_count} Frozen Hypotheses (v{registry.schema_version})
                 </span>
               </div>
@@ -257,15 +261,15 @@ export default function StrategyLabPage() {
         <>
           {/* Top Summary KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-amber-500/30">
+            <Card className="border-amber-300 dark:border-amber-500/30">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center justify-between">
                   <span>Model G (5-Slot vs Ex-SOTETEL)</span>
                   <Badge variant="warning">Audited Baseline</Badge>
                 </CardDescription>
-                <CardTitle className="text-2xl font-mono font-bold text-emerald-400">
+                <CardTitle className="text-2xl font-mono font-bold text-emerald-600 dark:text-emerald-400">
                   {formatPct(prodBaseline?.net_return_pct ?? 18.81)}{" "}
-                  <span className="text-sm text-amber-300 font-normal">
+                  <span className="text-sm text-amber-700 dark:text-amber-300 font-normal">
                     (Ex-Outlier:{" "}
                     {formatPct(
                       prodBaseline?.risk_normalized_metrics?.ex_top_winner_net_return_pct ?? 7.43
@@ -274,7 +278,7 @@ export default function StrategyLabPage() {
                   </span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-[11px] text-slate-400">
+              <CardContent className="text-[11px] text-slate-600 dark:text-slate-400">
                 Active Util:{" "}
                 {formatPct(
                   prodBaseline?.risk_normalized_metrics?.active_cash_utilization_pct ?? 29.79,
@@ -295,16 +299,16 @@ export default function StrategyLabPage() {
                   <span>Model I (Equal-Budget 10-Slot Winner)</span>
                   <Badge variant="info">#1 Risk-Normalized</Badge>
                 </CardDescription>
-                <CardTitle className="text-2xl font-mono font-bold text-sky-300">
+                <CardTitle className="text-2xl font-mono font-bold text-sky-700 dark:text-sky-300">
                   {formatPct(
                     regimeModel?.risk_normalized_metrics?.equal_budget_10slot_net_return_pct ??
                       28.82
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-[11px] text-slate-400">
+              <CardContent className="text-[11px] text-slate-600 dark:text-slate-400">
                 Exp-Norm Return:{" "}
-                <span className="text-sky-300 font-mono">
+                <span className="text-sky-700 dark:text-sky-300 font-mono">
                   {formatPct(
                     regimeModel?.risk_normalized_metrics?.exposure_normalized_return_pct ?? 63.85
                   )}
@@ -324,31 +328,31 @@ export default function StrategyLabPage() {
                   <span>Forward Paper-Trading Journal</span>
                   <Badge variant="success">Prospective T+1</Badge>
                 </CardDescription>
-                <CardTitle className="text-xl font-mono font-bold text-emerald-400">
+                <CardTitle className="text-xl font-mono font-bold text-emerald-600 dark:text-emerald-400">
                   {paperJournal
                     ? `${formatTnd(paperJournal.total_equity_tnd)} TND`
                     : "50,000.000 TND"}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-[11px] text-slate-400">
+              <CardContent className="text-[11px] text-slate-600 dark:text-slate-400">
                 Snapshots: {paperJournal?.signal_snapshots.length ?? 1} • Pending Next-Open Orders:{" "}
                 {paperJournal?.orders.filter((o) => o.status === "PENDING_NEXT_SESSION").length ??
                   0}
               </CardContent>
             </Card>
 
-            <Card className="border-amber-500/30">
+            <Card className="border-amber-300 dark:border-amber-500/30">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center justify-between">
                   <span>ML Promotion Gate (LightGBM)</span>
                   <Badge variant="warning">Blocked</Badge>
                 </CardDescription>
-                <CardTitle className="text-xl font-mono font-bold text-amber-300">
+                <CardTitle className="text-xl font-mono font-bold text-amber-700 dark:text-amber-300">
                   {registry.ml_promotion_gate.session_count} /{" "}
                   {registry.ml_promotion_gate.minimum_sessions} Sessions
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-[11px] text-slate-400">
+              <CardContent className="text-[11px] text-slate-600 dark:text-slate-400">
                 Requires ≥250 multi-year sessions &amp; forward paper-trading track record.
               </CardContent>
             </Card>
@@ -360,7 +364,7 @@ export default function StrategyLabPage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Scale className="h-4 w-4 text-sky-400" />
+                    <Scale className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                     <span>
                       Phase 2: Risk-Normalized, Exposure-Equalized &amp; Outlier-Adjusted Comparison
                       (Models A–I)
@@ -380,7 +384,7 @@ export default function StrategyLabPage() {
             <CardContent className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-[11px] uppercase">
                     <th className="py-2.5 px-2">Strategy</th>
                     <th className="py-2.5 px-2 text-right">5-Slot Net</th>
                     <th className="py-2.5 px-2 text-right">Active Util</th>
@@ -395,7 +399,7 @@ export default function StrategyLabPage() {
                     <th className="py-2.5 px-2 text-right">95% Bootstrap CI</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                   {reports.map((r) => {
                     const rn = r.risk_normalized_metrics;
                     const isSelected = r.strategy_id === selectedReport?.strategy_id;
@@ -405,54 +409,54 @@ export default function StrategyLabPage() {
                         onClick={() => setSelectedId(r.strategy_id)}
                         className={`cursor-pointer transition-colors ${
                           isSelected
-                            ? "bg-sky-950/40 hover:bg-sky-950/50"
-                            : "hover:bg-slate-900/60"
+                            ? "bg-teal-50/70 hover:bg-teal-100/70 dark:bg-sky-950/40 dark:hover:bg-sky-950/50"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-900/60"
                         }`}
                       >
                         <td className="py-2.5 px-2 font-sans">
-                          <div className="font-mono font-semibold text-slate-100">
+                          <div className="font-mono font-semibold text-slate-900 dark:text-slate-100">
                             {SHORT_LABELS[r.strategy_id] || r.strategy_id}
                           </div>
                         </td>
-                        <td className="py-2.5 px-2 text-right text-emerald-400 font-semibold">
+                        <td className="py-2.5 px-2 text-right text-emerald-600 dark:text-emerald-400 font-semibold">
                           {formatPct(r.net_return_pct)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-300">
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-300">
                           {formatPct(
                             rn?.active_cash_utilization_pct ?? r.avg_cash_utilization_pct,
                             false
                           )}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-sky-300 font-semibold">
+                        <td className="py-2.5 px-2 text-right text-sky-700 dark:text-sky-300 font-semibold">
                           {formatPct(rn?.exposure_normalized_return_pct ?? r.net_return_pct)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-amber-300">
+                        <td className="py-2.5 px-2 text-right text-amber-700 dark:text-amber-300">
                           -{formatPct(rn?.exposure_normalized_max_drawdown_pct ?? r.max_drawdown_pct, false)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-300">
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-300">
                           {formatPct(rn?.realized_annualized_volatility_pct ?? 0, false)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-emerald-300">
+                        <td className="py-2.5 px-2 text-right text-emerald-700 dark:text-emerald-300">
                           {formatPct(rn?.excess_vs_cash_matched_b_pct ?? 0)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-sky-300 font-semibold">
+                        <td className="py-2.5 px-2 text-right text-sky-700 dark:text-sky-300 font-semibold">
                           {formatPct(rn?.equal_budget_10slot_net_return_pct ?? r.net_return_pct)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-amber-300">
+                        <td className="py-2.5 px-2 text-right text-amber-700 dark:text-amber-300">
                           -{formatPct(rn?.equal_budget_10slot_max_drawdown_pct ?? r.max_drawdown_pct, false)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-200">
+                        <td className="py-2.5 px-2 text-right text-slate-800 dark:text-slate-200">
                           {formatPct(
                             rn?.continuous_concentration_trim_net_return_pct ?? r.net_return_pct
                           )}{" "}
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] text-slate-600 dark:text-slate-400">
                             ({formatPct(rn?.continuous_concentration_trim_max_weight_pct ?? r.max_single_stock_weight_pct, false)} max)
                           </span>
                         </td>
                         <td className="py-2.5 px-2 text-right text-amber-200 font-semibold">
                           {formatPct(rn?.ex_top_winner_net_return_pct ?? r.net_return_pct)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-400 text-[11px]">
+                        <td className="py-2.5 px-2 text-right text-slate-600 dark:text-slate-400 text-[11px]">
                           {rn?.bootstrap_return_ci_95
                             ? `[${formatPct(rn.bootstrap_return_ci_95.lower_pct)}, ${formatPct(
                                 rn.bootstrap_return_ci_95.upper_pct
@@ -473,8 +477,8 @@ export default function StrategyLabPage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <CardTitle className="flex items-center gap-2 text-emerald-300">
-                      <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                    <CardTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                      <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       <span>
                         Phase 3: Forward-Only Paper-Trading Journal (Prospective T+1 Validation)
                       </span>
@@ -483,10 +487,10 @@ export default function StrategyLabPage() {
                       FORWARD PAPER TRADING — ISOLATED LEDGER
                     </Badge>
                   </div>
-                  <CardDescription className="text-slate-300 mt-1">
+                  <CardDescription className="text-slate-700 dark:text-slate-300 mt-1">
                     Generates immutable signals strictly from data available at the decision
                     timestamp, records cryptographic model/data hashes, and holds intended orders as{" "}
-                    <span className="font-mono text-amber-300">PENDING_NEXT_SESSION</span> until a
+                    <span className="font-mono text-amber-700 dark:text-amber-300">PENDING_NEXT_SESSION</span> until a
                     strictly newer BVMT market session arrives. Never touches{" "}
                     <span className="font-mono">real_competition_ledger.json</span> or submits live
                     orders.
@@ -510,41 +514,41 @@ export default function StrategyLabPage() {
               {paperJournal ? (
                 <>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Journal Mode</div>
-                      <div className="font-mono font-bold text-emerald-400 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/80 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Journal Mode</div>
+                      <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
                         PAPER ONLY (Manual: 100%)
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Paper Total Equity</div>
-                      <div className="font-mono font-bold text-slate-100 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/80 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Paper Total Equity</div>
+                      <div className="font-mono font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                         {formatTnd(paperJournal.total_equity_tnd)} TND (
                         {formatPct(paperJournal.net_return_pct)})
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Available Paper Cash</div>
-                      <div className="font-mono font-bold text-slate-200 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/80 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Available Paper Cash</div>
+                      <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
                         {formatTnd(paperJournal.cash_tnd)} TND
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Paper Fees &amp; Turnover</div>
-                      <div className="font-mono font-bold text-slate-200 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/80 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Paper Fees &amp; Turnover</div>
+                      <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
                         {formatTnd(paperJournal.total_fees_tnd)} TND (
                         {paperJournal.turnover_ratio.toFixed(2)}x)
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Latest Settled Session</div>
-                      <div className="font-mono font-bold text-sky-300 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/80 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Latest Settled Session</div>
+                      <div className="font-mono font-bold text-sky-700 dark:text-sky-300 mt-0.5">
                         {paperJournal.latest_settled_session || "Awaiting Next Session"}
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/80 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Immutable Snapshots</div>
-                      <div className="font-mono font-bold text-purple-300 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/80 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Immutable Snapshots</div>
+                      <div className="font-mono font-bold text-purple-700 dark:text-purple-300 mt-0.5">
                         {paperJournal.signal_snapshots.length} Recorded
                       </div>
                     </div>
@@ -552,14 +556,14 @@ export default function StrategyLabPage() {
 
                   {/* Immutable Signal Snapshots & Hypothetical Forward Orders */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800 space-y-2">
-                      <div className="text-[11px] font-semibold uppercase text-slate-400">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/70 p-3 border border-slate-200 dark:border-slate-800 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">
                         Immutable Forward Signal Audit Log
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-[11px]">
                           <thead>
-                            <tr className="border-b border-slate-800 text-slate-400">
+                            <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
                               <th className="py-1.5 px-1.5">Snapshot ID</th>
                               <th className="py-1.5 px-1.5">Strategy</th>
                               <th className="py-1.5 px-1.5">Data Session</th>
@@ -567,24 +571,24 @@ export default function StrategyLabPage() {
                               <th className="py-1.5 px-1.5 text-right">Orders</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800/60 font-mono">
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                             {paperJournal.signal_snapshots.map((snap) => (
                               <tr key={snap.snapshot_id}>
-                                <td className="py-1.5 px-1.5 text-sky-300">{snap.snapshot_id}</td>
-                                <td className="py-1.5 px-1.5 text-slate-200">
+                                <td className="py-1.5 px-1.5 text-sky-700 dark:text-sky-300">{snap.snapshot_id}</td>
+                                <td className="py-1.5 px-1.5 text-slate-800 dark:text-slate-200">
                                   {SHORT_LABELS[snap.strategy_id] || snap.strategy_id} (v
                                   {snap.model_version})
                                 </td>
-                                <td className="py-1.5 px-1.5 text-emerald-300">
+                                <td className="py-1.5 px-1.5 text-emerald-700 dark:text-emerald-300">
                                   {snap.market_data_session_date}
                                 </td>
                                 <td
-                                  className="py-1.5 px-1.5 text-slate-400"
+                                  className="py-1.5 px-1.5 text-slate-600 dark:text-slate-400"
                                   title={`Config: ${snap.config_hash} | Data: ${snap.data_hash}`}
                                 >
                                   {snap.config_hash.slice(0, 8)}… / {snap.data_hash.slice(0, 8)}…
                                 </td>
-                                <td className="py-1.5 px-1.5 text-right text-slate-200">
+                                <td className="py-1.5 px-1.5 text-right text-slate-800 dark:text-slate-200">
                                   {snap.intended_orders.length}
                                 </td>
                               </tr>
@@ -594,14 +598,14 @@ export default function StrategyLabPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800 space-y-2">
-                      <div className="text-[11px] font-semibold uppercase text-slate-400">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/70 p-3 border border-slate-200 dark:border-slate-800 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">
                         Hypothetical Paper Orders (Strict T+1 Next-Session Execution)
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-[11px]">
                           <thead>
-                            <tr className="border-b border-slate-800 text-slate-400">
+                            <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
                               <th className="py-1.5 px-1.5">Instrument</th>
                               <th className="py-1.5 px-1.5">Side</th>
                               <th className="py-1.5 px-1.5">Signal Date</th>
@@ -610,26 +614,26 @@ export default function StrategyLabPage() {
                               <th className="py-1.5 px-1.5">Status</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800/60 font-mono">
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                             {paperJournal.orders.slice(0, 8).map((ord) => (
                               <tr key={ord.order_id}>
-                                <td className="py-1.5 px-1.5 text-slate-100 font-semibold">
+                                <td className="py-1.5 px-1.5 text-slate-900 dark:text-slate-100 font-semibold">
                                   {ord.instrument_id}
                                 </td>
                                 <td
                                   className={`py-1.5 px-1.5 uppercase ${
-                                    ord.side === "buy" ? "text-emerald-400" : "text-rose-400"
+                                    ord.side === "buy" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                                   }`}
                                 >
                                   {ord.side}
                                 </td>
-                                <td className="py-1.5 px-1.5 text-slate-300">
+                                <td className="py-1.5 px-1.5 text-slate-700 dark:text-slate-300">
                                   {ord.signal_session_date}
                                 </td>
-                                <td className="py-1.5 px-1.5 text-right text-slate-200">
+                                <td className="py-1.5 px-1.5 text-right text-slate-800 dark:text-slate-200">
                                   {ord.requested_shares} / {ord.filled_shares}
                                 </td>
-                                <td className="py-1.5 px-1.5 text-right text-slate-300">
+                                <td className="py-1.5 px-1.5 text-right text-slate-700 dark:text-slate-300">
                                   {ord.signal_close_price_tnd} → {ord.execution_price_tnd || "T+1"}
                                 </td>
                                 <td className="py-1.5 px-1.5 font-sans">
@@ -655,7 +659,7 @@ export default function StrategyLabPage() {
                   </div>
                 </>
               ) : (
-                <p className="text-slate-400">Initializing forward paper-trading journal...</p>
+                <p className="text-slate-600 dark:text-slate-400">Initializing forward paper-trading journal...</p>
               )}
             </CardContent>
           </Card>
@@ -666,7 +670,7 @@ export default function StrategyLabPage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-sky-400" />
+                    <Layers className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                     <span>
                       Standard 5-Slot Historical Backtest Suite: Baselines (A–G) &amp; Enhancements
                       (H–I)
@@ -685,7 +689,7 @@ export default function StrategyLabPage() {
             <CardContent className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-[11px] uppercase">
                     <th className="py-2.5 px-2">Strategy ID &amp; Name</th>
                     <th className="py-2.5 px-2">Family</th>
                     <th className="py-2.5 px-2">Sample</th>
@@ -703,7 +707,7 @@ export default function StrategyLabPage() {
                     <th className="py-2.5 px-2 text-right">Experiment Hash</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                   {reports.map((r) => {
                     const isSelected = r.strategy_id === selectedReport?.strategy_id;
                     const isProd = r.strategy_id === "G_LIQUIDITY_FILTERED_MOMENTUM";
@@ -713,13 +717,13 @@ export default function StrategyLabPage() {
                         onClick={() => setSelectedId(r.strategy_id)}
                         className={`cursor-pointer transition-colors ${
                           isSelected
-                            ? "bg-sky-950/40 hover:bg-sky-950/50"
-                            : "hover:bg-slate-900/60"
+                            ? "bg-teal-50/70 hover:bg-teal-100/70 dark:bg-sky-950/40 dark:hover:bg-sky-950/50"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-900/60"
                         }`}
                       >
                         <td className="py-2.5 px-2 font-sans">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-semibold text-slate-100">
+                            <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
                               {r.strategy_id}
                             </span>
                             {isProd && (
@@ -728,7 +732,7 @@ export default function StrategyLabPage() {
                               </Badge>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-400">{r.name}</div>
+                          <div className="text-[11px] text-slate-600 dark:text-slate-400">{r.name}</div>
                         </td>
                         <td className="py-2.5 px-2 font-sans">
                           <Badge
@@ -745,14 +749,14 @@ export default function StrategyLabPage() {
                         </td>
                         <td
                           className={`py-2.5 px-2 text-right font-semibold ${
-                            r.net_return_pct > 0 ? "text-emerald-400" : "text-slate-300"
+                            r.net_return_pct > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-700 dark:text-slate-300"
                           }`}
                         >
                           {formatPct(r.net_return_pct)}
                         </td>
                         <td
                           className={`py-2.5 px-2 text-right ${
-                            r.liquidated_return_pct > 0 ? "text-sky-300" : "text-slate-300"
+                            r.liquidated_return_pct > 0 ? "text-sky-700 dark:text-sky-300" : "text-slate-700 dark:text-slate-300"
                           }`}
                         >
                           {formatPct(r.liquidated_return_pct)}
@@ -760,40 +764,40 @@ export default function StrategyLabPage() {
                         <td
                           className={`py-2.5 px-2 text-right ${
                             r.excess_return_pct > 0
-                              ? "text-emerald-400"
+                              ? "text-emerald-600 dark:text-emerald-400"
                               : r.excess_return_pct < 0
-                              ? "text-rose-400"
-                              : "text-slate-400"
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-slate-600 dark:text-slate-400"
                           }`}
                         >
                           {formatPct(r.excess_return_pct)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-amber-300">
+                        <td className="py-2.5 px-2 text-right text-amber-700 dark:text-amber-300">
                           -{formatPct(r.max_drawdown_pct, false)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-300">
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-300">
                           {r.turnover_ratio.toFixed(2)}x
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-300">
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-300">
                           {formatTnd(r.total_fees_tnd)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-300">
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-300">
                           {r.trade_count} / {r.order_count}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-200">
+                        <td className="py-2.5 px-2 text-right text-slate-800 dark:text-slate-200">
                           {formatPct(r.hit_rate_pct, false)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-300">
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-300">
                           {formatPct(r.avg_cash_utilization_pct, false)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-slate-300">
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-300">
                           {formatPct(r.max_single_stock_weight_pct, false)}
                         </td>
-                        <td className="py-2.5 px-2 text-right text-emerald-300">
+                        <td className="py-2.5 px-2 text-right text-emerald-700 dark:text-emerald-300">
                           {formatPct(r.walk_forward.mean_fold_return_pct ?? 0)}
                         </td>
                         <td
-                          className="py-2.5 px-2 text-right text-slate-400 text-[11px]"
+                          className="py-2.5 px-2 text-right text-slate-600 dark:text-slate-400 text-[11px]"
                           title={r.experiment_id}
                         >
                           {r.experiment_id.slice(0, 10)}…
@@ -812,7 +816,7 @@ export default function StrategyLabPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-emerald-400" />
+                    <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                     <span>
                       Historical Equity Curve vs. Buy-and-Hold Benchmark (
                       {selectedReport.strategy_id})
@@ -873,7 +877,7 @@ export default function StrategyLabPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-sky-400" />
+                    <Activity className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                     <span>
                       5-Slot Raw vs. 10-Slot Equal-Budget vs. Ex-SOTETEL Return (A–I)
                     </span>
@@ -970,25 +974,25 @@ export default function StrategyLabPage() {
                   </CardTitle>
                   <CardDescription>
                     {selectedReport.name} • Promotion Status:{" "}
-                    <span className="font-mono text-amber-300">
+                    <span className="font-mono text-amber-700 dark:text-amber-300">
                       {selectedReport.promotion_status}
                     </span>
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-xs">
-                  <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800">
-                    <div className="text-[11px] text-slate-400 uppercase font-semibold mb-1">
+                  <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/70 p-3 border border-slate-200 dark:border-slate-800">
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 uppercase font-semibold mb-1">
                       Signal &amp; Allocation Formula
                     </div>
-                    <div className="font-mono text-sky-300 text-xs">
+                    <div className="font-mono text-sky-700 dark:text-sky-300 text-xs">
                       {selectedReport.formula_summary}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    <div className="rounded-lg bg-slate-950/60 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">H1 Rally vs H2 Consolidation</div>
-                      <div className="font-mono font-bold text-slate-100 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/60 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">H1 Rally vs H2 Consolidation</div>
+                      <div className="font-mono font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                         {formatPct(
                           selectedReport.risk_normalized_metrics?.subperiods
                             ?.h1_2026_spring_rally?.return_pct ?? 0
@@ -1000,9 +1004,9 @@ export default function StrategyLabPage() {
                         )}
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/60 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Top Winner Attribution</div>
-                      <div className="font-mono font-bold text-amber-300 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/60 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Top Winner Attribution</div>
+                      <div className="font-mono font-bold text-amber-700 dark:text-amber-300 mt-0.5">
                         {selectedReport.risk_normalized_metrics?.top_winner_instrument_id || "—"}{" "}
                         (Ex:{" "}
                         {formatPct(
@@ -1012,16 +1016,16 @@ export default function StrategyLabPage() {
                         )
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/60 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Purchase Cap vs Drift Max</div>
-                      <div className="font-mono font-bold text-slate-100 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/60 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Purchase Cap vs Drift Max</div>
+                      <div className="font-mono font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                         10.0% Cap / {formatPct(selectedReport.max_single_stock_weight_pct, false)}{" "}
                         Drift
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/60 p-2.5 border border-slate-800">
-                      <div className="text-[11px] text-slate-400">Sensitivity Range (3×3)</div>
-                      <div className="font-mono font-bold text-emerald-300 mt-0.5">
+                    <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/60 p-2.5 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">Sensitivity Range (3×3)</div>
+                      <div className="font-mono font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
                         {formatPct(selectedReport.fee_and_liquidity_sensitivity.min_return_pct)} to{" "}
                         {formatPct(selectedReport.fee_and_liquidity_sensitivity.max_return_pct)}
                       </div>
@@ -1050,7 +1054,7 @@ export default function StrategyLabPage() {
                 <CardContent className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                      <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-[11px] uppercase">
                         <th className="py-2 px-2">Fold</th>
                         <th className="py-2 px-2">Test Window</th>
                         <th className="py-2 px-2 text-right">Strategy</th>
@@ -1060,42 +1064,42 @@ export default function StrategyLabPage() {
                         <th className="py-2 px-2 text-right">Fills</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                       {selectedReport.walk_forward.folds.map((f) => (
-                        <tr key={f.fold_index} className="hover:bg-slate-900/40">
-                          <td className="py-2 px-2 text-slate-300">Fold {f.fold_index}</td>
-                          <td className="py-2 px-2 text-slate-400 text-[11px]">
+                        <tr key={f.fold_index} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                          <td className="py-2 px-2 text-slate-700 dark:text-slate-300">Fold {f.fold_index}</td>
+                          <td className="py-2 px-2 text-slate-600 dark:text-slate-400 text-[11px]">
                             {f.test_start} → {f.test_end}
                           </td>
                           <td
                             className={`py-2 px-2 text-right font-semibold ${
                               f.strategy_return_pct > 0
-                                ? "text-emerald-400"
+                                ? "text-emerald-600 dark:text-emerald-400"
                                 : f.strategy_return_pct < 0
-                                ? "text-rose-400"
-                                : "text-slate-300"
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-slate-700 dark:text-slate-300"
                             }`}
                           >
                             {formatPct(f.strategy_return_pct)}
                           </td>
-                          <td className="py-2 px-2 text-right text-sky-300">
+                          <td className="py-2 px-2 text-right text-sky-700 dark:text-sky-300">
                             {formatPct(f.liquidated_return_pct)}
                           </td>
-                          <td className="py-2 px-2 text-right text-slate-400">
+                          <td className="py-2 px-2 text-right text-slate-600 dark:text-slate-400">
                             {formatPct(f.benchmark_return_pct)}
                           </td>
                           <td
                             className={`py-2 px-2 text-right ${
                               f.excess_return_pct > 0
-                                ? "text-emerald-400"
+                                ? "text-emerald-600 dark:text-emerald-400"
                                 : f.excess_return_pct < 0
-                                ? "text-rose-400"
-                                : "text-slate-400"
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-slate-600 dark:text-slate-400"
                             }`}
                           >
                             {formatPct(f.excess_return_pct)}
                           </td>
-                          <td className="py-2 px-2 text-right text-slate-300">{f.fill_count}</td>
+                          <td className="py-2 px-2 text-right text-slate-700 dark:text-slate-300">{f.fill_count}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1117,7 +1121,7 @@ export default function StrategyLabPage() {
                 <CardContent className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                      <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-[11px] uppercase">
                         <th className="py-2 px-2">Commission (bps)</th>
                         <th className="py-2 px-2">Max Vol Cap</th>
                         <th className="py-2 px-2 text-right">Marked Net</th>
@@ -1126,7 +1130,7 @@ export default function StrategyLabPage() {
                         <th className="py-2 px-2 text-right">Trades</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                       {selectedReport.fee_and_liquidity_sensitivity.scenarios.map((s, idx) => {
                         const isBaselineScenario =
                           s.commission_bps === 50 &&
@@ -1135,30 +1139,30 @@ export default function StrategyLabPage() {
                           <tr
                             key={idx}
                             className={
-                              isBaselineScenario ? "bg-emerald-950/25" : "hover:bg-slate-900/40"
+                              isBaselineScenario ? "bg-emerald-950/25" : "hover:bg-slate-50 dark:hover:bg-slate-900/40"
                             }
                           >
-                            <td className="py-2 px-2 text-slate-200">
+                            <td className="py-2 px-2 text-slate-800 dark:text-slate-200">
                               {s.commission_bps} bps ({(s.commission_bps / 100).toFixed(2)}%)
                               {isBaselineScenario && (
-                                <span className="ml-1.5 text-[10px] text-emerald-400 font-sans">
+                                <span className="ml-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-sans">
                                   [TBC Rule]
                                 </span>
                               )}
                             </td>
-                            <td className="py-2 px-2 text-slate-300">
+                            <td className="py-2 px-2 text-slate-700 dark:text-slate-300">
                               {(s.max_volume_participation * 100).toFixed(0)}%
                             </td>
-                            <td className="py-2 px-2 text-right text-emerald-400 font-semibold">
+                            <td className="py-2 px-2 text-right text-emerald-600 dark:text-emerald-400 font-semibold">
                               {formatPct(s.net_return_pct)}
                             </td>
-                            <td className="py-2 px-2 text-right text-sky-300">
+                            <td className="py-2 px-2 text-right text-sky-700 dark:text-sky-300">
                               {formatPct(s.liquidated_return_pct)}
                             </td>
-                            <td className="py-2 px-2 text-right text-slate-300">
+                            <td className="py-2 px-2 text-right text-slate-700 dark:text-slate-300">
                               {formatTnd(s.total_fees_tnd)}
                             </td>
-                            <td className="py-2 px-2 text-right text-slate-300">{s.trade_count}</td>
+                            <td className="py-2 px-2 text-right text-slate-700 dark:text-slate-300">{s.trade_count}</td>
                           </tr>
                         );
                       })}
@@ -1182,44 +1186,44 @@ export default function StrategyLabPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2.5 text-xs">
-                <div className="rounded-lg bg-slate-950/70 p-2.5 border border-emerald-500/30">
+                <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/70 p-2.5 border border-emerald-500/30">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-emerald-300">
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
                       v1.1.0 / robustness_v2
                     </span>
                     <Badge variant="success" className="text-[10px]">
                       Active Registry
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
                     Milestone 5 Independent Audit + Exposure-Normalized, 10-Slot Equal-Budget,
                     Daily Concentration Trim, Ex-SOTETEL &amp; Forward Paper Journal (
                     <span className="font-mono">strategy_experiments_2026.json</span>).
                   </p>
                 </div>
-                <div className="rounded-lg bg-slate-950/70 p-2.5 border border-slate-800">
+                <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/70 p-2.5 border border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-slate-200">v1.0.0 (Milestone 4)</span>
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">v1.0.0 (Milestone 4)</span>
                     <Badge variant="outline" className="text-[10px]">
                       Archived Record
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
                     Initial 9-model (A–I) 5-slot comparative backtest &amp; 7-fold walk-forward
                     preserved byte-for-byte in{" "}
                     <span className="font-mono">strategy_experiments_2026_v1_archive.json</span>.
                   </p>
                 </div>
-                <div className="rounded-lg bg-slate-950/70 p-2.5 border border-slate-800">
+                <div className="rounded-lg bg-white dark:bg-white dark:bg-slate-950/70 p-2.5 border border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-slate-300">
+                    <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
                       v0.1 (demo-momentum)
                     </span>
                     <Badge variant="outline" className="text-[10px]">
                       Synthetic Only
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
                     3-bar synthetic fixture smoke test (<span className="font-mono">bvmt demo</span>
                     ); blocked from real-market evaluation.
                   </p>
@@ -1231,7 +1235,7 @@ export default function StrategyLabPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Database className="h-4 w-4 text-emerald-400" />
+                    <Database className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                     <span>Historical Data Coverage &amp; Blockers (2020–2026)</span>
                   </CardTitle>
                   <CardDescription>
@@ -1243,19 +1247,19 @@ export default function StrategyLabPage() {
                 <CardContent className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                      <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-[11px] uppercase">
                         <th className="py-1.5 px-1.5">Year</th>
                         <th className="py-1.5 px-1.5 text-right">Sessions</th>
                         <th className="py-1.5 px-1.5">Daily OHLCV</th>
                         <th className="py-1.5 px-1.5">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                       {Object.entries(registry.historical_audit.coverage_2020_2026).map(
                         ([year, cov]) => (
-                          <tr key={year} className="hover:bg-slate-900/40">
-                            <td className="py-1.5 px-1.5 text-slate-200 font-semibold">{year}</td>
-                            <td className="py-1.5 px-1.5 text-right text-slate-300">
+                          <tr key={year} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                            <td className="py-1.5 px-1.5 text-slate-800 dark:text-slate-200 font-semibold">{year}</td>
+                            <td className="py-1.5 px-1.5 text-right text-slate-700 dark:text-slate-300">
                               {cov.canonical_sessions}
                             </td>
                             <td className="py-1.5 px-1.5 font-sans">
@@ -1269,7 +1273,7 @@ export default function StrategyLabPage() {
                                 </Badge>
                               )}
                             </td>
-                            <td className="py-1.5 px-1.5 text-slate-400 text-[10px]">
+                            <td className="py-1.5 px-1.5 text-slate-600 dark:text-slate-400 text-[10px]">
                               {cov.status}
                             </td>
                           </tr>
@@ -1284,18 +1288,18 @@ export default function StrategyLabPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-400" />
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                   <span>Research Confidence &amp; Disclosed Limitations</span>
                 </CardTitle>
                 <CardDescription>
                   Mandatory disclosures enforced across all Strategy Lab views
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2 text-xs text-slate-300">
-                <ul className="space-y-1.5 text-[11px] text-slate-300 leading-relaxed">
+              <CardContent className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                <ul className="space-y-1.5 text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
                   {registry.limitations.map((lim, i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-sky-400 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
                       <span>{lim}</span>
                     </li>
                   ))}
@@ -1305,7 +1309,7 @@ export default function StrategyLabPage() {
           </div>
         </>
       ) : (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           Loading comparative strategy experiment registry...
         </p>
       )}

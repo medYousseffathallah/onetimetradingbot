@@ -161,6 +161,32 @@ export interface MarketDataStatusResponse {
   available_datasets: DatasetOptionItem[];
 }
 
+export interface EligibilityExplanationItem {
+  code: string;
+  title: string;
+  severity: "blocker" | "warning" | "info";
+  plain_explanation: string;
+  recommended_action: string;
+}
+
+export interface MetricDefinitionItem {
+  id: string;
+  name: string;
+  category: string;
+  plain_definition: string;
+  why_it_matters: string;
+  formula: string;
+  interpretation: string;
+  limitations: string;
+  doc_link: string;
+}
+
+export interface GlossaryResponse {
+  metrics: Record<string, MetricDefinitionItem>;
+  eligibility_reasons: Record<string, EligibilityExplanationItem>;
+  categories: Record<string, MetricDefinitionItem[]>;
+}
+
 export interface StockRankingItem {
   rank: number | null;
   instrument_id: string;
@@ -179,6 +205,7 @@ export interface StockRankingItem {
   suggested_shares: number;
   blocked_reasons: string[];
   rationale: string[];
+  eligibility_explanations?: EligibilityExplanationItem[];
 }
 
 export interface StockRankingsResponse {
@@ -643,6 +670,7 @@ export const api = {
     fetchJson<MarketDataStatusResponse>(`/api/market-status?mode=${mode}`),
   getRankings: (mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<StockRankingsResponse>(`/api/rankings?mode=${mode}`),
+  getGlossary: () => fetchJson<GlossaryResponse>(`/api/glossary`),
   getResearch: (q = "", mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<ResearchResponse>(`/api/research?mode=${mode}&q=${encodeURIComponent(q)}`),
   getStrategyLab: () => fetchJson<StrategyLabResponse>(`/api/strategy-lab`),

@@ -630,6 +630,7 @@ def test_module_app_and_openapi() -> None:
         "/api/paper-trading",
         "/api/paper-trading/record-signal",
         "/api/health",
+        "/api/glossary",
         "/api/sync/browser",
         "/api/sync/preview",
         "/api/sync/confirm",

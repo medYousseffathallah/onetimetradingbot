@@ -5,7 +5,8 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        "rounded-xl border border-slate-800/80 bg-slate-900/75 text-slate-100 shadow-sm backdrop-blur-sm",
+        "rounded-xl border border-slate-200/80 bg-white text-slate-900 shadow-sm transition-colors",
+        "dark:border-slate-800/80 dark:bg-slate-900/85 dark:text-slate-100",
         className
       )}
       {...props}
@@ -20,14 +21,22 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn("text-base font-semibold leading-none tracking-tight text-slate-100", className)}
+      className={cn(
+        "text-base font-semibold leading-none tracking-tight text-slate-900 dark:text-slate-100",
+        className
+      )}
       {...props}
     />
   );
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-xs text-slate-400", className)} {...props} />;
+  return (
+    <p
+      className={cn("text-xs text-slate-500 dark:text-slate-400 leading-normal", className)}
+      {...props}
+    />
+  );
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -42,12 +51,18 @@ export function Badge({
   variant?: "default" | "success" | "warning" | "danger" | "outline" | "info";
 }) {
   const styles = {
-    default: "bg-slate-800 text-slate-200 border-slate-700",
-    success: "bg-emerald-950/80 text-emerald-300 border-emerald-700/60",
-    warning: "bg-amber-950/80 text-amber-300 border-amber-700/60",
-    danger: "bg-rose-950/80 text-rose-300 border-rose-700/60",
-    info: "bg-sky-950/80 text-sky-300 border-sky-700/60",
-    outline: "bg-transparent text-slate-300 border-slate-700",
+    default:
+      "bg-slate-100 text-slate-700 border-slate-200/80 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700",
+    success:
+      "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-700/60",
+    warning:
+      "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/60",
+    danger:
+      "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-700/60",
+    info:
+      "bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/70 dark:text-sky-300 dark:border-sky-700/60",
+    outline:
+      "bg-transparent text-slate-700 border-slate-300 dark:text-slate-300 dark:border-slate-700",
   };
   return (
     <span
@@ -71,11 +86,16 @@ export function Button({
   size?: "sm" | "md" | "lg";
 }) {
   const variants = {
-    primary: "bg-emerald-600 hover:bg-emerald-500 text-white border-transparent shadow-sm",
-    secondary: "bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700",
-    outline: "bg-transparent hover:bg-slate-800/60 text-slate-200 border-slate-700",
-    amber: "bg-amber-600 hover:bg-amber-500 text-slate-950 font-semibold border-transparent",
-    danger: "bg-rose-600 hover:bg-rose-500 text-white border-transparent",
+    primary:
+      "bg-teal-600 hover:bg-teal-700 text-white border-transparent shadow-sm active:bg-teal-800 focus-visible:ring-teal-500",
+    secondary:
+      "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 dark:border-slate-700",
+    outline:
+      "bg-transparent hover:bg-slate-100 text-slate-700 border-slate-300 dark:hover:bg-slate-800/60 dark:text-slate-200 dark:border-slate-700",
+    amber:
+      "bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold border-transparent shadow-sm",
+    danger:
+      "bg-rose-600 hover:bg-rose-700 text-white border-transparent shadow-sm",
   };
   const sizes = {
     sm: "h-8 px-3 text-xs",
@@ -85,7 +105,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg border font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 rounded-lg border font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 select-none",
         variants[variant],
         sizes[size],
         className

@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 import { api, ReconciliationPreviewResponse } from "@/lib/api";
 import { formatTnd, formatTimestamp } from "@/lib/utils";
 import { Badge, Button, Card, CardContent } from "@/components/ui/primitives";
+import { MetricHelp } from "@/components/ui/metric-help";
 import { usePortfolioMode } from "@/components/app-shell";
 
 export function SyncConfirmationBanner({ onConfirmed }: { onConfirmed?: () => void }) {
@@ -30,15 +31,15 @@ export function SyncConfirmationBanner({ onConfirmed }: { onConfirmed?: () => vo
 
   if (justConfirmed && !preview.has_pending) {
     return (
-      <Card className="border-emerald-500/40 bg-emerald-950/20">
+      <Card className="border-emerald-300 bg-emerald-50/80 dark:border-emerald-500/40 dark:bg-emerald-950/20">
         <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <div>
-              <p className="text-sm font-medium text-emerald-200">
+              <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
                 Synchronized portfolio snapshot confirmed and persisted to active ledger.
               </p>
-              <p className="text-xs text-emerald-300/80">
+              <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
                 Active Portfolio Total: {formatTnd(preview.equity_after_tnd)} | Cash:{" "}
                 {formatTnd(preview.cash_after_tnd)}
               </p>
@@ -71,16 +72,19 @@ export function SyncConfirmationBanner({ onConfirmed }: { onConfirmed?: () => vo
   };
 
   return (
-    <Card className="border-amber-500/50 bg-amber-950/20">
+    <Card className="border-amber-300 bg-amber-50/70 dark:border-amber-500/50 dark:bg-amber-950/20 shadow-sm">
       <CardContent className="p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
-              <h4 className="text-sm font-semibold text-amber-200">
-                Snapshot captured — awaiting confirmation
-              </h4>
-              <p className="text-xs text-amber-300/80">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Snapshot captured — awaiting confirmation
+                </h4>
+                <MetricHelp metricId="portfolio_reconciliation" />
+              </div>
+              <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
                 Captured at {formatTimestamp(snap.retrieved_at)} • Reconciliation gap:{" "}
                 {formatTnd(snap.reconciliation_gap_tnd)}
               </p>
@@ -89,10 +93,10 @@ export function SyncConfirmationBanner({ onConfirmed }: { onConfirmed?: () => vo
           <Badge variant="warning">Pending Confirmation</Badge>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg bg-slate-950/70 p-3.5 border border-slate-800">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg bg-white/90 dark:bg-slate-950/70 p-3.5 border border-amber-200/80 dark:border-slate-800">
           <div>
-            <p className="text-[11px] text-slate-400">Website Portfolio Total</p>
-            <p className="text-sm font-mono font-semibold text-slate-100">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Website Portfolio Total</p>
+            <p className="text-sm font-mono font-semibold text-slate-900 dark:text-slate-100">
               {formatTnd(snap.portfolio_total_tnd)}
             </p>
             <p className="text-[11px] text-slate-400">
@@ -100,65 +104,73 @@ export function SyncConfirmationBanner({ onConfirmed }: { onConfirmed?: () => vo
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-slate-400">Available Cash</p>
-            <p className="text-sm font-mono font-semibold text-slate-100">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Available Cash</p>
+            <p className="text-sm font-mono font-semibold text-slate-900 dark:text-slate-100">
               {formatTnd(snap.available_cash_tnd)}
             </p>
             <p className="text-[11px] text-slate-400">
-              Delta: {formatTnd(preview.cash_delta_tnd)}
+              Previously: {formatTnd(preview.cash_before_tnd)}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-slate-400">Holdings Market Value</p>
-            <p className="text-sm font-mono font-semibold text-slate-100">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Holdings Market Value</p>
+            <p className="text-sm font-mono font-semibold text-slate-900 dark:text-slate-100">
               {formatTnd(snap.holdings_market_value_tnd)}
             </p>
-            <p className="text-[11px] text-slate-400">{snap.holdings_count} position(s)</p>
+            <p className="text-[11px] text-slate-400">
+              Active Positions: {snap.holdings_count}
+            </p>
           </div>
           <div>
-            <p className="text-[11px] text-slate-400">Competition Ranking</p>
-            <p className="text-sm font-mono font-semibold text-emerald-400">
-              {snap.competition_rank
-                ? `#${snap.competition_rank.toLocaleString()} / ${(
-                    snap.total_participants || 14530
-                  ).toLocaleString()}`
-                : "N/A"}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Competition Rank</p>
+            <p className="text-sm font-mono font-semibold text-amber-700 dark:text-amber-400">
+              {snap.competition_rank !== null
+                ? `#${snap.competition_rank} / ${snap.total_participants ?? "?"}`
+                : "Unranked"}
             </p>
-            <p className="text-[11px] text-slate-400">Tunis Bourse Challenge</p>
+            <p className="text-[11px] text-slate-400">
+              Performance: {snap.displayed_overall_performance_pct ?? "N/A"}
+            </p>
           </div>
         </div>
 
+        {error && (
+          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 p-3 text-xs text-rose-800 dark:text-rose-300">
+            {error}
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-          <label className="flex items-center gap-2.5 text-xs text-slate-200 cursor-pointer select-none">
+          <label className="flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={checked}
               onChange={(e) => setChecked(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+              className="rounded border-amber-400 dark:border-slate-700 bg-white dark:bg-slate-900 text-teal-600 focus:ring-teal-500"
             />
             <span>
-              I confirm that the synchronized portfolio values ({formatTnd(snap.portfolio_total_tnd)}
-              , {snap.holdings_count} holding(s)) match my Tunis Bourse Challenge account.
+              I have inspected the website values above and confirm they match my Tunis Bourse
+              Challenge account.
             </span>
           </label>
+
           <Button
             variant="amber"
             size="sm"
             disabled={!checked || submitting}
             onClick={handleConfirm}
+            className="shrink-0"
           >
             {submitting ? (
               <>
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                Applying...
+                <span>Committing...</span>
               </>
             ) : (
-              "Confirm & Apply Synchronized Snapshot"
+              <span>Confirm & Reconcile Account</span>
             )}
           </Button>
         </div>
-
-        {error && <p className="text-xs text-rose-400 font-medium">{error}</p>}
       </CardContent>
     </Card>
   );

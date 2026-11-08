@@ -3,11 +3,46 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
+  --font-inter: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.dark {
   color-scheme: dark;
 }
 
 body {
+  background-color: #f8f9fa;
+  color: #1e293b;
+  font-family: var(--font-inter);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body {
   background-color: #090d16;
   color: #f8fafc;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Custom scrollbars for data tables and drawers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.6);
 }

@@ -1,8 +1,8 @@
 # Working state
 
 ## Current checkpoint
-**Monday Operational Readiness Audit & Windows Launcher P0 Resolution** verified end-to-end on `main` on 2026-11-08 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
-All **316 automated Python tests** (including **54 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), the **Next.js TypeScript + production build**, and the **Playwright Chrome automated UI audit** pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**P1 UX Redesign, Financial Indicator Glossary & Explainability System** verified end-to-end on `main` on 2026-11-08 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
+All **324 automated Python tests** (including **8 glossary tests** and **54 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), strict Mypy across 20 source files, the **Next.js TypeScript + production build** (`10/10` static pages), and **12 Playwright visual audit screenshots** pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
 
 ## Modern Dashboard Migration & Phase 0 State Service (2026-11-07)
@@ -360,4 +360,49 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
   - `docs/MONDAY_READINESS_REPORT.md`: Comprehensive audit report with test matrices, command outputs, timestamps, and screenshot artifacts.
   - `docs/DAILY_TRADING_OPERATIONS.md`: Pre-session (08:30-09:00), live session (09:00-14:15), and post-session EOD catch-up (14:30-15:30) operational playbook.
 - **Next exact action**: Execute Pre-Session Checklist at 08:30 Africa/Tunis on Monday 2026-11-09 using `.\start_bvmt.bat`.
+
+## P1 UX Redesign, Financial Indicator Glossary & Explainability System (main, 2026-11-08)
+
+- **Codex Workstream — Machine-Readable Glossary & API Contracts (`src/bvmt/glossary.py`, `src/bvmt/api.py`, `tests/test_glossary.py`, `tests/test_api.py`)**:
+  - Implemented comprehensive `MetricDefinition` and `EligibilityExplanation` dataclasses covering:
+    - **21 Indicators**: `last_price`, `reference_price`, `pct_change`, `momentum_20s`, `momentum_60s`, `relative_strength_20s`, `volatility_20s`, `median_turnover_20s`, `trading_frequency_20s`, `composite_score`, `target_weight`, `suggested_shares`, `portfolio_equity`, `cash_balance`, `unrealized_pnl`, `realized_pnl`, `official_buy_fee`, `official_sell_fee`, `slippage_model`, `eod_settlement_status`, `data_freshness_delay`.
+    - **13 Eligibility Blocker Codes**: `insufficient_history_61s`, `no_trades_in_history`, `untraded_anchor_session_20s`, `untraded_anchor_session_60s`, `high_zero_volume_frequency`, `low_median_turnover`, `outside_principal_quotation_group`, `trading_suspended`, `stale_market_price`, `momentum_below_hurdle`, `synthetic_data_on_real_portfolio`, `zero_volume_participation_limit`, `concentration_cap_reached`.
+  - Formulas match exact Python implementations from `src/bvmt/features.py`, `src/bvmt/execution.py`, `src/bvmt/recommendations.py`, `src/bvmt/gateway.py`, and `src/bvmt/ledger.py`.
+  - Added `GET /api/glossary` endpoint returning categorized metrics and dictionary mappings.
+  - Added `eligibility_explanations` list to `StockRankingItem` in `src/bvmt/api.py` so frontend drawers consume structured explanations directly from backend domain logic without hardcoding.
+  - Added 8 unit tests in `tests/test_glossary.py` and registered `/api/glossary` in `tests/test_api.py`.
+- **Gemini Workstream — Design System, Theming & Accessible UI (`frontend/`)**:
+  - **Color Palette & Light Theme**: Configured warm off-white background (`#f8f9fa`), dark charcoal text (`#1e293b`), muted teal accent, and high-contrast badges (`Card`, `Badge`, `Button` in `frontend/src/components/ui/primitives.tsx`).
+  - **Soft-Dark Mode & Theme Provider**: Added `frontend/src/components/theme-provider.tsx` with light/dark toggle button in `app-shell.tsx`, anti-FOUC script in `layout.tsx`, and `localStorage` persistence.
+  - **Responsive Layout**: Replaced rigid desktop sidebar on mobile with responsive hamburger navigation (`hidden md:flex` on desktop, mobile slide-down menu), ensuring full content width on mobile devices ($375\times 812$).
+  - **Accessible MetricHelp Component (`frontend/src/components/ui/metric-help.tsx`)**: Reusable popover supporting keyboard navigation, hover, and click/tap. Positioned downward (`align="bottom"`) with smart horizontal alignment to prevent top-viewport clipping. Displays plain definition, formula code block, interpretation guide, and prominent amber limitations alert.
+  - **Market Explorer Redesign (`frontend/src/app/market/page.tsx`)**:
+    - 4 summary KPI cards (Total Listed `76`, Eligible `37`, Review `29`, Strictest Blocker).
+    - Plain-language market intro explaining selection methodology.
+    - 4 filter tabs (`All (76)`, `Eligible (37)`, `Needs Review (29)`, `Excluded (39)`).
+    - Simplified 6-column default table (Ticker/Name, Sector/Group, Price, Momentum 20s, Status Badge, Details Action).
+    - Toggleable Advanced Metrics (adds 60s Momentum, Relative Strength, Volatility, Median Turnover, Composite Score).
+    - Ergonomic 12 stocks/page pagination.
+    - Expandable inline details drawer with 6-metric card grid and structured blocker explanations.
+  - **Strategy Lab Contrast Repair (`frontend/src/app/strategy/page.tsx`)**: Overhauled table classes from fixed faint text to adaptive `text-slate-900 dark:text-slate-100`, fixing contrast across Strategy Baselines, Walk-Forward, and Fee Sensitivity matrices.
+  - **Overview, Portfolio, Transactions, Research & Health**: Integrated `MetricHelp` across all primary KPI cards, fee disclaimers, and data freshness badges.
+- **Windows Concurrency & File Locking Resolution (`src/bvmt/notifications.py`)**:
+  - Resolved `PermissionError: [WinError 32]` occurring during concurrent API calls by replacing destructive `path.unlink()` in `NotificationCenter.save()` with `atomic_write_text(..., allow_identical=True, allow_overwrite=True)` and a 50ms exponential retry handler.
+- **Verification & Visual Evidence (All 12 Screenshots Captured & Visually Inspected)**:
+  - `redesign_01_overview_light.png`: Light theme overview, 50,000.75 TND, #118 rank, BH BANK position.
+  - `redesign_02_market_light_default.png`: 4 summary cards, 4 filter tabs, 6-column clean table, pagination.
+  - `redesign_03_market_advanced_metrics.png`: 11-column view with Momentum 60s, Rel Strength, Volatility, Turnover, Score.
+  - `redesign_04_market_stock_details_drawer.png`: Expanded drawer with 6-metric card grid and structured blocker diagnostics.
+  - `redesign_05_market_metric_tooltip.png`: MetricHelp popover displaying formula, interpretation, and amber limitations alert.
+  - `redesign_06_market_dark_mode.png`: Soft-dark theme `#090d16` with crisp typography and high contrast.
+  - `redesign_07_market_mobile_layout.png`: Mobile 375x812 responsive view with collapsed sidebar.
+  - `redesign_08_portfolio_light.png`: Portfolio management, asset allocation, confirmed snapshot history.
+  - `redesign_09_transactions_light.png`: Order history and fee disclosure.
+  - `redesign_10_research_light.png`: Document search and point-in-time disclosure notice.
+  - `redesign_11_strategy_lab_light.png`: High-contrast dark text on light backgrounds across all tables.
+  - `redesign_12_health_light.png`: System health, 100% manual execution badge, market data gateway status.
+- **Gate Evidence**:
+  - Full Python Quality Gate (`uv run --no-sync python scripts/check.py`): Ruff format clean (45 files), Ruff lint clean, Mypy strict clean (20 source files), Skill validation passed (10 skills), pytest **324 passed** in 44.78s.
+  - Frontend TypeScript & Build: `npm.cmd --prefix frontend run typecheck` passed (0 errors), `npm.cmd --prefix frontend run build` compiled all 10 static routes in 9.7s.
+- **Next exact action**: Launch pre-session checks on Monday morning 2026-11-09 per `docs/DAILY_TRADING_OPERATIONS.md`.
 

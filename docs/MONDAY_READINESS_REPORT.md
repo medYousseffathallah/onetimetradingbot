@@ -203,3 +203,4 @@ All major views of the Next.js frontend were loaded from the running localhost s
 1. If you placed or executed orders on Tunis Bourse Challenge during Monday's session, navigate to **Portfolio -> 4. Sync Competition Portfolio** and click **"Sync Now (Launch Browser)"** (or run `uv run bvmt browser-sync`).
 2. Log in manually in the visible Chrome window. The collector will automatically capture `displayp.aspx` and `display_histo.aspx`.
 3. Review the reconciliation preview diff, and click **"Confirm Snapshot"** to persist your updated ledger.
+
