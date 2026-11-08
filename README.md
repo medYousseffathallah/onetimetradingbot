@@ -283,9 +283,105 @@ npm.cmd run build
 - **Strict Localhost & Privacy Boundaries:** Both FastAPI (`127.0.0.1:8000`) and Next.js (`127.0.0.1:3000`) bind exclusively to localhost. Private portfolio snapshots (`data/portfolio/`) and browser profiles (`data/browser_profile/`) are gitignored and never transmitted externally.
 - **Current Statistical Limitation (`194` Sessions):** The verified official 2026 BVMT archive contains `194` daily trading sessions (`2026-01-02` to `2026-11-06`). Because `194 < 250` sessions (and `2020–2025` daily bars are not present in the public NDJSON feed), all backtest and walk-forward results are explicitly labeled **`is_statistically_conclusive: False`**.
 - **Further Reading:**
+  - [Independent Strategy Robustness Audit (Milestone 5)](docs/INDEPENDENT_STRATEGY_AUDIT.md)
   - [Current Research Engine Audit](docs/CURRENT_RESEARCH_AUDIT.md)
   - [Strategy Research & Factor Design](docs/STRATEGY_RESEARCH.md)
   - [Mathematical Model Catalog (Models A–I)](docs/MODEL_CATALOG.md)
-  - [Backtesting & Walk-Forward Methodology](docs/BACKTEST_METHODOLOGY.md)
-  - [Experiment Registry (2026 Official Archive)](docs/EXPERIMENT_REGISTRY.md)
-  - [Research Roadmap](docs/RESEARCH_ROADMAP.md)
+  - [Backtesting, Risk Normalization & Forward Paper-Trading Methodology](docs/BACKTEST_METHODOLOGY.md)
+  - [Experiment Registry (2026 Comparative & Risk-Normalized Suite)](docs/EXPERIMENT_REGISTRY.md)
+  - [Research Roadmap & Promotion Governance](docs/RESEARCH_ROADMAP.md)
+
+---
+
+## 12. Milestone 5: Strategy Robustness, Risk Normalization & Forward Paper-Trading Governance
+
+Before trusting any historical backtest return for manual trading decisions, Milestone 5 subjects all 9 registered strategies (`A` through `I`) to an **Independent Strategy Audit** ([`docs/INDEPENDENT_STRATEGY_AUDIT.md`](docs/INDEPENDENT_STRATEGY_AUDIT.md)), **Exposure-Normalized & Outlier-Adjusted Re-Evaluation**, and **Forward-Only Paper Trading** ([`src/bvmt/paper_trading.py`](src/bvmt/paper_trading.py)).
+
+### 12.1 Key Audit Findings on Model G (`G_LIQUIDITY_FILTERED_MOMENTUM`)
+1. **Low Headline Drawdown (`4.98%`) Is Primarily Driven by Low Capital Utilization (`29.79%` Active)**:
+   - Under the 5-slot (`8.5%` target sleeve) configuration, Model G invests only `29.79%` of capital during the 134 post-warmup sessions (`20.57%` across all 194 sessions), holding ~70% cash. Normalized by active exposure, its invested sleeve drawdown is **`16.73%`** ($4.984\% / 0.2979$), nearly matching Buy-and-Hold `C` (`17.40%`) and Equal-Weight `B` (`18.33%`).
+2. **Equal-Budget (`10-Slot`) & Exposure-Normalized Winner Is Model I (`I_REGIME_FILTERED_QUALITY_MOMENTUM`)**:
+   - When all strategies are normalized by active capital utilization (`exposure_normalized_return_pct`) or re-simulated at an equalized **10-slot (`9.5%` target) capital budget**, **`I_REGIME_FILTERED_QUALITY_MOMENTUM`** ranks #1 with **`+63.85%` exposure-normalized return** and **`+28.8225%` 10-slot net return (`10.30%` max drawdown)** vs. Model G's `+63.15%` exposure-normalized return and `+25.3667%` 10-slot return (`10.92%` max drawdown).
+3. **Single-Stock Outlier Sensitivity (`SOTETEL`)**:
+   - A single `+202.29%` winner (`SOTETEL`, `+12,097.78 TND` net gain) contributed ~60% of Model G's headline `+18.8117%` return. Removing `SOTETEL` from the universe reduces Model G's 5-slot return to **`+7.4320%`** (still #1 among `D`–`I` and `+2.97%` above cash-matched Benchmark B's `+4.46%`).
+4. **Mathematical Equivalence of `D_MOMENTUM_20S` and `F_RELATIVE_STRENGTH_20S`**:
+   - Because cross-sectional mean return $\bar{M}_{20}(t)$ is constant across all stocks on session $t$, $RS_{i,20}(t) = M_{i,20}(t) - \bar{M}_{20}(t)$ preserves exact rank order whenever at least 5 eligible stocks beat the mean (`+17.0506%` identical return).
+
+### 12.2 Signal Generation & Time-of-Information Controls
+
+```mermaid
+flowchart LR
+    subgraph PIT["Point-in-Time Cutoff (Session t Close)"]
+        Bars["Verified Daily Bars (bar_date <= t)"]
+        Master["Instrument Master (Principal Groups 11/12)"]
+        Cal["Exchange Calendar (closes_at <= cutoff_t)"]
+    end
+
+    subgraph Filter["7-Gate Eligibility & Factor Engine"]
+        Elig["61-Session History, Zero Suspensions, Traded Anchors"]
+        Liq["Liquidity Gate (Freq >= 60%, Turnover >= 5,000 TND)"]
+        Score["Frozen Formula A–I (Zero Future Bars Accessible)"]
+    end
+
+    subgraph Queue["Immutable Forward Signal Record"]
+        Hash["Cryptographic Hashes (config_hash + data_hash + code_sha256)"]
+        Orders["Intended Orders Queued as PENDING_NEXT_SESSION"]
+    end
+
+    PIT --> Filter --> Queue
+```
+
+### 12.3 Forward Paper-Trading Lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Feed as Canonical BVMT Bars (Session t)
+    participant Paper as PaperTradingJournal (paper_trading.py)
+    participant Store as Isolated Paper Journal (paper_trading_journal.json)
+    participant NextDay as Next Session Bars (Session t+1)
+
+    Feed->>Paper: 1. Load verified bars with session_date <= t
+    Paper->>Paper: 2. Settle prior PENDING_NEXT_SESSION orders from < t at session t Open
+    Paper->>Store: 3. Record immutable PaperSignalSnapshot at session t (Hashes + Timestamp)
+    Paper->>Store: 4. Queue new hypothetical orders as PENDING_NEXT_SESSION (No same-day fills)
+    NextDay->>Paper: 5. Session t+1 bars ingested after next market close
+    Paper->>Store: 6. Execute T+1 Open fills (0.50% fee, 10 bps slippage, 10% vol cap, 10% concentration cap)
+    Paper->>Store: 7. Track paper equity, cash, turnover, drawdown & benchmark excess return
+```
+
+### 12.4 Strategy Promotion & Rollback Governance
+
+```mermaid
+flowchart TD
+    Reg["1. Registered Strategy Hypothesis (Models A–I)"] --> Audit["2. Independent Code & Bias Audit (docs/INDEPENDENT_STRATEGY_AUDIT.md)"]
+    Audit --> NormGate{"3. Beats Cash-Matched & Equal-Budget Benchmarks Ex-Outlier?"}
+    NormGate -- "No" --> Hold["Retain as Exploratory Benchmark Only"]
+    NormGate -- "Yes" --> Paper["4. Enter Forward-Only Paper Trading (paper_trading_journal.json)"]
+    Paper --> DepthGate{"5. >= 250 Multi-Year Historical Sessions + >= 60 Forward Paper Sessions?"}
+    DepthGate -- "No (Current: 194 Hist Sessions)" --> Exploratory["Exploratory Status: Surface with Explicit Audit Warnings Only"]
+    DepthGate -- "Yes" --> HumanApprove["6. Explicit Human Operator Sign-Off"]
+    HumanApprove --> ActiveManual["7. Eligible for Manual Trade Recommendations (100% Manual Execution)"]
+    ActiveManual --> Monitor{"8. Forward Drawdown Breach or Concentration Drift?"}
+    Monitor -- "Yes" --> Rollback["Automatic Rollback to Exploratory / Cash-Preserving Mode"]
+```
+
+### 12.5 Historical Data Provenance & Corporate-Action Adjustment Workflow
+
+```mermaid
+flowchart LR
+    RawSrc["Official BVMT NDJSON (2026: 194d) + Annual Archives (2020–2025 Request)"] --> Check["SHA-256 Checksum & Null-Quantity Quarantine (Block 2025 Monthly Summaries)"]
+    CMFNotices["CMF Dividend, Split & Suspension Notices"] --> PITMaster["Point-in-Time Instrument & Corporate Action Ledger"]
+    Check --> RawSeries["Raw Unadjusted OHLCV (Order Sizing, T+1 Fills & Cash Accounting)"]
+    Check --> AdjSeries["Dividend/Split-Adjusted Total Return Series (Momentum & Drawdown Signals)"]
+    PITMaster --> RawSeries
+    PITMaster --> AdjSeries
+```
+
+### 12.6 How a Strategy Becomes Eligible for Actual Manual Trading Recommendations
+A strategy is only eligible to drive primary manual trading recommendations when it satisfies **all five governance criteria**:
+1. **Zero Lookahead & Independent Audit**: Verified in [`docs/INDEPENDENT_STRATEGY_AUDIT.md`](docs/INDEPENDENT_STRATEGY_AUDIT.md) with strict `bar_date <= decision_date` enforcement.
+2. **Exposure-Normalized & Outlier-Adjusted Positive Alpha**: Positive excess return versus `B_EQUAL_WEIGHT_ELIGIBLE` and `C_BUY_AND_HOLD_BENCHMARK` on both cash-matched and 10-slot equal-budget bases, and positive return when excluding the single largest winner (`ex-SOTETEL`).
+3. **Continuous Concentration Compliance**: Daily monitoring that triggers a `REDUCE` recommendation whenever any position drifts above `9.5%` toward the `10.0%` competition ceiling.
+4. **Forward Paper-Trading Track Record**: Verified forward-only paper-trading execution in `data/portfolio/paper_trading_journal.json` alongside multi-year historical data (`>= 250` sessions).
+5. **Explicit Human Approval**: Every recommendation remains a read-only decision-support card; the human competitor manually reviews and places orders on the Tunis Bourse Challenge website.

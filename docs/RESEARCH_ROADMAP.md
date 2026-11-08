@@ -1,58 +1,74 @@
-# BVMT Quantitative Research Roadmap
+# BVMT Quantitative Research Roadmap & Strategy Promotion Governance
 
-**Document Status**: Verified Milestone 4 Prioritized Research Plan  
-**Current Baseline**: Commit `392daf6` + Milestone 4 Comparative Strategy Suite (`Models A–I`)
+**Document Status**: Verified Milestone 5 Roadmap & Promotion Protocol  
+**Current Baseline**: Milestone 5 Audited Strategy Suite (`Models A–I`) + Forward-Only Paper-Trading Journal (`src/bvmt/paper_trading.py`)
 
 ---
 
-## 1. Executive Summary & Strategic Priorities
+## 1. Historical Data Provenance & Corporate-Action Adjustment Workflow
 
-Our research roadmap is organized into four sequential horizons designed to move the BVMT Trading Intelligence system from **single-year (2026) exploratory validation** (`194` sessions) to **multi-year, corporate-action-adjusted statistical conclusiveness** (`>= 250` sessions).
+Our #1 scientific blocker for statistical conclusiveness (`>= 250` trading sessions) is the absence of pre-2026 daily OHLCV bars and point-in-time corporate-action adjustment tables in the public `market_resume.ndjson` feed. Below is the target data provenance and adjustment workflow:
 
 ```mermaid
-flowchart LR
-    M4["Milestone 4 (Complete): Baselines A–G, Multi-Factor H–I, 7-Fold Walk-Forward (194 Sessions)"] --> P1["Horizon 1 (Data Depth): Official 2020–2025 Daily Archives (histo_cotation_YYYY.zip)"]
-    P1 --> P2["Horizon 2 (Total Return): Ex-Dividend & Split Adjustment Ledger"]
-    P2 --> P3["Horizon 3 (Portfolio Construction): Covariance / Sector-Capped Allocation"]
-    P3 --> P4["Horizon 4 (ML Unblocking): Walk-Forward LightGBM Ranker (>= 250 Sessions)"]
+flowchart TD
+    subgraph Sources["Authorized Official BVMT & CMF Sources"]
+        NDJSON["Bourse de Tunis market_resume.ndjson (2026 Verified Daily: 194 Sessions)"]
+        Archives["Official Annual Archives histo_cotation_2020..2025.zip (Investor Request)"]
+        CMF["CMF Official Bulletins (Dividendes, Splits, Attributions Gratuites, Suspensions)"]
+    end
+
+    subgraph Verify["Provenance & Integrity Gate (snapshots.py / strategies.py)"]
+        Hash["SHA-256 Checksum & Manifest Verification"]
+        Quarantine["Quarantine Null-Quantity Monthly Summaries (2025: 6,303/6,881 Null Rows Blocked)"]
+        Master["Point-in-Time Instrument Master (Listings, Delistings, Group 11/12 Mapping)"]
+    end
+
+    subgraph Adjust["Dual Price Series Construction"]
+        Raw["Raw Unadjusted OHLCV Bars (Used for Order Sizing, Cash Ledger & T+1 Fills)"]
+        Adj["Total-Return Adjusted Close Series (Used for Momentum & Drawdown Signals)"]
+    end
+
+    NDJSON --> Hash
+    Archives --> Hash
+    CMF --> Master
+    Hash --> Quarantine --> Master
+    Master --> Raw
+    Master --> Adj
 ```
 
 ---
 
-## 2. Prioritized Research Workstreams
+## 2. Prioritized Research Workstreams (Post-Milestone 5)
 
-### Priority 1: Multi-Year Official Daily Data Acquisition (`2020–2025`)
-- **Problem**: As documented in [`artifacts/backtest_audit_2026.json`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/artifacts/backtest_audit_2026.json), the local `market_resume_full.ndjson` file contains `0` records for `2022–2024` and only `12` monthly summary lines for `2025` (`quantites: null` on `91.6%` of rows). Only `2026` (`histo_cotation_2026.zip`, `194` sessions) has verified daily OHLCV bars.
-- **Action**:
-  1. Acquire official annual BVMT quotation archives (`histo_cotation_2020.zip` through `histo_cotation_2025.zip`) from the official BVMT historical data portal or authorized university/CMF feeds.
-  2. Ingest each archive through [`ingest_official_bvmt_daily_archive()`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/snapshots.py#L465) with SHA-256 provenance manifests.
-  3. Unblock the `>= 250` session statistical sufficiency gate (`~1,250+` trading sessions across 5 years).
+### Priority 1: Multi-Year Official Daily Archives (`2020–2025`)
+- **Current Blocker**: `data/staging/market_resume_full.ndjson` contains `0` records for `2020–2024` and only `12` monthly summary envelopes for `2025` (`6,303` of `6,881` rows have `quantites: null`). Legacy `bvmt.com.tn` historical ZIP endpoints return `0` bytes.
+- **Required Action**: Obtain authorized annual daily quotation files (`histo_cotation_2020.zip`–`histo_cotation_2025.zip`) from the Bourse de Tunis Data Services desk to expand the canonical dataset from `194` sessions to `~1,400+` sessions without fabricating or interpolating a single bar.
 
-### Priority 2: Point-in-Time Corporate Actions & Dividend Adjustment Table
-- **Problem**: Tunisian equities (especially banks, leasing companies, and insurers) distribute substantial annual cash dividends (`5%–9%` dividend yields). On the ex-dividend date, raw exchange closing prices drop by approximately the gross dividend amount, which raw price momentum ($M_{20}, M_{60}$) misinterprets as a negative price shock.
-- **Action**:
-  1. Populate `corporate_actions.jsonl` from official BVMT / CMF *Avis de distribution de dividendes* and *Avis d'attribution gratuite* notices.
-  2. Compute parallel **Total-Return Adjusted Close** series alongside raw execution prices so momentum factors measure true economic return while order sizing continues to use actual unadjusted share prices.
+### Priority 2: Forward-Only Paper-Trading Accumulation (`>= 60` Live Sessions)
+- **Current State**: Implemented in [`src/bvmt/paper_trading.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/paper_trading.py) and surfaced in the Strategy Lab (`/strategy`).
+- **Required Action**: Record immutable forward paper-trading signal snapshots after each verified BVMT session close (`POST /api/paper-trading/record-signal`) and settle hypothetical orders strictly at the subsequent session's opening print (`session_date > signal_session_date`). Accumulate at least `60` true forward out-of-sample sessions before considering any strategy for formal promotion.
 
-### Priority 3: Sector-Cap & Intraday Order-Book Depth Modeling
-- **Problem**: Banking and financial-services stocks represent over `45%` of BVMT Principal Market capitalization and liquidity. Pure momentum rankings can select 3–5 banking stocks simultaneously, creating concentrated sector exposure even when each individual stock is capped at `8.5%`.
-- **Action**:
-  1. Add a configurable sector concentration cap (`max_sector_weight_pct = 0.25`) in [`src/bvmt/recommendations.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/recommendations.py) and [`src/bvmt/strategies.py`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/src/bvmt/strategies.py) using the verified BVMT sector codes (`data-sect` / ICB classification).
-  2. Integrate top-of-book bid-ask spread snapshots captured during daily market sessions to refine the `15 bps` slippage estimate per stock.
+### Priority 3: Intraday Opening-Auction Volume & Bid-Ask Spread Capture
+- **Current Blocker**: Daily historical archives report only end-of-day total share volume (`volume_shares`), which means a `10%` daily volume participation cap at `next_open` uses full-day volume information and may overstate opening-auction liquidity on thin stocks (`21.37%` of traded bars have `volume_shares < 500`).
+- **Required Action**: Capture opening-auction volume and top-of-book bid-ask spreads during daily incremental refreshes so forward paper-trading fills are bounded by actual opening liquidity.
 
-### Priority 4: Walk-Forward Machine Learning Promotion (`>= 250` Sessions)
-- **Problem**: Non-linear feature interactions (e.g., momentum conditioned on volume surge and sector dispersion) cannot be safely estimated with gradient boosting on `194` sessions without overfitting.
-- **Action**:
-  1. Once Priority 1 provides $\ge 250$ verified sessions, enable the gated walk-forward `LightGBM` cross-sectional ranker (`lgbm_walk_forward_v0`) using purged expanding folds with a 5-session embargo window.
-  2. Require the ML candidate to beat both **Baseline G (T04)** and **Model H (Multi-Factor Quality Momentum)** net of `0.50%` fees across out-of-sample walk-forward folds and pass the Deflated Sharpe Ratio / multiple-testing haircut before human review.
+### Priority 4: Point-in-Time Dividend & Split Adjustment Ledger
+- **Current Blocker**: High dividend yields on Tunisian banks and leasing companies (`5%–9%`) cause ex-dividend price drops in raw closing prices, distorting 20- and 60-session price momentum (`mom_20`, `mom_60`) and understating buy-and-hold benchmark returns (`B` and `C`).
+- **Required Action**: Build a verified point-in-time `corporate_actions.csv` table from CMF notices so signal lookbacks use dividend-adjusted total returns while execution ledgers continue using raw exchange prices.
 
 ---
 
-## 3. Governance & Promotion Rules
+## 3. How a Strategy Becomes Eligible for Actual Manual Trading Recommendations
 
-| Transition Stage | Required Evidence | Approval Authority |
-| :--- | :--- | :--- |
-| **Exploratory -> Candidate** | Deterministic implementation in `src/bvmt/strategies.py`, zero lookahead unit tests, full evaluation on 2026 dataset (`194` sessions) | Automated Quality Gate (`scripts/check.py`) |
-| **Candidate -> Promoted Research Baseline** | Positive excess return vs. Equal-Weight (`B`) and Cash (`A`) net of `0.50%` fees, lower max drawdown than `D`/`E`, verified across 7 walk-forward folds | **Explicit Human Operator Approval** |
-| **Promoted Baseline -> Live Competition Trade** | Reconciled browser sync (`0.000 TND` gap), human inspection of recommendation card & CMF disclosures, manual order entry on `displayp.aspx` | **100% Manual Human Execution Only** |
+No strategy in this repository can ever execute orders autonomously. For a candidate research model (such as `G_LIQUIDITY_FILTERED_MOMENTUM` or `I_REGIME_FILTERED_QUALITY_MOMENTUM`) to graduate from **Exploratory Research** to **Validated Manual Recommendation Baseline**, it must pass all five mandatory gates:
 
+1. **Gate 1 — Independent Code & Bias Audit (`PASSED`)**:
+   - Zero lookahead in signal computation; T+1 next-open execution; `0.50%` buy/sell fees; documented in [`docs/INDEPENDENT_STRATEGY_AUDIT.md`](file:///c:/Users/Thinkcenter/Desktop/BVMT/bvmt-starter-kit/docs/INDEPENDENT_STRATEGY_AUDIT.md).
+2. **Gate 2 — Risk-Normalized & Outlier-Adjusted Robustness (`IN REVIEW`)**:
+   - Must outperform `B_EQUAL_WEIGHT_ELIGIBLE` and `C_BUY_AND_HOLD_BENCHMARK` on **exposure-normalized return**, **cash-matched excess return**, **equal-budget (10-slot) net return**, and **ex-top-winner (`ex-SOTETEL`) cash-matched return**.
+3. **Gate 3 — Continuous Concentration Compliance (`REQUIRED`)**:
+   - Must enforce the `10.0%` per-stock concentration limit continuously (via daily `>9.5%` / `>10.0%` next-open trim orders), not merely at 19-session rebalance dates.
+4. **Gate 4 — Forward Paper-Trading Validation (`IN PROGRESS`)**:
+   - Must accumulate immutable forward-only paper-trading records in `data/portfolio/paper_trading_journal.json` with zero future data leakage and positive net excess return after fees.
+5. **Gate 5 — Explicit Human Operator Sign-Off (`MANDATORY`)**:
+   - A human operator must review the Strategy Lab audit card, verify the latest browser-synced competition portfolio (`0.000 TND` reconciliation gap), and manually enter any chosen order on the Tunis Bourse Challenge website.
