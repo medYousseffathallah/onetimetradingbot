@@ -20,7 +20,8 @@ from bvmt.browser import (
     CompetitionPortfolioDOMSnapshot,
     save_browser_snapshot,
 )
-from bvmt.data import read_bars_csv
+from bvmt.data import DailyMarketRefreshResult, read_bars_csv
+from bvmt.gateway import MarketDataGateway
 from bvmt.ledger import PortfolioLedger
 from bvmt.llm import DocumentChunk
 from bvmt.portfolio_service import PortfolioStateService
@@ -632,6 +633,8 @@ def test_module_app_and_openapi() -> None:
         "/api/sync/browser",
         "/api/sync/preview",
         "/api/sync/confirm",
+        "/api/market-data/status",
+        "/api/market-data/refresh",
     }
     assert schema["paths"]["/api/overview"]["get"]["responses"]["200"]["content"][
         "application/json"
@@ -736,4 +739,55 @@ def test_paper_api_rejects_invalid_signal(service: PortfolioStateService) -> Non
             response = client.post("/api/paper-trading/record-signal", json={"strategy_id": "bad"})
             assert response.status_code == 400
             assert "secret internal path" not in response.text
+    assert ledger_bytes(service) == before
+
+
+def test_market_data_status_and_refresh_endpoints(service: PortfolioStateService) -> None:
+    before = ledger_bytes(service)
+    with TestClient(create_app(service)) as client:
+        # Check /api/market-data/status
+        status_resp = client.get("/api/market-data/status")
+        assert status_resp.status_code == 200
+        status_data = status_resp.json()
+        assert "active_provider_id" in status_data
+        assert "health_status" in status_data
+        assert "calendar_status" in status_data
+
+        # Check /api/health includes market_gateway
+        health_resp = client.get("/api/health")
+        assert health_resp.status_code == 200
+        health_data = health_resp.json()
+        assert "market_gateway" in health_data
+        assert health_data["market_gateway"] is not None
+
+        # Check /api/market-data/refresh (mocking sync to prevent remote download in test)
+        mock_result = DailyMarketRefreshResult(
+            source_id="mock_source",
+            source_path="mock_path",
+            source_url="http://mock",
+            retrieved_at="2026-11-08T12:00:00+00:00",
+            previous_bars_count=100,
+            new_bars_count=0,
+            total_bars_count=100,
+            previous_sessions_count=10,
+            new_sessions_count=0,
+            total_sessions_count=10,
+            first_session="2026-01-01",
+            latest_session="2026-01-10",
+            duplicate_rows_detected=0,
+            rejected_rows_count=0,
+            stale_instruments_count=0,
+            quality_report_path="",
+            canonical_bars_path="data/test.csv",
+            is_data_fresh=True,
+            freshness_status="fresh",
+        )
+        with patch.object(MarketDataGateway, "refresh", return_value=mock_result):
+            refresh_resp = client.post("/api/market-data/refresh", json={"force": False})
+            assert refresh_resp.status_code == 200
+            refresh_data = refresh_resp.json()
+            assert refresh_data["success"] is True
+            assert refresh_data["total_bars_count"] == 100
+
+    # Ensure zero mutation to competition ledger
     assert ledger_bytes(service) == before

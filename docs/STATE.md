@@ -301,3 +301,30 @@ Live execution against DashScope (intentionally locked behind `network_enabled: 
   - `uv run --no-sync python scripts/check.py`: Ruff format check passed (41 files), Ruff lint passed, `mypy src/bvmt` passed (18 source files), skill validation passed (10 skills), and `pytest -q` passed (**305 passed** in 65.84s).
   - `npm.cmd run typecheck` and `npm.cmd run build` in `frontend/`: Compiled cleanly (`10/10` static routes generated).
 - Next exact action: Accumulate prospective forward-only paper-trading observations as new daily BVMT sessions arrive (`POST /api/paper-trading/record-signal`) and acquire official 2020–2025 daily quotation archives plus CMF corporate-action tables.
+
+## Milestone 6 — Automated Market Data Gateway Integration (main, 2026-11-08)
+
+- **Provider Research & Architecture Specification (`docs/MARKET_DATA_PROVIDERS.md`)**:
+  - Evaluated official BVMT NDJSON feed (`https://www.tunis-stockexchange.com/sites/default/files/historique/data_json/market_resume.ndjson`), OANOR BVMT Stock API (`https://api.oanor.com/tunisia-stock-api`), and institutional direct feeds.
+  - Formulated pluggable `MarketDataProvider` contract, range-tail retrieval strategy, calendar/holiday lifecycle, and strict competition account isolation.
+  - Documented simulation capacity and volume lookahead resolution: 10% daily volume participation is clearly labeled as an ex-post daily liquidity proxy when executing at `next_open`.
+- **Codex Workstream — Gateway & Provider Adapters (`src/bvmt/gateway.py`, `tests/test_gateway.py`)**:
+  - Implemented `QuotationSnapshot`, `ProviderHealthStatus`, and runtime checkable `MarketDataProvider` protocol.
+  - Built `OfficialBvmtNdjsonProvider`: issues HTTP `HEAD` to inspect `ETag` and `Last-Modified`; caches metadata in `data/staging/official_ndjson_head.json`; issues HTTP `Range: bytes=-3500000` (~3.5 MB) to retrieve trailing daily session envelopes; sanitizes boundary-split JSON lines; and merges incrementally via `refresh_daily_market_pipeline`.
+  - Built `OanorMarketDataProvider`: safe, zero-cost adapter for OANOR API with 7k req/mo free-tier rate guard; returns `UNCONFIGURED` when no API key is set without erroring.
+  - Built `LocalArchiveProvider`: 100% offline historical replay provider for air-gapped testing and deterministic CI runs.
+  - Built `MarketDataGateway`: orchestrates active provider, calendar awareness (`WEEKEND_CLOSED`, `EXCHANGE_HOLIDAY`), freshness tracking, and storage dispatch.
+  - Added 10 targeted gateway tests in `tests/test_gateway.py`, including verification that market gateway operations NEVER mutate `data/portfolio/real_competition_ledger.json`.
+- **Shared Contracts & CLI Integration (`src/bvmt/cli.py`, `src/bvmt/api.py`, `tests/test_api.py`)**:
+  - Added CLI subcommands `bvmt market-status` and `bvmt market-refresh [--force] [--as-of YYYY-MM-DD]`.
+  - Added FastAPI endpoints `GET /api/market-data/status` and `POST /api/market-data/refresh`, and added `market_gateway` status reporting to `GET /api/health`.
+  - Updated API integration tests in `tests/test_api.py`, verifying endpoints, OpenAPI schema completeness, and ledger isolation (54 tests).
+- **Gemini Workstream — Next.js Dashboard Integration (`frontend/src/lib/api.ts`, `frontend/src/app/health/page.tsx`)**:
+  - Extended API client with `getMarketDataStatus` and `refreshMarketData`.
+  - Added **Automated Market Data Gateway** panel to System Health page (`/health`) with active provider details, health badges (`HEALTHY`, `OFFICIAL_EOD`), calendar/weekend status, dataset counts, and an interactive **"Refresh Market Data"** button with loading feedback and error/success alerts.
+  - Verified Next.js 15 production build and TypeScript typecheck pass with zero errors (`10/10` static routes).
+- **Verified Full Quality Gate on `main`**:
+  - `uv run --no-sync python scripts/check.py`: Ruff format check passed (43 files), Ruff lint passed, strict `mypy src/bvmt` passed (19 source files), skill validation passed (10 skills), and `pytest -q` passed (**316 passed** in 61.64s).
+  - `npm.cmd --prefix frontend run typecheck`: Passed.
+  - `npm.cmd --prefix frontend run build`: Compiled and statically generated all 10 pages cleanly.
+- **Next exact action**: Monitor automated EOD updates when the exchange session opens on Monday (`2026-11-09`), and continue forward-only paper trading evaluations.

@@ -368,6 +368,44 @@ class AlertItem(APIModel):
     status: str
 
 
+class MarketGatewayStatusResponse(APIModel):
+    active_provider_id: str
+    active_provider_name: str
+    health_status: Literal["HEALTHY", "DEGRADED", "OFFLINE", "UNCONFIGURED"]
+    health_message: str
+    latest_session_date: str | None
+    sessions_behind: int
+    is_data_fresh: bool
+    stale_instruments_count: int
+    total_bars_count: int
+    total_sessions_count: int
+    data_classification: Literal["OFFICIAL_EOD", "DELAYED_QUOTES", "SYNTHETIC_DEMO"]
+    last_sync_timestamp: str | None
+    next_expected_session: str | None
+    calendar_status: str
+
+
+class MarketRefreshRequest(APIModel):
+    model_config = ConfigDict(extra="forbid")
+    force: StrictBool = False
+    as_of: date | None = None
+
+
+class MarketRefreshResponse(APIModel):
+    success: bool
+    message: str
+    previous_bars_count: int
+    new_bars_count: int
+    total_bars_count: int
+    new_sessions_count: int
+    total_sessions_count: int
+    first_session: str | None
+    latest_session: str | None
+    is_data_fresh: bool
+    stale_instruments_count: int
+    canonical_bars_path: str
+
+
 class SystemHealthResponse(APIModel):
     status: Literal["ok", "degraded"]
     version: str
@@ -376,6 +414,7 @@ class SystemHealthResponse(APIModel):
     alerts: list[AlertItem]
     localhost_only: bool = True
     autonomous_trading_enabled: Literal[False] = False
+    market_gateway: MarketGatewayStatusResponse | None = None
 
 
 class PositionDeltaItem(APIModel):
@@ -1011,8 +1050,18 @@ def create_app(
 
     @application.get("/api/health")
     def health(mode: PortfolioMode = "REAL_COMPETITION") -> SystemHealthResponse:
-        state = for_mode(mode).load_state()
+        active = for_mode(mode)
+        state = active.load_state()
         alerts = [AlertItem.model_validate(a) for a in state.notifications.active_alerts()]
+        context = active.resolve_context()
+        gw_status: MarketGatewayStatusResponse | None = None
+        try:
+            from bvmt.gateway import MarketDataGateway
+
+            gw = MarketDataGateway(output_dir=context.bars_path.parent)
+            gw_status = MarketGatewayStatusResponse(**asdict(gw.get_status()))
+        except Exception:
+            gw_status = None
         return SystemHealthResponse(
             status="degraded" if state.rule_blockers or alerts or state.data_is_synthetic else "ok",
             version=__version__,
@@ -1028,6 +1077,45 @@ def create_app(
                 if k in state.llm_status
             },
             alerts=alerts,
+            market_gateway=gw_status,
+        )
+
+    @application.get("/api/market-data/status")
+    def market_data_status(mode: PortfolioMode = "REAL_COMPETITION") -> MarketGatewayStatusResponse:
+        from bvmt.gateway import MarketDataGateway
+
+        active = for_mode(mode)
+        context = active.resolve_context()
+        gateway = MarketDataGateway(output_dir=context.bars_path.parent)
+        return MarketGatewayStatusResponse(**asdict(gateway.get_status()))
+
+    @application.post("/api/market-data/refresh")
+    def market_data_refresh(
+        body: MarketRefreshRequest | None = None, mode: PortfolioMode = "REAL_COMPETITION"
+    ) -> MarketRefreshResponse:
+        from bvmt.gateway import MarketDataGateway
+
+        active = for_mode(mode)
+        context = active.resolve_context()
+        gateway = MarketDataGateway(output_dir=context.bars_path.parent)
+        req = body or MarketRefreshRequest()
+        res = gateway.refresh(force=req.force, as_of=req.as_of)
+        return MarketRefreshResponse(
+            success=True,
+            message=(
+                f"Market data synchronized via {gateway.provider.display_name}: "
+                f"{res.new_bars_count} new bars across {res.new_sessions_count} new sessions."
+            ),
+            previous_bars_count=res.previous_bars_count,
+            new_bars_count=res.new_bars_count,
+            total_bars_count=res.total_bars_count,
+            new_sessions_count=res.new_sessions_count,
+            total_sessions_count=res.total_sessions_count,
+            first_session=res.first_session,
+            latest_session=res.latest_session,
+            is_data_fresh=res.is_data_fresh,
+            stale_instruments_count=res.stale_instruments_count,
+            canonical_bars_path=res.canonical_bars_path,
         )
 
     @application.post("/api/sync/browser")

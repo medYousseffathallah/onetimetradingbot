@@ -523,6 +523,38 @@ export interface AlertItem {
   status: string;
 }
 
+export interface MarketGatewayStatusResponse {
+  active_provider_id: string;
+  active_provider_name: string;
+  health_status: "HEALTHY" | "DEGRADED" | "OFFLINE" | "UNCONFIGURED";
+  health_message: string;
+  latest_session_date: string | null;
+  sessions_behind: number;
+  is_data_fresh: boolean;
+  stale_instruments_count: number;
+  total_bars_count: number;
+  total_sessions_count: number;
+  data_classification: "OFFICIAL_EOD" | "DELAYED_QUOTES" | "SYNTHETIC_DEMO";
+  last_sync_timestamp: string | null;
+  next_expected_session: string | null;
+  calendar_status: string;
+}
+
+export interface MarketRefreshResponse {
+  success: boolean;
+  message: string;
+  previous_bars_count: number;
+  new_bars_count: number;
+  total_bars_count: number;
+  new_sessions_count: number;
+  total_sessions_count: number;
+  first_session: string | null;
+  latest_session: string | null;
+  is_data_fresh: boolean;
+  stale_instruments_count: number;
+  canonical_bars_path: string;
+}
+
 export interface SystemHealthResponse {
   status: string;
   version: string;
@@ -531,6 +563,7 @@ export interface SystemHealthResponse {
   alerts: AlertItem[];
   localhost_only: boolean;
   autonomous_trading_enabled: boolean;
+  market_gateway?: MarketGatewayStatusResponse | null;
 }
 
 export interface PositionDeltaItem {
@@ -630,6 +663,13 @@ export const api = {
     }),
   getHealth: (mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<SystemHealthResponse>(`/api/health?mode=${mode}`),
+  getMarketDataStatus: (mode: PortfolioMode = "REAL_COMPETITION") =>
+    fetchJson<MarketGatewayStatusResponse>(`/api/market-data/status?mode=${mode}`),
+  refreshMarketData: (force = false, asOf: string | null = null, mode: PortfolioMode = "REAL_COMPETITION") =>
+    fetchJson<MarketRefreshResponse>(`/api/market-data/refresh?mode=${mode}`, {
+      method: "POST",
+      body: JSON.stringify({ force, as_of: asOf }),
+    }),
   getSyncPreview: (mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<ReconciliationPreviewResponse>(`/api/sync/preview?mode=${mode}`),
   triggerBrowserSync: (timeoutSeconds = 180) =>

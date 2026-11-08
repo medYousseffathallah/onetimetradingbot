@@ -223,8 +223,56 @@ def main(argv: Sequence[str] | None = None) -> int:
     bsync.add_argument("--no-movements", action="store_true")
     bsync.add_argument("--output")
 
+    mrefresh = commands.add_parser(
+        "market-refresh",
+        help="Synchronize BVMT daily quotations via automated Market Data Gateway",
+    )
+    mrefresh.add_argument(
+        "--output-dir",
+        default="data/processed/bvmt_official_2026",
+        help="Target canonical dataset directory",
+    )
+    mrefresh.add_argument(
+        "--force",
+        action="store_true",
+        help="Force download and re-ingestion regardless of cached ETag / Last-Modified",
+    )
+    mrefresh.add_argument(
+        "--as-of",
+        help="Optional ISO date (YYYY-MM-DD) for freshness evaluation",
+    )
+    mrefresh.add_argument("--output", help="Optional path to write JSON refresh summary")
+
+    mstatus = commands.add_parser(
+        "market-status",
+        help="Inspect operational health and freshness of BVMT market data gateway",
+    )
+    mstatus.add_argument(
+        "--output-dir",
+        default="data/processed/bvmt_official_2026",
+        help="Target canonical dataset directory",
+    )
+    mstatus.add_argument("--output", help="Optional path to write JSON status report")
+
     args = parser.parse_args(argv)
     try:
+        if args.command == "market-refresh":
+            from datetime import date
+
+            from bvmt.gateway import MarketDataGateway
+
+            as_of_date = date.fromisoformat(args.as_of) if args.as_of else None
+            gateway = MarketDataGateway(output_dir=Path(args.output_dir))
+            res = gateway.refresh(force=args.force, as_of=as_of_date)
+            _emit(asdict(res), args.output)
+            return 0
+        if args.command == "market-status":
+            from bvmt.gateway import MarketDataGateway
+
+            gateway = MarketDataGateway(output_dir=Path(args.output_dir))
+            stat = gateway.get_status()
+            _emit(asdict(stat), args.output)
+            return 0
         if args.command == "portfolio-init":
             ledger_p = Path(args.ledger)
             ledger = PortfolioLedger(

@@ -385,3 +385,48 @@ A strategy is only eligible to drive primary manual trading recommendations when
 3. **Continuous Concentration Compliance**: Daily monitoring that triggers a `REDUCE` recommendation whenever any position drifts above `9.5%` toward the `10.0%` competition ceiling.
 4. **Forward Paper-Trading Track Record**: Verified forward-only paper-trading execution in `data/portfolio/paper_trading_journal.json` alongside multi-year historical data (`>= 250` sessions).
 5. **Explicit Human Approval**: Every recommendation remains a read-only decision-support card; the human competitor manually reviews and places orders on the Tunis Bourse Challenge website.
+
+---
+
+## 13. Milestone 6: Automated Market Data Gateway
+
+Milestone 6 eliminates manual daily market data imports by establishing a pluggable, legally permitted, range-queryable market data gateway (`src/bvmt/gateway.py`), fully documented in [`docs/MARKET_DATA_PROVIDERS.md`](docs/MARKET_DATA_PROVIDERS.md).
+
+### 13.1 Architecture & Pluggable Providers
+
+```mermaid
+flowchart TD
+    Trigger["Application Startup / Scheduled Polling / User Refresh Trigger"] --> GW["MarketDataGateway (src/bvmt/gateway.py)"]
+    
+    GW --> HeadCheck["1. HTTP HEAD Request to Official BVMT NDJSON Endpoint"]
+    HeadCheck --> ETagComp{"ETag or Last-Modified Changed?"}
+    
+    ETagComp -- "No Change & Canonical Exists" --> NoOp["Skip Download: Mark Canonical Bars Fresh"]
+    ETagComp -- "New EOD Session Detected / Force" --> RangeReq["2. HTTP Range: bytes=-3500000 (Trailing 3.5 MB)"]
+    
+    RangeReq --> Sanitize["3. Sanitize Partial JSON Boundary Line"]
+    Sanitize --> IngestPipe["4. refresh_daily_market_pipeline (src/bvmt/data.py)"]
+    
+    IngestPipe --> Dedupe["Deduplicate (instrument_id, session_date)"]
+    IngestPipe --> Quarantine["Quarantine Malformed Rows to rejected_rows.csv"]
+    IngestPipe --> CanonicalCSV["Append Verified Sessions to daily_bars.canonical.csv"]
+    IngestPipe --> QualityReport["Update quality_report.json & provenance.json (SHA-256)"]
+    
+    CanonicalCSV --> ApiGateway["FastAPI: GET /api/market-data/status & POST /api/market-data/refresh"]
+    ApiGateway --> DashboardUI["Next.js Dashboard (/health): Market Data Health Panel & Refresh Button"]
+```
+
+### 13.2 Core Capabilities & Safety Guarantees
+
+1. **Lightweight Range-Query Tail Ingestion**: Instead of re-downloading the ~222 MB cumulative NDJSON archive daily, the gateway sends an HTTP `HEAD` request to inspect `ETag` and `Last-Modified`. If updated, it requests only the trailing ~3.5 MB (`Range: bytes=-3500000`), ingesting only new session envelopes.
+2. **Pluggable Provider Adapters**:
+   - `OfficialBvmtNdjsonProvider`: Primary automated EOD settlement provider via official Bourse de Tunis portal.
+   - `OanorMarketDataProvider`: Optional secondary delayed quote adapter with free-tier hard caps (7k req/mo, 2 req/s) and offline-locked safety.
+   - `LocalArchiveProvider`: 100% offline historical replay provider for testing and air-gapped CI environments.
+3. **Strict Account Isolation**: The market data gateway writes strictly to `data/staging/` and `data/processed/`. It has **zero write access** to `data/portfolio/real_competition_ledger.json` and cannot alter portfolio cash, holdings, or trade histories.
+4. **Calendar & Holiday Awareness**: Automatically pauses polling on weekends (`WEEKEND_CLOSED`) and verified exchange holidays using `src/bvmt/calendar.py`.
+5. **CLI & API Integration**:
+   - CLI: `uv run bvmt market-status` and `uv run bvmt market-refresh [--force]`
+   - API: `GET /api/market-data/status` and `POST /api/market-data/refresh`
+   - UI: Interactive Market Data Health panel on Next.js `/health` page with live status badges and manual refresh trigger.
+

@@ -1181,7 +1181,7 @@ def refresh_daily_market_pipeline(
     source_format: SourceFormat = "tunis_stockexchange_ndjson",
     source_url: str | None = "https://www.tunis-stockexchange.com/api/market_resume.ndjson",
     source_id: str = "tunis_stockexchange_equities_2026",
-    permission_status: str = "authorized_for_competition_research",
+    permission_status: str = "public_read_only_reference",
     retrieved_at: datetime | None = None,
     as_of: date | None = None,
 ) -> DailyMarketRefreshResult:
