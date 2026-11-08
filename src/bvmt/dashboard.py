@@ -85,10 +85,14 @@ if not hasattr(_bvmt_ledger, "build_snapshot_from_dom"):
 run_browser_sync_subprocess = _bvmt_browser.run_browser_sync_subprocess
 build_snapshot_from_dom = _bvmt_ledger.build_snapshot_from_dom
 
-DEFAULT_LEDGER_PATH = Path("data/portfolio/ledger.json")
-DEFAULT_REAL_LEDGER_PATH = Path("data/portfolio/real_competition_ledger.json")
-DEFAULT_REAL_SNAPSHOT_PATH = Path("data/portfolio/real_account_snapshot.json")
-DEFAULT_SNAPSHOTS_DIR = Path("data/portfolio/snapshots")
+DEFAULT_LEDGER_PATH = Path(os.environ.get("BVMT_LEDGER_PATH", "data/portfolio/ledger.json"))
+DEFAULT_REAL_LEDGER_PATH = Path(
+    os.environ.get("BVMT_REAL_LEDGER_PATH", "data/portfolio/real_competition_ledger.json")
+)
+DEFAULT_REAL_SNAPSHOT_PATH = Path(
+    os.environ.get("BVMT_REAL_SNAPSHOT_PATH", "data/portfolio/real_account_snapshot.json")
+)
+DEFAULT_SNAPSHOTS_DIR = Path(os.environ.get("BVMT_SNAPSHOTS_DIR", "data/portfolio/snapshots"))
 DEFAULT_BROWSER_PROFILE_DIR = Path("data/browser_profile")
 DEFAULT_ALERTS_PATH = Path("artifacts/alerts/state.json")
 DEFAULT_BARS_PATH = Path("tests/fixtures/daily_bars.csv")
