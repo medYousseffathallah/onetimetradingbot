@@ -20,8 +20,9 @@ The **Tunis Bourse Challenge** (`2026-10-01` to `2027-05-31`) is an educational 
 
 ## 2. Implemented Features
 
-- **Modern 8-Page Next.js 15 + FastAPI Financial Terminal (`frontend/`, `src/bvmt/api.py`):**
-  - **Overview (`/`):** Dual valuation audit comparing **Website-Reported Competition Account Values (`displayp.aspx`)** (`50,000.750 TND` total equity, `49,608.050 TND` cash, `392.700 TND` `BH BANK` market value, `+0.750 TND` unrealized P&L, rank `#118 / 14,530`) against **Locally Recalculated BVMT Mark-to-Market Valuation**.
+- **Modern Next.js 15 + FastAPI Financial Terminal (`frontend/`, `src/bvmt/api.py`):**
+  - **Today's Summary (`/daily-summary`):** Daily session accounting, cash-flow reconciliation, P&L semantics separation (realized vs. unrealized vs. session holding delta), reconstructed transactions feed, model decision fidelity matrix, concentration guardrails, and next-session review priorities.
+  - **Overview (`/`):** Dual valuation audit comparing **Website-Reported Competition Account Values (`displayp.aspx`)** (`50,061.960 TND` total equity, `41,622.790 TND` cash, `8,439.170 TND` holdings, rank `#112 / 14,573`) against **Locally Recalculated BVMT Mark-to-Market Valuation**.
   - **Portfolio (`/portfolio`):** One-click read-only browser synchronization, confirmation-gated reconciliation preview, capital allocation chart, and immutable snapshot history.
   - **Transactions & Orders (`/transactions`):** Executed transaction history (`display_histo.aspx` movements + local fills) and open/pending order tracking.
   - **Market Explorer (`/market`):** Official BVMT dataset provenance (`194` sessions through `2026-11-06`, `76` stocks, `14,480` bars), point-in-time momentum/liquidity rankings, and 7-gate eligibility diagnostics.

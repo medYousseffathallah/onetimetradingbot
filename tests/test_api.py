@@ -650,6 +650,7 @@ def test_module_app_and_openapi() -> None:
         "/api/challenge-universe",
         "/api/trading-intelligence",
         "/api/macro-intelligence",
+        "/api/session/summary",
     }
     assert schema["paths"]["/api/overview"]["get"]["responses"]["200"]["content"][
         "application/json"

@@ -1,9 +1,39 @@
 # Working state
 
 ## Current checkpoint
-**Milestone 10: Reliable Account Synchronization & Browser Companion** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `playwright 1.64.1`).
-All **380 automated Python tests** (including **12 sync service & manual import unit tests**, **59 FastAPI integration tests**, **3 multi-horizon unit tests**, **6 challenge universe tests**, **3 challenge quotation tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, and **2 holding-period tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all 31 source files, the **Next.js TypeScript + production build** (`11/11` static pages), and **3 Playwright visual verification screenshots** (`milestone10_01_portfolio_companion_hub.png`, `milestone10_02_portfolio_manual_import.png`, `milestone10_03_portfolio_playwright_async.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
-Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+**Milestone 12: Daily Session Accounting, Sync Verification and Strategy Feedback** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `playwright 1.64.1`).
+All **387 automated Python tests** (including **8 manual import & regression tests**, **2 session accounting unit & API tests**, **60 FastAPI integration tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, and **2 holding-period tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all 32 source files, the **Next.js TypeScript + production build** (`12/12` static pages including `/daily-summary`), pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`).
+
+## Milestone 12 — Daily Session Accounting, Sync Verification and Strategy Feedback (2026-11-09)
+- **Session Reconciliation Autopsy (`docs/NOVEMBER_09_SESSION_RECONCILIATION.md`)**:
+  - Reconstructed complete opening-to-closing cash flows for the November 9, 2026 session:
+    - Opening: Cash 44,586.070 TND, Equity 49,979.070 TND (09:13:00 UTC).
+    - Closing: Cash 41,622.790 TND, Equity 50,061.960 TND, Rank #112 / 14,573 (14:40:00 UTC).
+  - Resolved the apparent 71.770–71.820 TND cash discrepancy:
+    - New buys (200 NBL at 492.45 TND + 22 STA at 2,542.65 TND = 3,035.10 TND) vs cash decrease (2,963.28 TND).
+    - Midday snapshot at 12:04:11 UTC proved cash had dropped to 36,939.520 TND upon buying 35 shares of a 5th instrument (outlay 4,611.450 TND).
+    - Subsequent liquidation prior to 14:40:00 UTC generated 4,683.270 TND proceeds, realizing a **+71.820 TND profit** that credited back to cash.
+  - Reconciled Equity Delta (+82.890 TND):
+    - Realized Gain (+71.820 TND) + Session Holdings Move (+11.070 TND: DH +23.67, NBL +5.55, BH -3.30, STA -14.85) = **+82.890 TND**.
+    - Strict zero reconciliation gap (0.000 TND).
+- **Formal P&L Semantics (`docs/DAILY_PERFORMANCE_ATTRIBUTION.md`, `src/bvmt/session_accounting.py`)**:
+  - Implemented domain separation between `unrealized_pnl_since_acq` (-9.860 TND on open holdings), `realized_pnl_session` (+71.820 TND), `session_holdings_delta` (+11.070 TND), and `total_return_since_inception` (+61.960 TND / +0.124%).
+  - Flagged attribution status as `PERFORMANCE_ATTRIBUTION_INCOMPLETE` pending export of `display_histo.aspx` for exact closed-position ticker verification.
+- **Dedicated Daily Summary Dashboard (`frontend/src/app/daily-summary/page.tsx`, `GET /api/session/summary`)**:
+  - New page "Today's Trading Summary" displaying: starting equity, ending equity, remaining cash, reconciliation gap, P&L semantics cards, holdings contribution table, reconstructed transaction feed, model decision fidelity matrix, concentration guardrails, and tomorrow's review priorities.
+  - Warning banner explicitly disclaims definitive net profit until transaction logs are matched.
+- **Companion Extension & Parser Hardening (`extension/content.js`, `src/bvmt/manual_import.py`, `docs/ACCOUNT_PARSER_REGRESSION_TESTS.md`)**:
+  - Upgraded schema to `2026.11-v2`.
+  - Excluded action/vendre button column from ticker assignment.
+  - Added mathematical column identity check to prevent Montant vs Dernier price inversions.
+  - Added duplicate detection and non-positive row filtering.
+- **Model Decision Evaluation**:
+  - STA: Planner recommended 22 shares @ ~115.900 TND; human executed exactly 22 shares @ 115.575 TND (Exact Match). Day 1 spread dip (-0.58%) is well above 110.150 TND stop-loss.
+  - DELICE HOLDING: Flagged "HOLD / DO NOT ADD" at 10.03% concentration; executed HOLD (Exact Match).
+  - MNP & SCN: Suppressed as non-challenge universe; human executed 0 orders (Exact Match).
+
+## Milestone 10 — Reliable Account Synchronization & Browser Companion (2026-11-09)
 
 ## Milestone 10 — Reliable Account Synchronization & Browser Companion (2026-11-09)
 - **Architecture Audit & Root Cause Analysis (`docs/SYNC_ARCHITECTURE_AUDIT.md`)**:

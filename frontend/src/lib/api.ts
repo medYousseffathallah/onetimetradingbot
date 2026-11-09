@@ -817,6 +817,83 @@ export interface BrowserSyncTriggerResponse {
   reconciliation_preview: ReconciliationPreviewResponse;
 }
 
+export interface PositionSessionPerformanceItem {
+  symbol: string;
+  instrument_id: string;
+  quantity: number;
+  acquisition_price_tnd: string;
+  acquisition_amount_tnd: string;
+  session_start_price_tnd: string | null;
+  latest_price_tnd: string;
+  market_value_tnd: string;
+  unrealized_pnl_since_acq_tnd: string;
+  unrealized_return_since_acq_pct: string;
+  session_pnl_contribution_tnd: string;
+  portfolio_weight_pct: string;
+  status: "HELD_WHOLE_SESSION" | "NEWLY_ENTERED_SESSION" | "CLOSED_INTRADAY";
+}
+
+export interface ReconstructedTransactionItem {
+  transaction_id: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  shares: number;
+  execution_price_tnd: string;
+  total_cost_or_proceeds_tnd: string;
+  estimated_fee_tnd: string;
+  realized_pnl_tnd: string | null;
+  execution_time_approx: string;
+  notes: string;
+}
+
+export interface ModelDecisionEvaluationItem {
+  symbol: string;
+  strategy_id: string;
+  signal_timestamp: string;
+  suggested_action: string;
+  suggested_shares: number;
+  suggested_price_tnd: string;
+  suggested_holding_horizon: string;
+  actual_action: string;
+  actual_shares: number;
+  actual_price_tnd: string | null;
+  execution_fidelity: "EXACT_MATCH" | "PARTIAL_MATCH" | "IGNORED" | "OVERRIDE";
+  current_unrealized_return_pct: string | null;
+  stop_loss_price_tnd: string;
+  target_price_tnd: string;
+  evaluation_notes: string;
+}
+
+export interface DailySessionReport {
+  session_date: string;
+  starting_equity_tnd: string;
+  starting_cash_tnd: string;
+  starting_holdings_value_tnd: string;
+  ending_equity_tnd: string;
+  ending_cash_tnd: string;
+  ending_holdings_value_tnd: string;
+  equity_change_tnd: string;
+  cash_change_tnd: string;
+  holdings_value_change_tnd: string;
+  verified_session_pnl_tnd: string;
+  realized_pnl_tnd: string;
+  unrealized_pnl_delta_tnd: string;
+  unrealized_pnl_since_acq_tnd: string;
+  trading_fees_estimated_tnd: string;
+  total_return_since_inception_tnd: string;
+  total_return_since_inception_pct: string;
+  competition_ranking: number;
+  total_participants: number;
+  attribution_status: "VERIFIED_COMPLETE" | "PERFORMANCE_ATTRIBUTION_INCOMPLETE";
+  attribution_warning: string | null;
+  reconciliation_gap_tnd: string;
+  positions: PositionSessionPerformanceItem[];
+  transactions: ReconstructedTransactionItem[];
+  model_evaluations: ModelDecisionEvaluationItem[];
+  concentration_warnings: string[];
+  tomorrow_priorities: string[];
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -1018,4 +1095,6 @@ export const api = {
     fetchJson<MacroIntelligenceResponse>(
       `/api/macro-intelligence${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ""}`
     ),
+  getSessionSummary: () =>
+    fetchJson<DailySessionReport>(`/api/session/summary`),
 };

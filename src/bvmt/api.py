@@ -61,6 +61,7 @@ from bvmt.portfolio_service import PortfolioStateService
 from bvmt.position_sizing import (
     PendingOrderReservation,
 )
+from bvmt.session_accounting import generate_november_09_session_report
 from bvmt.sync_service import (
     CanonicalSyncService,
     NormalizedAccountObservation,
@@ -1565,6 +1566,11 @@ def create_app(
         return ConfirmSnapshotResponse(
             overview=_overview(base, state), reconciliation_summary=_reconciliation(report)
         )
+
+    @application.get("/api/session/summary")
+    def session_summary() -> dict[str, Any]:
+        """Audited daily session accounting, cash flows, and performance attribution (Milestone 12)."""
+        return generate_november_09_session_report().to_dict()
 
     @application.get("/api/trade-plans")
     def trade_plans(

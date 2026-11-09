@@ -29,7 +29,14 @@ from bvmt.sync_service import (
 
 def parse_french_number(raw: str) -> Decimal:
     """Parse French-formatted numbers: '19 095,000' -> 19095.000 or '19,095' -> 19.095."""
-    clean = raw.strip().replace("\xa0", "").replace(" ", "").replace("DT", "").replace("dt", "")
+    clean = (
+        raw.strip()
+        .replace("\xa0", "")
+        .replace(" ", "")
+        .replace("DT", "")
+        .replace("dt", "")
+        .replace("%", "")
+    )
     if not clean:
         raise ValueError("Empty number string")
     clean = clean.replace(",", ".")
@@ -146,6 +153,8 @@ def parse_manual_portfolio_paste(
                 parts = re.split(r"\s{2,}", line)
                 rows.append([p.strip() for p in parts if p.strip()])
 
+    seen_symbols: set[str] = set()
+
     for row in rows:
         if len(row) < 2:
             continue
@@ -171,6 +180,10 @@ def parse_manual_portfolio_paste(
         if not sym or sym == "VENDRE" or len(sym) > 50 or "LIQUIDIT" in sym or "TOTAUX" in sym:
             continue
 
+        if sym in seen_symbols:
+            continue
+        seen_symbols.add(sym)
+
         numbers: list[Decimal] = []
         for cell in candidate_num_cells:
             try:
@@ -182,20 +195,34 @@ def parse_manual_portfolio_paste(
         if len(numbers) >= 2:
             try:
                 qty = int(numbers[0])
+                if qty <= 0:
+                    continue
                 acq_px = quantize_tnd(numbers[1])
+                if acq_px <= Decimal("0.000"):
+                    continue
                 lat_px = acq_px
                 mkt_val = quantize_tnd(Decimal(qty) * lat_px)
+                acq_amt: Decimal | None = None
+                gain_tnd: Decimal | None = None
+                gain_pct: Decimal | None = None
 
                 # Check if row contains Montant column:
-                # [qty, acq_px, montant, dernier, capital, ...]
+                # [qty, acq_px, montant, dernier, capital, gain, gain%]
                 # Identity: montant ~= qty * acq_px
-                if len(numbers) >= 4 and abs(Decimal(qty) * acq_px - numbers[2]) < Decimal("1.000"):
+                if len(numbers) >= 4 and abs(Decimal(qty) * acq_px - numbers[2]) < max(
+                    Decimal("0.05") * numbers[2], Decimal("1.000")
+                ):
+                    acq_amt = quantize_tnd(numbers[2])
                     lat_px = quantize_tnd(numbers[3])
                     mkt_val = (
                         quantize_tnd(numbers[4])
                         if len(numbers) >= 5
                         else quantize_tnd(Decimal(qty) * lat_px)
                     )
+                    if len(numbers) >= 6:
+                        gain_tnd = quantize_tnd(numbers[5])
+                    if len(numbers) >= 7:
+                        gain_pct = Decimal(str(numbers[6]))
                 elif len(numbers) >= 3:
                     lat_px = quantize_tnd(numbers[2])
                     mkt_val = (
@@ -203,6 +230,17 @@ def parse_manual_portfolio_paste(
                         if len(numbers) >= 4
                         else quantize_tnd(Decimal(qty) * lat_px)
                     )
+                    if len(numbers) >= 5:
+                        gain_tnd = quantize_tnd(numbers[4])
+                    if len(numbers) >= 6:
+                        gain_pct = Decimal(str(numbers[5]))
+
+                if acq_amt is None:
+                    acq_amt = quantize_tnd(Decimal(qty) * acq_px)
+                if gain_tnd is None:
+                    gain_tnd = quantize_tnd(mkt_val - acq_amt)
+                if gain_pct is None and acq_amt > Decimal("0.000"):
+                    gain_pct = quantize_tnd((gain_tnd / acq_amt) * Decimal("100"))
 
                 holdings.append(
                     NormalizedHoldingObservation(
@@ -212,6 +250,9 @@ def parse_manual_portfolio_paste(
                         acquisition_price_tnd=acq_px,
                         latest_price_tnd=lat_px,
                         market_value_tnd=mkt_val,
+                        acquisition_amount_tnd=acq_amt,
+                        gain_tnd=gain_tnd,
+                        gain_pct=gain_pct,
                         displayed_name=sym,
                     )
                 )

@@ -189,6 +189,9 @@ def test_parse_real_challenge_displayp_table() -> None:
     assert bh.acquisition_price_tnd == Decimal("13.065")
     assert bh.latest_price_tnd == Decimal("13.090")
     assert bh.market_value_tnd == Decimal("392.700")
+    assert bh.acquisition_amount_tnd == Decimal("391.950")
+    assert bh.gain_tnd == Decimal("0.750")
+    assert bh.gain_pct == Decimal("0.190")
 
     assert "DELICE HOLDING" in h_map
     dh = h_map["DELICE HOLDING"]
@@ -196,6 +199,9 @@ def test_parse_real_challenge_displayp_table() -> None:
     assert dh.acquisition_price_tnd == Decimal("19.095")
     assert dh.latest_price_tnd == Decimal("19.090")
     assert dh.market_value_tnd == Decimal("5020.670")
+    assert dh.acquisition_amount_tnd == Decimal("5021.990")
+    assert dh.gain_tnd == Decimal("-1.310")
+    assert dh.gain_pct == Decimal("-0.030")
 
     assert "NEW BODY LINE" in h_map
     nbl = h_map["NEW BODY LINE"]
@@ -203,6 +209,9 @@ def test_parse_real_challenge_displayp_table() -> None:
     assert nbl.acquisition_price_tnd == Decimal("2.462")
     assert nbl.latest_price_tnd == Decimal("2.490")
     assert nbl.market_value_tnd == Decimal("498.000")
+    assert nbl.acquisition_amount_tnd == Decimal("492.450")
+    assert nbl.gain_tnd == Decimal("5.550")
+    assert nbl.gain_pct == Decimal("1.130")
 
     assert "STA" in h_map
     sta = h_map["STA"]
@@ -210,8 +219,28 @@ def test_parse_real_challenge_displayp_table() -> None:
     assert sta.acquisition_price_tnd == Decimal("115.575")
     assert sta.latest_price_tnd == Decimal("114.900")
     assert sta.market_value_tnd == Decimal("2527.800")
+    assert sta.acquisition_amount_tnd == Decimal("2542.650")
+    assert sta.gain_tnd == Decimal("-14.850")
+    assert sta.gain_pct == Decimal("-0.580")
 
     # Strict zero-balance reconciliation check
     holdings_sum = sum(h.market_value_tnd for h in obs.holdings)
     assert holdings_sum == Decimal("8439.170")
     assert obs.available_cash + holdings_sum == obs.account_equity
+
+
+def test_parse_manual_portfolio_paste_duplicate_and_invalid_suppression() -> None:
+    """Validate that duplicate rows, non-positive quantities, and zero prices are rejected safely."""
+    raw = """
+    Liquidités : 40 000,000 DT
+    Total portefeuille : 50 000,000 DT
+
+    Vendre	Nom de valeur	Quantité	Prix	Montant	Dernier	Capital
+    vendre	BH BANK	30	13.065	391.95	13.09	392.70
+    vendre	BH BANK	30	13.065	391.95	13.09	392.70
+    vendre	ZERO_QTY	0	10.000	0.00	10.00	0.00
+    vendre	NEG_PRICE	10	-5.000	-50.00	10.00	100.00
+    """
+    obs = parse_manual_portfolio_paste(raw)
+    assert len(obs.holdings) == 1
+    assert obs.holdings[0].symbol == "BH BANK"
