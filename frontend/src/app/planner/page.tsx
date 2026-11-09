@@ -45,6 +45,7 @@ export default function TradePlannerPage() {
   const [error, setError] = useState<string | null>(null);
   const [plansData, setPlansData] = useState<TradePlansResponse | null>(null);
   const [holdingResearch, setHoldingResearch] = useState<HoldingPeriodResearchReport | null>(null);
+  const [selectedUniverse, setSelectedUniverse] = useState<"TUNIS_BOURSE_CHALLENGE" | "FULL_BVMT">("TUNIS_BOURSE_CHALLENGE");
   const [activeTab, setActiveTab] = useState<"MANUAL_ORDER_PLAN" | "PAPER_TRADE_CANDIDATE" | "RESEARCH_CANDIDATE">("MANUAL_ORDER_PLAN");
   const [showHoldingResearch, setShowHoldingResearch] = useState(false);
 
@@ -64,8 +65,8 @@ export default function TradePlannerPage() {
       setError(null);
       try {
         const [plansRes, holdingRes] = await Promise.all([
-          api.getTradePlans(mode),
-          api.getHoldingPeriods(),
+          api.getTradePlans(mode, selectedUniverse),
+          api.getHoldingPeriods(selectedUniverse),
         ]);
         if (active) {
           setPlansData(plansRes);
@@ -77,6 +78,11 @@ export default function TradePlannerPage() {
             setCustomLimitPrice(topActionable.proposed_limit_price_tnd);
             setCustomHorizon(topActionable.intended_holding_horizon_sessions);
             setCalculatedPlan(topActionable);
+          } else if (plansRes.plans.length > 0) {
+            setSelectedPlan(plansRes.plans[0]);
+            setCustomLimitPrice(plansRes.plans[0].proposed_limit_price_tnd);
+            setCustomHorizon(plansRes.plans[0].intended_holding_horizon_sessions);
+            setCalculatedPlan(plansRes.plans[0]);
           }
         }
       } catch (err: unknown) {
@@ -91,7 +97,7 @@ export default function TradePlannerPage() {
     return () => {
       active = false;
     };
-  }, [mode]);
+  }, [mode, selectedUniverse]);
 
   // Handle plan selection in calculator
   const handleSelectPlan = (plan: ManualTradePlan) => {
@@ -114,6 +120,7 @@ export default function TradePlannerPage() {
         risk_budget_tnd: customRiskBudget.trim() ? customRiskBudget : null,
         intended_holding_horizon_sessions: customHorizon,
         portfolio_mode: mode,
+        universe: selectedUniverse,
       });
       setCalculatedPlan(res);
     } catch (err) {
@@ -150,6 +157,43 @@ export default function TradePlannerPage() {
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Deterministic order sizing, round-trip fee accounting, holding horizon planning, and explicit risk exits for the Tunis Bourse Challenge.
           </p>
+
+          {/* Challenge Universe Mode Toggle */}
+          <div className="flex flex-wrap items-center gap-2 mt-2.5">
+            <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 p-0.5 bg-slate-100 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => setSelectedUniverse("TUNIS_BOURSE_CHALLENGE")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
+                  selectedUniverse === "TUNIS_BOURSE_CHALLENGE"
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                Tunis Bourse Challenge (42 Equities)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedUniverse("FULL_BVMT")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
+                  selectedUniverse === "FULL_BVMT"
+                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                Full BVMT Research (76 Equities)
+              </button>
+            </div>
+            {selectedUniverse === "TUNIS_BOURSE_CHALLENGE" ? (
+              <Badge variant="success" className="text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300">
+                Official Challenge Universe (42 Observed)
+              </Badge>
+            ) : (
+              <Badge variant="warning" className="text-xs font-medium">
+                Full Research Universe — Non-Challenge Orders Blocked
+              </Badge>
+            )}
+          </div>
         </div>
 
         {plansData && (
@@ -631,7 +675,7 @@ export default function TradePlannerPage() {
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-xs font-bold text-slate-400">
                               {plan.research_rank ? `#${plan.research_rank}` : "—"}
                             </span>
@@ -639,6 +683,20 @@ export default function TradePlannerPage() {
                               {plan.symbol}
                             </h3>
                             <span className="text-xs text-slate-500 font-mono">({plan.instrument_id})</span>
+                            {plan.in_challenge_universe === false ? (
+                              <Badge variant="warning" className="text-[10px] font-semibold bg-amber-100 text-amber-900 border-amber-300">
+                                Excluded from Challenge Universe
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] font-semibold bg-teal-50 text-teal-800 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300">
+                                Challenge Universe (42)
+                              </Badge>
+                            )}
+                            {plan.trading_activity_status === "non_cote" && (
+                              <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-800 border-blue-200">
+                                Pre-Opening Non Coté
+                              </Badge>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                             {plan.model_name} • Score: {plan.composite_score ?? "N/A"}
@@ -659,6 +717,17 @@ export default function TradePlannerPage() {
                     </CardHeader>
 
                     <CardContent className="space-y-3 text-xs">
+                      {/* Non-Challenge Universe Exclusion Notice */}
+                      {plan.in_challenge_universe === false && (
+                        <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold block">Not in Challenge Universe:</span>
+                            This security is listed on BVMT but excluded from the 42 official Tunis Bourse Challenge quotation sheets. Cannot be entered as an actionable manual order.
+                          </div>
+                        </div>
+                      )}
+
                       {/* Sizing & Capital Grid */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 font-mono text-[11px]">
                         <div>

@@ -65,3 +65,97 @@ def test_build_manual_trade_plan_insufficient_cash():
     assert plan.suggested_max_shares == 0
     assert any("insufficient_cash" in r for r in plan.rejection_reasons)
     assert plan.plan_category == "RESEARCH_CANDIDATE"
+
+
+def test_trade_planner_blocks_non_challenge_member():
+    """Verify non-challenge candidates (e.g. MONOPRIX, ESSOUKNA) are strictly non-actionable in challenge mode."""
+    # MONOPRIX (MNP)
+    mnp_plan = build_manual_trade_plan(
+        instrument_id="MONOPRIX",
+        symbol="MNP",
+        stock_name="Société Nouvelle Maison de la Ville de Tunis",
+        isin="TN0001000108",
+        market_segment="PRINCIPAL",
+        limit_price_tnd=Decimal("12.290"),
+        portfolio_total_equity_tnd=Decimal("50000.000"),
+        available_cash_tnd=Decimal("49608.050"),
+        median_daily_turnover_20s_tnd=Decimal("45000.000"),
+        median_daily_volume_20s=3600,
+        research_rank=2,
+        universe="TUNIS_BOURSE_CHALLENGE",
+    )
+
+    assert mnp_plan.is_actionable is False
+    assert mnp_plan.suggested_max_shares == 0
+    assert mnp_plan.plan_category == "RESEARCH_CANDIDATE"
+    assert mnp_plan.in_challenge_universe is False
+    assert mnp_plan.order_entry_eligibility == "NOT_IN_UNIVERSE"
+    assert any("not_in_challenge_universe" in r for r in mnp_plan.rejection_reasons)
+
+    # ESSOUKNA (SCN)
+    scn_plan = build_manual_trade_plan(
+        instrument_id="ESSOUKNA",
+        symbol="SCN",
+        stock_name="Société Essoukna",
+        isin="TN0007210016",
+        market_segment="PRINCIPAL",
+        limit_price_tnd=Decimal("4.640"),
+        portfolio_total_equity_tnd=Decimal("50000.000"),
+        available_cash_tnd=Decimal("49608.050"),
+        median_daily_turnover_20s_tnd=Decimal("5800.000"),
+        median_daily_volume_20s=1250,
+        research_rank=3,
+        universe="TUNIS_BOURSE_CHALLENGE",
+    )
+
+    assert scn_plan.is_actionable is False
+    assert scn_plan.suggested_max_shares == 0
+    assert scn_plan.plan_category == "RESEARCH_CANDIDATE"
+    assert scn_plan.in_challenge_universe is False
+    assert scn_plan.order_entry_eligibility == "NOT_IN_UNIVERSE"
+
+
+def test_trade_planner_permits_non_challenge_member_in_full_bvmt_research():
+    """Verify non-challenge candidates can be sized when explicitly requesting FULL_BVMT_RESEARCH."""
+    mnp_plan = build_manual_trade_plan(
+        instrument_id="MONOPRIX",
+        symbol="MNP",
+        stock_name="Société Nouvelle Maison de la Ville de Tunis",
+        isin="TN0001000108",
+        market_segment="PRINCIPAL",
+        limit_price_tnd=Decimal("12.290"),
+        portfolio_total_equity_tnd=Decimal("50000.000"),
+        available_cash_tnd=Decimal("49608.050"),
+        median_daily_turnover_20s_tnd=Decimal("45000.000"),
+        median_daily_volume_20s=3600,
+        research_rank=2,
+        universe="FULL_BVMT_RESEARCH",
+    )
+
+    assert mnp_plan.is_actionable is True
+    assert mnp_plan.suggested_max_shares == 345
+    assert mnp_plan.plan_category == "MANUAL_ORDER_PLAN"
+    assert mnp_plan.universe == "FULL_BVMT_RESEARCH"
+
+
+def test_trade_planner_pre_market_non_cote():
+    """Verify pre-market non-cote sets awaiting opening match status without permanent disqualification."""
+    plan = build_manual_trade_plan(
+        instrument_id="STA",
+        symbol="STA",
+        stock_name="Société Tunisienne d'Automobiles",
+        isin="TNNGTFLC2986",
+        market_segment="PRINCIPAL",
+        limit_price_tnd=Decimal("115.900"),
+        portfolio_total_equity_tnd=Decimal("50000.000"),
+        available_cash_tnd=Decimal("49608.050"),
+        median_daily_turnover_20s_tnd=Decimal("25500.000"),
+        median_daily_volume_20s=220,
+        research_rank=1,
+        trading_activity_status="non_cote",
+    )
+
+    assert plan.trading_activity_status == "non_cote"
+    assert plan.execution_feasibility_status == "AWAITING_OPENING_MATCH"
+    assert any("non coté" in w for w in plan.execution_warnings)
+    assert plan.in_challenge_universe is True

@@ -33,8 +33,10 @@ from bvmt.browser import (
     AuthenticationExpiredError,
     BrowserCollectorError,
     CompetitionPortfolioDOMSnapshot,
+    load_latest_browser_snapshot,
     run_browser_sync_subprocess,
 )
+from bvmt.challenge_universe import get_challenge_universe
 from bvmt.dashboard import DashboardAppState
 from bvmt.data import inspect_market_dataset_provenance, read_bars_csv
 from bvmt.glossary import export_full_glossary, get_eligibility_explanation
@@ -299,6 +301,9 @@ class StockRankingItem(APIModel):
     competition_eligibility: str = "COMPETITION_PERMITTED"
     strategy_eligibility: str = "ELIGIBLE"
     execution_feasibility: str = "FEASIBLE"
+    in_challenge_universe: bool = False
+    challenge_symbol: str | None = None
+    order_entry_eligibility: str = "NOT_IN_UNIVERSE"
 
 
 class StockRankingsResponse(APIModel):
@@ -487,6 +492,7 @@ class TradePlanCalculateRequest(APIModel):
     risk_budget_tnd: Decimal | None = None
     intended_holding_horizon_sessions: int = 20
     portfolio_mode: PortfolioMode = "REAL_COMPETITION"
+    universe: str = "TUNIS_BOURSE_CHALLENGE"
 
 
 class TradePlansResponse(APIModel):
@@ -496,6 +502,8 @@ class TradePlansResponse(APIModel):
     available_cash_tnd: Money
     reserved_cash_tnd: Money
     effective_cash_tnd: Money
+    universe: str = "TUNIS_BOURSE_CHALLENGE"
+    challenge_universe_count: int = 42
     plans: list[dict[str, Any]]
 
 
@@ -1114,6 +1122,9 @@ def create_app(
                     execution_feasibility=(
                         an.classification.execution_feasibility if an else "FEASIBLE"
                     ),
+                    in_challenge_universe=an.in_challenge_universe if an else False,
+                    challenge_symbol=an.challenge_symbol if an else None,
+                    order_entry_eligibility=an.order_entry_eligibility if an else "NOT_IN_UNIVERSE",
                 )
             )
 
@@ -1272,7 +1283,15 @@ def create_app(
                 400, "Browser authentication expired. Log in manually and retry."
             ) from exc
         except BrowserCollectorError as exc:
-            # Collector errors can contain raw process output, HTML or local paths.
+            # Check if a fresh snapshot was actually captured despite a subsequent collision
+            latest = load_latest_browser_snapshot(base.snapshots_dir)
+            if latest is not None:
+                state = base.load_state()
+                if latest.retrieved_at not in state.ledger.snapshot_history:
+                    return BrowserSyncTriggerResponse(
+                        captured_snapshot=_browser(latest, False),
+                        reconciliation_preview=_preview(base, latest),
+                    )
             raise HTTPException(
                 422, "Browser capture failed validation. Review the local collector and retry."
             ) from exc
@@ -1304,7 +1323,10 @@ def create_app(
         )
 
     @application.get("/api/trade-plans")
-    def trade_plans(mode: PortfolioMode = "REAL_COMPETITION") -> TradePlansResponse:
+    def trade_plans(
+        mode: PortfolioMode = "REAL_COMPETITION",
+        universe: str = "TUNIS_BOURSE_CHALLENGE",
+    ) -> TradePlansResponse:
         state = for_mode(mode).load_state()
         report = state.recommendations
         valuation = state.ledger.valuate(state.price_map)
@@ -1365,6 +1387,7 @@ def create_app(
                 momentum_60s=Decimal(str(r.momentum_60s)) if r.momentum_60s is not None else None,
                 pending_orders=pending_res,
                 as_of_session=report.latest_open_session,
+                universe=universe,
             )
             plans.append(plan.to_dict())
 
@@ -1375,6 +1398,8 @@ def create_app(
             available_cash_tnd=cash,
             reserved_cash_tnd=reserved,
             effective_cash_tnd=effective_cash,
+            universe=universe,
+            challenge_universe_count=42,
             plans=plans,
         )
 
@@ -1447,12 +1472,22 @@ def create_app(
             risk_budget_tnd=body.risk_budget_tnd,
             intended_holding_horizon_sessions=body.intended_holding_horizon_sessions,
             as_of_session=state.recommendations.latest_open_session,
+            universe=body.universe,
         )
         return plan.to_dict()
 
+    @application.get("/api/challenge-universe")
+    def challenge_universe() -> dict[str, Any]:
+        records = get_challenge_universe()
+        return {
+            "count": len(records),
+            "source": "Tunis Bourse Challenge official quotation sheet (42 securities)",
+            "securities": [r.to_dict() for r in records],
+        }
+
     @application.get("/api/holding-periods")
-    def holding_periods() -> dict[str, Any]:
-        report = evaluate_holding_periods()
+    def holding_periods(universe: str = "FULL_BVMT") -> dict[str, Any]:
+        report = evaluate_holding_periods(universe=universe)
         return report.to_dict()
 
     return application

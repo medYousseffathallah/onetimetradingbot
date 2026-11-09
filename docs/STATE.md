@@ -1,9 +1,34 @@
 # Working state
 
 ## Current checkpoint
-**Urgent Monday Sprint: Trade Planning, Deterministic Position Sizing, Holding-Period Optimization & `/planner` Terminal** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
-All **346 automated Python tests** (including **10 deterministic position sizing tests**, **3 holding-period tests**, **2 trade planner tests**, and **55 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across 24 source files, the **Next.js TypeScript + production build** (`11/11` static pages including `/planner`), and **3 Playwright visual audit screenshots** (`planner_01_overview.png`, `planner_02_holding_research.png`, `planner_03_calculator_recalculated.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**Milestone 8: Challenge Universe Alignment, Trade Planner Safety & Model G Audit** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
+All **361 automated Python tests** (including **6 challenge universe tests**, **3 challenge quotation tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, **2 holding-period tests**, and **55 FastAPI integration tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all source files, the **Next.js TypeScript + production build** (`11/11` static pages), and **4 Playwright visual audit screenshots** (`milestone8_01_planner_challenge_universe.png`, `milestone8_02_planner_full_bvmt_toggle.png`, `milestone8_03_planner_holding_research_audit.png`, `milestone8_04_market_challenge_universe_tab.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+
+## Milestone 8 — Challenge Universe Alignment & Trade Planner Safety (2026-11-09)
+- **Live Real-Competition Snapshot Captured (`data/portfolio/snapshots/sync_20261109_091300.json`)**:
+  - Captured live browser snapshot revealing a real trade executed by the competitor: **263 shares of `DELICE HOLDING` (`DH`) @ 19.095 TND** (total outlay: `5,021.99 TND`).
+  - Account status: Cash `44,586.070 TND`, Holdings `5,393.000 TND` (30 `BH BANK` + 263 `DELICE HOLDING`), Total Equity `49,979.070 TND`.
+  - National Rank: **`#133 / 14,547`** participants. Discrepancy: `0.000 TND`. Pending confirmation in `/portfolio`.
+- **Browser Sync Stability Fix (`frontend/src/lib/api.ts`, `src/bvmt/api.py`)**:
+  - Solved 500 error (`ECONNRESET`) caused by Next.js App Router reverse-proxy socket timeouts during Playwright manual login by configuring `API_BASE = "http://127.0.0.1:8000"` for direct browser-to-FastAPI CORS calls.
+  - Solved 422 error by updating `browser_sync` endpoint to gracefully check for pending captured snapshots on disk before failing on subsequent Chrome profile lock collisions.
+- **Official Challenge Universe Gating (`src/bvmt/challenge_universe.py`, `tests/test_challenge_universe.py`, `docs/CHALLENGE_UNIVERSE.md`)**:
+  - Registered and programmatically validated the exact **42 observed Tunis Bourse Challenge securities** (40 Continuous, 2 Fixing: `TRE`, `WIFAK`).
+  - Fully disambiguated mnemonics: `MGR` = `SOTUMAG` (TN0006580013), `AMV` = `ASSU MAGHREBIA VIE` (TNDKJ8O68X14), `SAM` = `ATELIER MEUBLE INT` (TN0007740012), `STA` = `STA` (TNNGTFLC2986), `BH` = `BH BANK` (TN0001900604).
+  - Strictly blocked non-members (such as `MNP` / `MONOPRIX` and `SCN` / `ESSOUKNA`) from actionable order planning in challenge mode (`suggested_shares = 0`, `is_actionable = False`, `binding_constraint = "not_in_challenge_universe"`).
+  - Preserved `"non coté"` pre-market status as an activity state awaiting session match rather than a permanent exclusion.
+- **Holding-Period Audit & Model G Evaluation (`src/bvmt/holding_period.py`, `tests/test_holding_period.py`, `docs/TRADE_PLANNER_SAFETY_AUDIT.md`)**:
+  - Diagnosed root cause of identical holding-period results: `model_id = "G_LIQUIDITY_MOMENTUM_FILTERED"` failed to match `STRATEGY_IDS[6] = "G_LIQUIDITY_FILTERED_MOMENTUM"`, falling back to `score = m.mom20` (Model D).
+  - Evaluated genuine Model G:
+    - *Full BVMT (76)*: Horizon 19 yields +18.81% return, 4.98% MaxDD; Horizon 20 yields +8.45% return, 4.89% MaxDD.
+    - *Challenge Universe (42)*: Horizon 19 yields +11.29% return, 7.71% MaxDD; Horizon 20 yields +5.84% return, 5.06% MaxDD.
+  - Proved that 19-session apparent outperformance is calendar alignment luck (phase shift) and small sample sensitivity. Maintained strictly `INCONCLUSIVE` verdict.
+- **Frontend Enhancements & Visual Audit (`frontend/src/app/planner/page.tsx`, `frontend/src/app/market/page.tsx`)**:
+  - Added Universe Toggle (`Tunis Bourse Challenge (42)` vs `Full BVMT Research (76)`) on `/planner`.
+  - Added `Challenge Universe (42)` filter tab on `/market` with per-row badges.
+  - Added non-challenge order blocking warning banners in candidate cards and calculator.
+  - Captured 4 Playwright visual audit screenshots verifying UI rendering.
 
 ## Urgent Monday Sprint (2026-11-09)
 - **Phase 0 — Immediate Pre-Market Check & Watchlist (`artifacts/monday_premarket_readiness_report.md`, `scratch/run_phase0_audit.py`)**:

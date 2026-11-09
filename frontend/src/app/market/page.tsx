@@ -42,6 +42,7 @@ import { usePortfolioMode } from "@/components/app-shell";
 
 type FilterTab =
   | "ALL"
+  | "CHALLENGE_UNIVERSE"
   | "STRATEGY_ELIGIBLE"
   | "RESEARCH_READY"
   | "PARTIAL_DATA"
@@ -77,6 +78,7 @@ export default function MarketExplorerPage() {
 
   // Tab counts
   const tabCounts = useMemo(() => {
+    const challengeUniverse = allRankings.filter((r) => r.in_challenge_universe).length;
     const eligible = allRankings.filter((r) => r.eligible).length;
     const researchReady = allRankings.filter(
       (r) =>
@@ -112,6 +114,7 @@ export default function MarketExplorerPage() {
 
     return {
       ALL: allRankings.length,
+      CHALLENGE_UNIVERSE: challengeUniverse,
       STRATEGY_ELIGIBLE: eligible,
       RESEARCH_READY: researchReady,
       PARTIAL_DATA: partialData,
@@ -125,6 +128,7 @@ export default function MarketExplorerPage() {
   const filteredRows = useMemo(() => {
     return allRankings.filter((r) => {
       // Tab filter
+      if (activeTab === "CHALLENGE_UNIVERSE" && !r.in_challenge_universe) return false;
       if (activeTab === "STRATEGY_ELIGIBLE" && !r.eligible) return false;
       if (activeTab === "RESEARCH_READY") {
         const isReady =
@@ -382,6 +386,17 @@ export default function MarketExplorerPage() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab("CHALLENGE_UNIVERSE")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                activeTab === "CHALLENGE_UNIVERSE"
+                  ? "bg-teal-700 text-white shadow-xs"
+                  : "bg-teal-50 text-teal-800 hover:bg-teal-100 dark:bg-teal-950/60 dark:text-teal-300 dark:hover:bg-teal-900/60"
+              }`}
+            >
+              Challenge Universe ({tabCounts.CHALLENGE_UNIVERSE})
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab("STRATEGY_ELIGIBLE")}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 activeTab === "STRATEGY_ELIGIBLE"
@@ -567,8 +582,17 @@ export default function MarketExplorerPage() {
                                   {r.rank ? `#${r.rank}` : "—"}
                                 </span>
                                 <div>
-                                  <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
-                                    {r.symbol}
+                                  <div className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex items-center gap-1.5">
+                                    <span>{r.symbol}</span>
+                                    {r.in_challenge_universe ? (
+                                      <span className="text-[10px] font-medium bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 px-1.5 py-0.2 rounded">
+                                        Challenge (42)
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.2 rounded">
+                                        Non-Challenge
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5">
                                     <span>{r.instrument_id}</span>

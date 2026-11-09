@@ -112,3 +112,4 @@ After trading closes at 14:15 Africa/Tunis, perform the daily update:
 3. **Audit Ledger Reconciliation:**
    - Verify on `http://127.0.0.1:3000/portfolio` that `Reconciliation Discrepancy` remains **`0.000 TND`**.
    - Check whether any pending limit orders were filled or remain open in the order book.
+

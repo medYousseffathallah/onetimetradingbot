@@ -24,6 +24,7 @@ from bvmt.calendar import (
     validate_exchange_calendar,
     validate_instrument_master,
 )
+from bvmt.challenge_universe import resolve_challenge_record
 from bvmt.data import DailyBar, validate_bars
 from bvmt.features import SessionBaselineReport
 
@@ -131,11 +132,15 @@ class SparseInstrumentAnalytics:
     strategy_composite_score: float | None
     strategy_momentum_20s: float | None
     strategy_momentum_60s: float | None
+    in_challenge_universe: bool = False
+    challenge_symbol: str | None = None
+    order_entry_eligibility: str = "NOT_IN_UNIVERSE"
     exclusion_reasons: list[str] = field(default_factory=list)
     exclusion_details: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "challenge_symbol": self.challenge_symbol,
             "classification": self.classification.to_dict(),
             "conservative_order_capacity_tnd": str(self.conservative_order_capacity_tnd),
             "continuous_liquidity_factor": round(self.continuous_liquidity_factor, 4),
@@ -147,6 +152,7 @@ class SparseInstrumentAnalytics:
             "exclusion_details": self.exclusion_details,
             "exclusion_reasons": self.exclusion_reasons,
             "hypothetical_order_shares": self.hypothetical_order_shares,
+            "in_challenge_universe": self.in_challenge_universe,
             "instrument_id": self.instrument_id,
             "isin": self.isin,
             "last_traded_date": self.last_traded_date.isoformat()
@@ -164,6 +170,7 @@ class SparseInstrumentAnalytics:
             "observation_coverage_ratio": str(self.observation_coverage_ratio),
             "observed_bars": self.observed_bars,
             "observed_trade_interval_sessions": self.observed_trade_interval_sessions,
+            "order_entry_eligibility": self.order_entry_eligibility,
             "observed_trade_return_pct": (
                 str(self.observed_trade_return_pct)
                 if self.observed_trade_return_pct is not None
@@ -519,6 +526,11 @@ def evaluate_market_research_coverage(
             strategy_eligibility=strat_elig,
         )
 
+        chal_rec = resolve_challenge_record(inst_id)
+        in_chal = chal_rec is not None
+        chal_sym = chal_rec.challenge_symbol if chal_rec else None
+        order_elig = chal_rec.order_entry_eligibility if chal_rec else "NOT_IN_UNIVERSE"
+
         analytics = SparseInstrumentAnalytics(
             classification=classification,
             conservative_order_capacity_tnd=capped_capacity_tnd,
@@ -527,6 +539,9 @@ def evaluate_market_research_coverage(
             exclusion_details=excl_details,
             exclusion_reasons=excl_reasons,
             hypothetical_order_shares=hypothetical_shares,
+            in_challenge_universe=in_chal,
+            challenge_symbol=chal_sym,
+            order_entry_eligibility=order_elig,
             instrument_id=inst_id,
             isin=isin,
             last_traded_date=last_traded.session_date if last_traded else None,

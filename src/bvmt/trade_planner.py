@@ -19,6 +19,9 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
+from bvmt.challenge_universe import (
+    classify_security_challenge_status,
+)
 from bvmt.position_sizing import (
     DEFAULT_TARGET_ALLOCATION_RATIO,
     PendingOrderReservation,
@@ -112,6 +115,14 @@ class ManualTradePlan:
     execution_warnings: list[str] = field(default_factory=list)
     supporting_evidence: list[str] = field(default_factory=list)
 
+    # 7. Universe & Challenge Governance (Milestone 8)
+    in_challenge_universe: bool = True
+    challenge_symbol: str | None = None
+    order_entry_eligibility: str = "CONFIRMED"
+    trading_activity_status: str = "active_quote"
+    execution_feasibility_status: str = "CONTINUOUS_LIQUID"
+    universe: str = "TUNIS_BOURSE_CHALLENGE"
+
     def to_dict(self) -> dict[str, object]:
         return {
             "plan_id": self.plan_id,
@@ -158,6 +169,12 @@ class ManualTradePlan:
             "liquidity_warnings": self.liquidity_warnings,
             "execution_warnings": self.execution_warnings,
             "supporting_evidence": self.supporting_evidence,
+            "in_challenge_universe": self.in_challenge_universe,
+            "challenge_symbol": self.challenge_symbol,
+            "order_entry_eligibility": self.order_entry_eligibility,
+            "trading_activity_status": self.trading_activity_status,
+            "execution_feasibility_status": self.execution_feasibility_status,
+            "universe": self.universe,
         }
 
 
@@ -185,15 +202,22 @@ def build_manual_trade_plan(
     risk_budget_tnd: Decimal | None = None,
     intended_holding_horizon_sessions: int = 20,
     as_of_session: date | str | None = None,
+    universe: str = "TUNIS_BOURSE_CHALLENGE",
+    trading_activity_status: str = "active_quote",
 ) -> ManualTradePlan:
-    """Build a complete manual trade plan for a single security."""
+    """Build a complete manual trade plan for a single security with challenge universe safety."""
     as_of = as_of_session or date(2026, 11, 6)
     if isinstance(as_of, str):
         as_of = date.fromisoformat(as_of)
     # Estimate review date (20 trading days is roughly 4 calendar weeks)
     review_dt = as_of + timedelta(days=int(intended_holding_horizon_sessions * 1.4) + 2)
 
-    # 1. Run deterministic position sizing
+    # 1. Challenge Universe Verification
+    chal_info = classify_security_challenge_status(instrument_id, isin=isin, symbol=symbol)
+    is_chal_member = bool(chal_info["in_challenge_universe"])
+    enforce_challenge_membership = universe == "TUNIS_BOURSE_CHALLENGE"
+
+    # 2. Run deterministic position sizing
     size_input = PositionSizeInput(
         instrument_id=instrument_id,
         symbol=symbol,
@@ -210,10 +234,12 @@ def build_manual_trade_plan(
         is_stale_quote=is_stale_quote,
         quote_age_sessions=quote_age_sessions,
         market_segment=market_segment,
+        is_challenge_member=is_chal_member if enforce_challenge_membership else True,
+        trading_activity_status=trading_activity_status,
     )
     sizing = compute_position_size(size_input)
 
-    # 2. Exit Conditions Calculation
+    # 3. Exit Conditions Calculation
     stop_loss_pct = Decimal("-5.000")
     stop_price = quantize_tnd(limit_price_tnd * (Decimal("1") + stop_loss_pct / Decimal("100")))
     target_pct = Decimal("+12.000")
@@ -228,14 +254,26 @@ def build_manual_trade_plan(
         review_trigger="Weekly review on Friday session or immediate review if price drops > 3.0% in a single session.",
     )
 
-    # 3. Categorization & Evidence
+    # 4. Categorization & Evidence
     plan_category = "RESEARCH_CANDIDATE"
-    if sizing.is_actionable and research_rank is not None and research_rank <= 3:
+    if enforce_challenge_membership and not is_chal_member:
+        # Non-members can NEVER be manual competition order plans
+        plan_category = "RESEARCH_CANDIDATE"
+    elif sizing.is_actionable and research_rank is not None and research_rank <= 3:
         plan_category = "MANUAL_ORDER_PLAN"
     elif sizing.is_actionable:
         plan_category = "PAPER_TRADE_CANDIDATE"
 
     evidence: list[str] = []
+    if is_chal_member:
+        evidence.append(
+            f"Observed member of Tunis Bourse Challenge quotation universe (symbol: {chal_info['challenge_symbol']})."
+        )
+    else:
+        evidence.append(
+            "Excluded from competition order plans: not in the 42-instrument challenge quotation list (General BVMT Research only)."
+        )
+
     if research_rank is not None:
         evidence.append(f"Rank #{research_rank} in active quantitative momentum model.")
     if momentum_20s is not None:
@@ -252,6 +290,17 @@ def build_manual_trade_plan(
         "Orders placed on zero-volume days remain PENDING and expire after 1 week.",
     ]
 
+    # Pre-market non-cote awareness
+    if trading_activity_status == "non_cote":
+        exec_warnings.append(
+            "Pre-opening quote indicates 'non coté' (no current matching activity prior to 10:00 opening auction). Execution liquidity unconfirmed."
+        )
+        exec_feasibility = "AWAITING_OPENING_MATCH"
+    elif median_daily_volume_20s >= 50:
+        exec_feasibility = "CONTINUOUS_LIQUID"
+    else:
+        exec_feasibility = "THIN_LIQUIDITY"
+
     plan_id = f"PLAN-{as_of.isoformat()}-{instrument_id}"
 
     return ManualTradePlan(
@@ -259,7 +308,7 @@ def build_manual_trade_plan(
         instrument_id=instrument_id,
         symbol=symbol,
         stock_name=stock_name,
-        isin=isin,
+        isin=isin or chal_info["verified_isin"],
         market_segment=market_segment,
         model_name="Model G (Liquidity-Filtered Momentum)",
         model_version="1.2.0-exploratory",
@@ -297,4 +346,10 @@ def build_manual_trade_plan(
         liquidity_warnings=sizing.warnings,
         execution_warnings=exec_warnings,
         supporting_evidence=evidence,
+        in_challenge_universe=is_chal_member,
+        challenge_symbol=chal_info["challenge_symbol"],
+        order_entry_eligibility=chal_info["order_entry_eligibility"],
+        trading_activity_status=trading_activity_status,
+        execution_feasibility_status=exec_feasibility,
+        universe=universe,
     )

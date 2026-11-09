@@ -80,6 +80,8 @@ class PositionSizeInput:
     is_stale_quote: bool = False
     quote_age_sessions: int = 0
     market_segment: str = "PRINCIPAL"
+    is_challenge_member: bool = True
+    trading_activity_status: str = "active_quote"
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,8 @@ class PositionSizeResult:
     is_actionable: bool
     rejection_reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    is_challenge_member: bool = True
+    trading_activity_status: str = "active_quote"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -147,6 +151,8 @@ class PositionSizeResult:
             "is_actionable": self.is_actionable,
             "rejection_reasons": self.rejection_reasons,
             "warnings": self.warnings,
+            "is_challenge_member": self.is_challenge_member,
+            "trading_activity_status": self.trading_activity_status,
         }
 
 
@@ -186,6 +192,49 @@ def compute_position_size(inp: PositionSizeInput) -> PositionSizeResult:
                 "invalid_limit_price: Proposed limit price must be strictly positive"
             ],
             warnings=[],
+            is_challenge_member=inp.is_challenge_member,
+            trading_activity_status=inp.trading_activity_status,
+        )
+
+    # 1b. Challenge Universe membership guard
+    if not inp.is_challenge_member:
+        return PositionSizeResult(
+            instrument_id=inp.instrument_id,
+            symbol=inp.symbol,
+            limit_price_tnd=inp.limit_price_tnd,
+            suggested_shares=0,
+            gross_order_value_tnd=Decimal("0.000"),
+            purchase_fee_tnd=Decimal("0.000"),
+            total_purchase_cost_tnd=Decimal("0.000"),
+            estimated_sale_fee_tnd=Decimal("0.000"),
+            break_even_price_tnd=inp.limit_price_tnd,
+            break_even_gain_pct=Decimal("0.000"),
+            effective_available_cash_tnd=quantize_tnd(inp.raw_available_cash_tnd),
+            cash_reserved_for_pending_orders_tnd=Decimal("0.000"),
+            cash_remaining_after_purchase_tnd=quantize_tnd(inp.raw_available_cash_tnd),
+            existing_position_shares=inp.existing_shares,
+            existing_position_value_tnd=Decimal("0.000"),
+            proposed_total_shares=inp.existing_shares,
+            proposed_position_value_tnd=Decimal("0.000"),
+            proposed_position_weight_pct=Decimal("0.000"),
+            cash_capacity_shares=0,
+            concentration_capacity_shares=0,
+            liquidity_capacity_shares=0,
+            risk_budget_capacity_shares=None,
+            binding_constraint="not_in_challenge_universe",
+            is_actionable=False,
+            rejection_reasons=[
+                "not_in_challenge_universe: Security is not an observed member of the Tunis Bourse Challenge quotation list (42 securities)."
+            ],
+            warnings=[],
+            is_challenge_member=False,
+            trading_activity_status=inp.trading_activity_status,
+        )
+
+    # 1c. Pre-market non-cote awareness (activity state, NOT permanent disqualifier)
+    if inp.trading_activity_status == "non_cote":
+        warnings.append(
+            "pre_market_non_cote: Security displays 'non coté' prior to opening auction. Liquidity is unverified until 10:00 opening match."
         )
 
     # 2. Staleness & quote quality checks
@@ -360,4 +409,6 @@ def compute_position_size(inp: PositionSizeInput) -> PositionSizeResult:
         is_actionable=is_actionable,
         rejection_reasons=rejection_reasons,
         warnings=warnings,
+        is_challenge_member=inp.is_challenge_member,
+        trading_activity_status=inp.trading_activity_status,
     )

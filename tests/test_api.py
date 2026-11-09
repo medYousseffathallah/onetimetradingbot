@@ -640,6 +640,7 @@ def test_module_app_and_openapi() -> None:
         "/api/trade-plans",
         "/api/trade-plans/calculate",
         "/api/holding-periods",
+        "/api/challenge-universe",
     }
     assert schema["paths"]["/api/overview"]["get"]["responses"]["200"]["content"][
         "application/json"
@@ -833,3 +834,10 @@ def test_trade_plans_endpoints(service: PortfolioStateService) -> None:
         assert "horizons" in hp_data
         assert hp_data["is_statistically_conclusive"] is False
         assert "INCONCLUSIVE" in hp_data["verdict"]
+
+        # GET /api/challenge-universe
+        cu_res = client.get("/api/challenge-universe")
+        assert cu_res.status_code == 200
+        cu_data = cu_res.json()
+        assert cu_data["count"] == 42
+        assert len(cu_data["securities"]) == 42

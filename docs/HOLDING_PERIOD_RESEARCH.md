@@ -97,3 +97,4 @@ The empirical results from this research are integrated across the application:
 1. **Research Engine (`src/bvmt/holding_period.py`):** Provides automated backtest evaluation across arbitrary horizon arrays.
 2. **REST API (`GET /api/holding-periods`):** Exposes comparative metrics, fee drags, trade counts, and empirical verdicts to client consumers.
 3. **Trade Planner UI (`/planner`):** Displays the interactive Holding-Period Research table directly above the Order Sizing Calculator, ensuring human operators understand the fee implications before deciding on order frequency.
+

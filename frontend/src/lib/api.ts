@@ -225,6 +225,9 @@ export interface StockRankingItem {
   competition_eligibility?: string;
   strategy_eligibility?: string;
   execution_feasibility?: string;
+  in_challenge_universe?: boolean;
+  challenge_symbol?: string | null;
+  order_entry_eligibility?: string;
 }
 
 export interface StockRankingsResponse {
@@ -407,11 +410,11 @@ export interface PaperOrderRecord {
   filled_shares: number;
   remaining_shares: number;
   status:
-    | "PENDING_NEXT_SESSION"
-    | "FILLED"
-    | "PARTIALLY_FILLED"
-    | "EXPIRED"
-    | "BLOCKED_ZERO_VOLUME";
+  | "PENDING_NEXT_SESSION"
+  | "FILLED"
+  | "PARTIALLY_FILLED"
+  | "EXPIRED"
+  | "BLOCKED_ZERO_VOLUME";
   execution_session_date: string | null;
   execution_price_tnd: string | null;
   fee_tnd: string;
@@ -701,6 +704,12 @@ export interface ManualTradePlan {
   liquidity_warnings: string[];
   execution_warnings: string[];
   supporting_evidence: string[];
+  in_challenge_universe?: boolean;
+  challenge_symbol?: string | null;
+  order_entry_eligibility?: string;
+  trading_activity_status?: string;
+  execution_feasibility_status?: string;
+  universe?: string;
 }
 
 export interface TradePlansResponse {
@@ -710,6 +719,8 @@ export interface TradePlansResponse {
   available_cash_tnd: string;
   reserved_cash_tnd: string;
   effective_cash_tnd: string;
+  universe?: string;
+  challenge_universe_count?: number;
   plans: ManualTradePlan[];
 }
 
@@ -721,6 +732,26 @@ export interface TradePlanCalculateRequest {
   risk_budget_tnd?: string | null;
   intended_holding_horizon_sessions?: number;
   portfolio_mode?: PortfolioMode;
+  universe?: string;
+}
+
+export interface ChallengeSecurityRecord {
+  symbol: string;
+  name: string;
+  isin: string;
+  quotation_group: string;
+  trading_mode: "Continu" | "Fixing";
+  min_price: string;
+  max_price: string;
+  tick_size: string;
+  threshold_percent: string;
+  order_entry_eligibility: string;
+}
+
+export interface ChallengeUniverseResponse {
+  count: number;
+  source: string;
+  securities: ChallengeSecurityRecord[];
 }
 
 export interface HoldingPeriodHorizonMetric {
@@ -743,6 +774,7 @@ export interface HoldingPeriodHorizonMetric {
 export interface HoldingPeriodResearchReport {
   model_id: string;
   model_name: string;
+  universe?: string;
   dataset_session_count: number;
   warmup_sessions: number;
   active_test_sessions: number;
@@ -758,8 +790,11 @@ export interface BrowserSyncTriggerResponse {
   reconciliation_preview: ReconciliationPreviewResponse;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const res = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -837,13 +872,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ confirmed_by_user: confirmedByUser }),
     }),
-  getTradePlans: (mode: PortfolioMode = "REAL_COMPETITION") =>
-    fetchJson<TradePlansResponse>(`/api/trade-plans?mode=${mode}`),
+  getTradePlans: (mode: PortfolioMode = "REAL_COMPETITION", universe = "TUNIS_BOURSE_CHALLENGE") =>
+    fetchJson<TradePlansResponse>(`/api/trade-plans?mode=${mode}&universe=${encodeURIComponent(universe)}`),
   calculateTradePlan: (body: TradePlanCalculateRequest) =>
     fetchJson<ManualTradePlan>(`/api/trade-plans/calculate`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  getHoldingPeriods: () =>
-    fetchJson<HoldingPeriodResearchReport>(`/api/holding-periods`),
+  getHoldingPeriods: (universe = "FULL_BVMT") =>
+    fetchJson<HoldingPeriodResearchReport>(`/api/holding-periods?universe=${encodeURIComponent(universe)}`),
+  getChallengeUniverse: () =>
+    fetchJson<ChallengeUniverseResponse>(`/api/challenge-universe`),
 };

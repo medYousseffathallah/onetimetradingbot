@@ -228,3 +228,44 @@ def test_below_minimum_order_size_threshold():
     assert res.is_actionable is False
     assert res.suggested_shares == 0
     assert any("below_minimum_order_size" in r for r in res.rejection_reasons)
+
+
+def test_non_challenge_member_blocked_from_sizing():
+    """Verify non-challenge securities (e.g. MONOPRIX, ESSOUKNA) are strictly non-actionable."""
+    inp = PositionSizeInput(
+        instrument_id="MONOPRIX",
+        symbol="MNP",
+        limit_price_tnd=Decimal("12.290"),
+        portfolio_total_equity_tnd=Decimal("50000.000"),
+        raw_available_cash_tnd=Decimal("49608.050"),
+        median_daily_turnover_20s_tnd=Decimal("45000.000"),
+        median_daily_volume_20s=3600,
+        is_challenge_member=False,
+    )
+    res = compute_position_size(inp)
+
+    assert res.is_actionable is False
+    assert res.suggested_shares == 0
+    assert res.binding_constraint == "not_in_challenge_universe"
+    assert any("not_in_challenge_universe" in r for r in res.rejection_reasons)
+    assert res.is_challenge_member is False
+
+
+def test_pre_market_non_cote_warning():
+    """Verify pre-opening non-cote generates explicit liquidity warning without permanent disqualification."""
+    inp = PositionSizeInput(
+        instrument_id="STA",
+        symbol="STA",
+        limit_price_tnd=Decimal("115.900"),
+        portfolio_total_equity_tnd=Decimal("50000.000"),
+        raw_available_cash_tnd=Decimal("49608.050"),
+        median_daily_turnover_20s_tnd=Decimal("25000.000"),
+        median_daily_volume_20s=220,
+        is_challenge_member=True,
+        trading_activity_status="non_cote",
+    )
+    res = compute_position_size(inp)
+
+    assert any("pre_market_non_cote" in w for w in res.warnings)
+    assert res.is_challenge_member is True
+    assert res.trading_activity_status == "non_cote"

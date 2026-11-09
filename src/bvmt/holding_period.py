@@ -28,6 +28,7 @@ from bvmt.calendar import (
     validate_exchange_calendar,
     validate_instrument_master,
 )
+from bvmt.challenge_universe import get_challenge_symbol_set
 from bvmt.data import read_bars_csv, validate_bars
 from bvmt.strategies import (
     DEFAULT_LAB_CONFIG,
@@ -68,6 +69,7 @@ class HoldingPeriodResearchReport:
 
     model_id: str
     model_name: str
+    universe: str
     dataset_session_count: int
     warmup_sessions: int
     active_test_sessions: int
@@ -81,6 +83,7 @@ class HoldingPeriodResearchReport:
         return {
             "model_id": self.model_id,
             "model_name": self.model_name,
+            "universe": self.universe,
             "dataset_session_count": self.dataset_session_count,
             "warmup_sessions": self.warmup_sessions,
             "active_test_sessions": self.active_test_sessions,
@@ -97,6 +100,7 @@ def evaluate_holding_periods(
     calendar_path: Path | None = None,
     instruments_path: Path | None = None,
     horizons: Sequence[int] = EVALUATED_HORIZONS,
+    universe: str = "FULL_BVMT",
 ) -> HoldingPeriodResearchReport:
     """Run empirical holding period comparison on verified BVMT 2026 data."""
     b_path = bars_path or Path("data/processed/bvmt_official_2026/daily_bars.canonical.csv")
@@ -132,7 +136,13 @@ def evaluate_holding_periods(
         if i >= 60
     }
 
-    model_id = "G_LIQUIDITY_MOMENTUM_FILTERED"
+    if universe == "TUNIS_BOURSE_CHALLENGE":
+        challenge_set = get_challenge_symbol_set()
+        features = {
+            d: [m for m in met if m.instrument_id in challenge_set] for d, met in features.items()
+        }
+
+    model_id = "G_LIQUIDITY_FILTERED_MOMENTUM"
     init_cash = float(DEFAULT_LAB_CONFIG.execution.initial_cash_tnd)
     metrics_list: list[HoldingPeriodHorizonMetric] = []
 
@@ -151,19 +161,19 @@ def evaluate_holding_periods(
         if h == 1:
             label = "1 Session (Daily)"
             feasibility = "POOR"
-            verdict = "Severe fee churn (8,414 TND fees = 16.8% drag). High risk of partial fills."
+            verdict = f"Severe fee churn ({s['total_fees_tnd']:.0f} TND fees = {fee_drag:.1f}% drag). High execution friction."
         elif h == 5:
             label = "5 Sessions (Weekly)"
             feasibility = "MODERATE"
-            verdict = "Excessive turnover (5.98x). High outlier sensitivity."
+            verdict = f"Excessive turnover ({s['turnover_ratio']:.2f}x). High sensitivity to trade friction."
         elif h == 10:
             label = "10 Sessions (Bi-Weekly)"
             feasibility = "MODERATE"
-            verdict = "Low returns (+1.20%); whipsawed by short-term BVMT mean reversions."
+            verdict = f"Moderate return (+{s['net_return_pct']:.1f}%); whipsawed by short-term BVMT mean reversions."
         elif h in (19, 20):
             label = f"{h} Sessions (~Monthly Review)"
             feasibility = "GOOD"
-            verdict = "Optimal fee-to-signal balance (fees < 2.4%, drawdown < 5.4%)."
+            verdict = f"Optimal fee-to-signal balance (fees {s['total_fees_tnd']:.0f} TND, drawdown {s['max_drawdown_pct']:.1f}%)."
         elif h == 40:
             label = "40 Sessions (Bi-Monthly)"
             feasibility = "GOOD"
@@ -193,15 +203,18 @@ def evaluate_holding_periods(
         )
 
     reasoning = [
-        "Daily (1-session) and weekly (5-session) trading generate severe fee drag (16.8% and 6.0% of capital), which erodes alpha under BVMT's 1.00% round-trip friction.",
-        "Monthly review horizons (19-20 sessions) minimize fee churn (< 2.4% drag) while allowing momentum trends sufficient time to materialize.",
-        "Significant outlier dependency: in all horizons, a single stock (SOTETEL) accounts for 43% to 89% of cumulative strategy gains.",
-        "Statistical conclusiveness is INCONCLUSIVE: 194 trading sessions are insufficient to declare an optimal holding period constant. The 20-session horizon must be treated as a flexible review cadence rather than a rigid rule.",
+        "Daily (1-session) and weekly (5-session) trading generate severe fee drag (10% to 17% of capital), which erodes alpha under BVMT's 1.00% round-trip friction.",
+        "Monthly review horizons (19-20 sessions) minimize fee churn while allowing momentum trends sufficient time to materialize.",
+        "Rebalancing calendar phase sensitivity: 19 sessions vs 20 sessions yields a substantial return divergence (+18.8% vs +8.5% on Full BVMT, +11.3% vs +5.8% on Challenge Universe) due to entry/exit date alignment around local peaks.",
+        "Universe dependency: Challenge Universe (42 equities) yields +11.3% at 19 sessions vs +18.8% on Full BVMT (76 instruments) due to exclusion of smaller-cap momentum gainers.",
+        "Significant outlier dependency: single winning positions (e.g. SOTETEL / STA) account for a disproportionate share of cumulative strategy gains.",
+        "Statistical conclusiveness is strictly INCONCLUSIVE: 194 trading sessions are insufficient to declare an optimal holding period constant. The 20-session horizon must be treated as an operational review cadence, never a rigid dogma.",
     ]
 
     return HoldingPeriodResearchReport(
         model_id=model_id,
         model_name="Model G (Liquidity-Filtered Momentum)",
+        universe=universe,
         dataset_session_count=len(sessions),
         warmup_sessions=DEFAULT_LAB_CONFIG.warmup_sessions,
         active_test_sessions=len(sessions) - DEFAULT_LAB_CONFIG.warmup_sessions,

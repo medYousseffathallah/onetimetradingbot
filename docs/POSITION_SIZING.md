@@ -104,3 +104,4 @@ A minimum price appreciation of **`+1.01%`** is required merely to recover trans
 | **Remaining Account Cash** | **`47,045.501 TND`** | $49,608.050 - 2,562.549\text{ TND}$ |
 | **Proposed Position Weight** | **`5.10%`** | $2,549.800 / 50,000.750 \times 100$ |
 | **Break-Even Exit Price** | **`117.065 TND`** | $115.900 \times 1.005 / 0.995$ (`+1.01%`) |
+

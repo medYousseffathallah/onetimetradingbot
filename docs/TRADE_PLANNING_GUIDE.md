@@ -111,3 +111,4 @@ The `/planner` route provides an interactive calculator:
 - **Instant Recalculation:** Adjust the Limit Price, Target Allocation %, or Max Risk Budget.
 - **Pending Order Warnings:** If active pending buy orders exist, effective purchasing cash is automatically reduced to prevent order rejection by the exchange.
 - **Copy-to-Clipboard:** Quick action buttons allow human traders to copy the exact Ticker, Quantity, and Limit Price into the Tunis Bourse Challenge order ticket without manual transcription errors.
+

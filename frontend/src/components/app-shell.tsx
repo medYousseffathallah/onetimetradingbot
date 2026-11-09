@@ -33,9 +33,9 @@ interface ModeContextValue {
 
 const ModeContext = createContext<ModeContextValue>({
   mode: "REAL_COMPETITION",
-  setMode: () => {},
+  setMode: () => { },
   refreshTrigger: 0,
-  triggerRefresh: () => {},
+  triggerRefresh: () => { },
 });
 
 export function usePortfolioMode() {

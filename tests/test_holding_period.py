@@ -6,7 +6,7 @@ from bvmt.holding_period import evaluate_holding_periods
 
 
 def test_holding_period_evaluation_structure_and_inconclusiveness():
-    """Verify holding period evaluation runs across 6 horizons and reports INCONCLUSIVE."""
+    """Verify holding period evaluation runs across horizons, reports INCONCLUSIVE, and uses Model G."""
     bars_path = Path("data/processed/bvmt_official_2026/daily_bars.canonical.csv")
     if not bars_path.exists():
         return
@@ -14,6 +14,7 @@ def test_holding_period_evaluation_structure_and_inconclusiveness():
     report = evaluate_holding_periods(horizons=[1, 5, 20])
     assert report.is_statistically_conclusive is False
     assert "INCONCLUSIVE" in report.verdict
+    assert report.model_id == "G_LIQUIDITY_FILTERED_MOMENTUM"
     assert report.recommended_review_horizon_sessions == 20
     assert len(report.horizons) == 3
 
@@ -22,3 +23,20 @@ def test_holding_period_evaluation_structure_and_inconclusiveness():
     h20 = next(h for h in report.horizons if h.horizon_sessions == 20)
     assert h1.total_fees_tnd > h20.total_fees_tnd * 5
     assert h1.trade_count > h20.trade_count * 5
+
+
+def test_holding_period_challenge_universe_isolation():
+    """Verify holding period evaluation works when restricted to Tunis Bourse Challenge universe."""
+    bars_path = Path("data/processed/bvmt_official_2026/daily_bars.canonical.csv")
+    if not bars_path.exists():
+        return
+
+    full_report = evaluate_holding_periods(horizons=[19, 20], universe="FULL_BVMT")
+    chal_report = evaluate_holding_periods(horizons=[19, 20], universe="TUNIS_BOURSE_CHALLENGE")
+
+    assert chal_report.universe == "TUNIS_BOURSE_CHALLENGE"
+    assert len(chal_report.horizons) == 2
+    # Challenge universe has fewer fills and less fee churn than full universe
+    f19 = next(h for h in full_report.horizons if h.horizon_sessions == 19)
+    c19 = next(h for h in chal_report.horizons if h.horizon_sessions == 19)
+    assert c19.total_fees_tnd <= f19.total_fees_tnd
