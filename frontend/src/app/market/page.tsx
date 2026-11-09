@@ -54,7 +54,7 @@ export default function MarketExplorerPage() {
   const { mode, refreshTrigger } = usePortfolioMode();
   const [mktStatus, setMktStatus] = useState<MarketDataStatusResponse | null>(null);
   const [rankings, setRankings] = useState<StockRankingsResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
+  const [activeTab, setActiveTab] = useState<FilterTab>("CHALLENGE_UNIVERSE");
   const [search, setSearch] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);

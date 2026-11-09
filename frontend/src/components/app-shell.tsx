@@ -43,14 +43,13 @@ export function usePortfolioMode() {
 }
 
 const NAV_ITEMS = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+  { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/portfolio", label: "My Portfolio", icon: Briefcase },
+  { href: "/market", label: "Discover Stocks", icon: BarChart3 },
   { href: "/planner", label: "Trade Planner", icon: Calculator },
-  { href: "/transactions", label: "Transactions & Orders", icon: ArrowLeftRight },
-  { href: "/market", label: "Market Explorer", icon: BarChart3 },
-  { href: "/research", label: "Stock Research", icon: FileSearch },
-  { href: "/strategy", label: "Strategy Lab", icon: FlaskConical },
-  { href: "/health", label: "System Health", icon: ShieldCheck },
+  { href: "/transactions", label: "My Trades", icon: ArrowLeftRight },
+  { href: "/strategy", label: "Research Lab", icon: FlaskConical },
+  { href: "/health", label: "Settings & Data Health", icon: ShieldCheck },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

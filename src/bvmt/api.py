@@ -43,6 +43,8 @@ from bvmt.glossary import export_full_glossary, get_eligibility_explanation
 from bvmt.holding_period import evaluate_holding_periods
 from bvmt.ledger import CompetitionScreenshotSnapshot, ReconciliationReport
 from bvmt.llm import search_document_index
+from bvmt.macro_events import get_all_macro_events, get_macro_narrative_context
+from bvmt.multi_horizon import evaluate_multi_horizon_intelligence
 from bvmt.paper_trading import (
     DATA_DIR,
     DEFAULT_JOURNAL_PATH,
@@ -1489,6 +1491,50 @@ def create_app(
     def holding_periods(universe: str = "FULL_BVMT") -> dict[str, Any]:
         report = evaluate_holding_periods(universe=universe)
         return report.to_dict()
+
+    @application.get("/api/trading-intelligence")
+    def trading_intelligence(
+        horizon: str = "ALL",
+        portfolio_mode: PortfolioMode = "REAL_COMPETITION",
+    ) -> dict[str, Any]:
+        state = for_mode(portfolio_mode).load_state()
+        valuation = state.ledger.valuate(state.price_map)
+        tot_eq = valuation.total_equity_tnd
+        cash = valuation.available_cash_tnd
+
+        pending_res: list[PendingOrderReservation] = []
+        for po in state.ledger.orders.values():
+            if po.status in {"PENDING", "PARTIALLY_FILLED"}:
+                pending_res.append(
+                    PendingOrderReservation(
+                        order_id=po.order_id,
+                        instrument_id=po.instrument_id,
+                        side=po.side,
+                        remaining_shares=po.remaining_shares,
+                        limit_price_tnd=Decimal(str(po.limit_price_tnd)),
+                    )
+                )
+
+        held_map = state.ledger.holdings
+        report = evaluate_multi_horizon_intelligence(
+            portfolio_equity_tnd=tot_eq,
+            available_cash_tnd=cash,
+            held_positions=held_map,
+            market_rankings=state.recommendations.recommendations,
+            as_of_session=state.recommendations.latest_open_session,
+            pending_orders=pending_res,
+        )
+        return report.to_dict()
+
+    @application.get("/api/macro-intelligence")
+    def macro_intelligence(symbol: str | None = None) -> dict[str, Any]:
+        events = get_all_macro_events()
+        narrative = get_macro_narrative_context(symbol) if symbol else ""
+        return {
+            "narrative": narrative,
+            "count": len(events),
+            "events": [e.to_dict() for e in events],
+        }
 
     return application
 

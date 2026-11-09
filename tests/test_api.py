@@ -641,6 +641,8 @@ def test_module_app_and_openapi() -> None:
         "/api/trade-plans/calculate",
         "/api/holding-periods",
         "/api/challenge-universe",
+        "/api/trading-intelligence",
+        "/api/macro-intelligence",
     }
     assert schema["paths"]["/api/overview"]["get"]["responses"]["200"]["content"][
         "application/json"
@@ -841,3 +843,29 @@ def test_trade_plans_endpoints(service: PortfolioStateService) -> None:
         cu_data = cu_res.json()
         assert cu_data["count"] == 42
         assert len(cu_data["securities"]) == 42
+
+
+def test_trading_intelligence_and_macro_endpoints(service: PortfolioStateService) -> None:
+    with TestClient(create_app(service)) as client:
+        # GET /api/trading-intelligence
+        ti_res = client.get("/api/trading-intelligence")
+        assert ti_res.status_code == 200
+        ti_data = ti_res.json()
+        assert "day_trading_notice" in ti_data
+        assert ti_data["day_trading_notice"]["status"] == "UNAVAILABLE_RESEARCH_ONLY"
+        assert "swing_candidates" in ti_data
+        assert "position_candidates" in ti_data
+        assert "active_position_reviews" in ti_data
+
+        # GET /api/macro-intelligence
+        mi_res = client.get("/api/macro-intelligence")
+        assert mi_res.status_code == 200
+        mi_data = mi_res.json()
+        assert "events" in mi_data
+        assert mi_data["count"] > 0
+        assert any(e["event_id"] == "BCT_RATE_STABLE_800" for e in mi_data["events"])
+
+        # GET /api/macro-intelligence?symbol=DH
+        mi_dh = client.get("/api/macro-intelligence?symbol=DH")
+        assert mi_dh.status_code == 200
+        assert "Délice Holding" in mi_dh.json()["narrative"]

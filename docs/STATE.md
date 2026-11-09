@@ -1,9 +1,37 @@
 # Working state
 
 ## Current checkpoint
-**Milestone 8: Challenge Universe Alignment, Trade Planner Safety & Model G Audit** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
-All **361 automated Python tests** (including **6 challenge universe tests**, **3 challenge quotation tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, **2 holding-period tests**, and **55 FastAPI integration tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all source files, the **Next.js TypeScript + production build** (`11/11` static pages), and **4 Playwright visual audit screenshots** (`milestone8_01_planner_challenge_universe.png`, `milestone8_02_planner_full_bvmt_toggle.png`, `milestone8_03_planner_holding_research_audit.png`, `milestone8_04_market_challenge_universe_tab.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**Milestone 9: Human-Centered UX + Multi-Horizon Trading Intelligence** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `playwright 1.64.1`).
+All **365 automated Python tests** (including **3 multi-horizon unit tests**, **56 FastAPI integration tests**, **6 challenge universe tests**, **3 challenge quotation tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, and **2 holding-period tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all 28 source files, the **Next.js TypeScript + production build** (`11/11` static pages), and **6 Playwright visual verification screenshots** (`milestone9_01_home_calm_overview.png`, `milestone9_02_planner_swing_trading.png`, `milestone9_03_planner_day_trading_notice.png`, `milestone9_04_planner_held_positions_review.png`, `milestone9_05_market_discover_stocks.png`, `milestone9_06_home_dark_theme.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+
+## Milestone 9 — Human-Centered UX + Multi-Horizon Trading Intelligence (2026-11-09)
+- **Live Real-Competition Snapshot Confirmed (`data/portfolio/snapshots/sync_20261109_091300.json`)**:
+  - Confirmed live browser snapshot: **44,586.070 TND cash**, **5,393.000 TND holdings** (`30 BH BANK` + `263 DELICE HOLDING`), **49,979.070 TND total equity**.
+  - Discrepancy: `0.000 TND`. National Rank: **`#133 / 14,547`** participants (top 1.0% nationally).
+- **Decision Engine Audit & Fintech SaaS UX Design System (`docs/DECISION_ENGINE_AUDIT.md`, `docs/UX_DESIGN_SYSTEM.md`)**:
+  - Published comprehensive audit of previous universal ranking weaknesses (score flattening, lack of counter-theses, missing exit triggers).
+  - Designed calm fintech SaaS visual language: warm off-white background, dark charcoal text, muted teal accents, restrained status badges, minimum 14px readable typography, and 7 human-centered navigation routes.
+- **Point-in-Time Macroeconomic & Corporate Disclosures Engine (`src/bvmt/macro_events.py`)**:
+  - Ground-truth historical events with strict point-in-time boundary: BCT policy rate at 8.00%, INS inflation at 6.7% YoY, Loi de Finances energy transition tax incentives, Q3 2026 revenue disclosures (Delice Holding +7.4%, STA, SOTETEL).
+  - Functions: `get_verified_macro_intelligence()`, `get_instrument_macro_context()`, `get_macro_narrative_context()`.
+- **Multi-Horizon Trading Intelligence Engine (`src/bvmt/multi_horizon.py`, `tests/test_multi_horizon.py`)**:
+  - **Mode 1: Day Trading** strictly classified as `UNAVAILABLE_RESEARCH_ONLY` with explicit operational reasons (lack of L2 tick feeds, 1.00% round-trip friction, -16.8% fee drag over 194 sessions, ±3.0% / ±5.0% volatility collars).
+  - **Mode 2: Swing Trading (5–20 Sessions)**: Momentum leaders (`STA`, `SOTETEL`) evaluated against 1.5% fee hurdle, volume participation, and concentration limits.
+  - **Mode 3: Position Trading (20–60+ Sessions)**: Multi-month trend persistence with fundamental earnings review windows.
+  - **Active Position Reviews**: `DELICE HOLDING` audited at 9.998% concentration cap (0 additional shares allowed, break-even 19.287 TND, stop-loss 18.140 TND, profit target 21.386 TND).
+  - Standardized 17-attribute decision schema emitted for all evaluated items.
+- **FastAPI Endpoints & Typed Client (`src/bvmt/api.py`, `tests/test_api.py`, `frontend/src/lib/api.ts`)**:
+  - `GET /api/trading-intelligence`: Emits complete multi-horizon intelligence report.
+  - `GET /api/macro-intelligence`: Emits point-in-time macro events and contextual narratives.
+- **Frontend Product Redesign (`frontend/src/`)**:
+  - **App Shell (`app-shell.tsx`)**: Friendly 7-item navigation (`Home`, `My Portfolio`, `Discover Stocks`, `Trade Planner`, `My Trades`, `Research Lab`, `Settings & Data Health`).
+  - **Home Page (`page.tsx`)**: Directly answers the 3 primary user questions:
+    1. *How much money do I have?* (Equity 49,979 TND, Cash 44,586 TND, Invested 5,393 TND, Rank #133).
+    2. *What deserves attention today?* (Delice Holding concentration cap alert, STA top swing candidate, Day trading policy notice).
+    3. *What investments do I own?* (Holdings table with break-even, stop-loss, and exit links).
+  - **Trade Planner (`planner/page.tsx`)**: Horizon tabs (Swing, Position, Active Holdings Review, Day Trading Policy, All Plans) with 17-attribute breakdown and synchronized order sizing calculator.
+  - **Discover Stocks (`market/page.tsx`)**: Defaults directly to the 42 official Challenge securities.
 
 ## Milestone 8 — Challenge Universe Alignment & Trade Planner Safety (2026-11-09)
 - **Live Real-Competition Snapshot Captured (`data/portfolio/snapshots/sync_20261109_091300.json`)**:

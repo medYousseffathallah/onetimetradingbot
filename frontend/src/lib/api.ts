@@ -817,6 +817,73 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface HorizonDecisionItem {
+  decision_status: "MANUAL_ORDER_PLAN" | "RESEARCH_CANDIDATE" | "MONITOR_POSITION" | "REVIEW_POSITION" | "STRATEGY_EXCLUDED";
+  symbol: string;
+  instrument_id: string;
+  strategy_id: string;
+  strategy_version: string;
+  horizon: "DAY_TRADING" | "SWING_5_20S" | "POSITION_20_60S";
+  horizon_label: string;
+  data_as_of: string;
+  source_provenance: string;
+  supporting_factors: string[];
+  contradicting_factors: string[];
+  risk_constraints: Record<string, any>;
+  price_reference: string;
+  quantity_limit: number;
+  fee_estimate: Record<string, string>;
+  review_date: string;
+  exit_triggers: Record<string, any>;
+  evidence_status: string;
+  limitations: string[];
+}
+
+export interface DayTradingNotice {
+  status: string;
+  headline: string;
+  reasons: string[];
+  fee_drag_pct: string;
+  intraday_volatility_cap: string;
+  disclaimer: string;
+}
+
+export interface MultiHorizonIntelligenceReport {
+  as_of_session: string;
+  generated_at: string;
+  portfolio_equity_tnd: string;
+  available_cash_tnd: string;
+  day_trading_notice: DayTradingNotice;
+  active_position_reviews: HorizonDecisionItem[];
+  swing_candidates: HorizonDecisionItem[];
+  position_candidates: HorizonDecisionItem[];
+  summary_notes: string[];
+}
+
+export interface MacroEventItem {
+  event_id: string;
+  category: string;
+  title: string;
+  summary: string;
+  published_at: string;
+  effective_date: string;
+  source_label: string;
+  source_url: string | null;
+  affected_instrument_ids: string[];
+  affected_symbols: string[];
+  polarity: string;
+  impact_pathway: string;
+  contradicting_evidence: string | null;
+  uncertainty_rating: string;
+  is_point_in_time: boolean;
+}
+
+export interface MacroIntelligenceResponse {
+  narrative: string;
+  count: number;
+  events: MacroEventItem[];
+}
+
 export const api = {
   getOverview: (mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<AccountOverviewResponse>(`/api/overview?mode=${mode}`),
@@ -883,4 +950,12 @@ export const api = {
     fetchJson<HoldingPeriodResearchReport>(`/api/holding-periods?universe=${encodeURIComponent(universe)}`),
   getChallengeUniverse: () =>
     fetchJson<ChallengeUniverseResponse>(`/api/challenge-universe`),
+  getTradingIntelligence: (horizon = "ALL", mode: PortfolioMode = "REAL_COMPETITION") =>
+    fetchJson<MultiHorizonIntelligenceReport>(
+      `/api/trading-intelligence?horizon=${encodeURIComponent(horizon)}&portfolio_mode=${mode}`
+    ),
+  getMacroIntelligence: (symbol?: string) =>
+    fetchJson<MacroIntelligenceResponse>(
+      `/api/macro-intelligence${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ""}`
+    ),
 };

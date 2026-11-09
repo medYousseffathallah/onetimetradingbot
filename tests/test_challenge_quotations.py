@@ -107,4 +107,3 @@ def test_quote_comparison_with_canonical_bars():
     cmp_div = compare_quote_with_canonical_bar(quote, Decimal("122.000"))
     assert cmp_div["is_consistent"] is False
     assert cmp_div["status"] == "DIVERGENCE_WARNING"
-

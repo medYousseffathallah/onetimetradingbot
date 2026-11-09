@@ -18,6 +18,9 @@ import {
   Sliders,
   ChevronDown,
   ChevronUp,
+  Sparkles,
+  ShieldCheck,
+  AlertCircle,
 } from "lucide-react";
 import { usePortfolioMode } from "@/components/app-shell";
 import {
@@ -26,6 +29,8 @@ import {
   TradePlansResponse,
   HoldingPeriodResearchReport,
   HoldingPeriodHorizonMetric,
+  MultiHorizonIntelligenceReport,
+  HorizonDecisionItem,
 } from "@/lib/api";
 import { formatTnd, formatPct } from "@/lib/utils";
 import {
@@ -39,14 +44,18 @@ import {
 } from "@/components/ui/primitives";
 import { MetricHelp } from "@/components/ui/metric-help";
 
+type HorizonTab = "SWING" | "POSITION" | "HOLDINGS" | "DAY_TRADING" | "ALL_PLANS";
+
 export default function TradePlannerPage() {
   const { mode } = usePortfolioMode();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [plansData, setPlansData] = useState<TradePlansResponse | null>(null);
   const [holdingResearch, setHoldingResearch] = useState<HoldingPeriodResearchReport | null>(null);
+  const [intelligence, setIntelligence] = useState<MultiHorizonIntelligenceReport | null>(null);
   const [selectedUniverse, setSelectedUniverse] = useState<"TUNIS_BOURSE_CHALLENGE" | "FULL_BVMT">("TUNIS_BOURSE_CHALLENGE");
   const [activeTab, setActiveTab] = useState<"MANUAL_ORDER_PLAN" | "PAPER_TRADE_CANDIDATE" | "RESEARCH_CANDIDATE">("MANUAL_ORDER_PLAN");
+  const [horizonTab, setHorizonTab] = useState<HorizonTab>("SWING");
   const [showHoldingResearch, setShowHoldingResearch] = useState(false);
 
   // Interactive Calculator State
@@ -64,13 +73,15 @@ export default function TradePlannerPage() {
       setLoading(true);
       setError(null);
       try {
-        const [plansRes, holdingRes] = await Promise.all([
+        const [plansRes, holdingRes, intellRes] = await Promise.all([
           api.getTradePlans(mode, selectedUniverse),
           api.getHoldingPeriods(selectedUniverse),
+          api.getTradingIntelligence("ALL", mode).catch(() => null),
         ]);
         if (active) {
           setPlansData(plansRes);
           setHoldingResearch(holdingRes);
+          setIntelligence(intellRes);
           // Default select the top actionable plan if available
           const topActionable = plansRes.plans.find((p) => p.is_actionable);
           if (topActionable) {
@@ -105,6 +116,19 @@ export default function TradePlannerPage() {
     setCustomLimitPrice(plan.proposed_limit_price_tnd);
     setCustomHorizon(plan.intended_holding_horizon_sessions);
     setCalculatedPlan(plan);
+  };
+
+  // Handle horizon decision item selection in calculator
+  const handleSelectHorizonItem = (item: HorizonDecisionItem) => {
+    const matching = plansData?.plans.find(
+      (p) => p.symbol === item.symbol || p.instrument_id === item.instrument_id
+    );
+    if (matching) {
+      handleSelectPlan(matching);
+    } else {
+      setCustomLimitPrice(item.price_reference);
+      setCustomHorizon(item.horizon === "POSITION_20_60S" ? 40 : 20);
+    }
   };
 
   // Recalculate on-the-fly
@@ -147,7 +171,7 @@ export default function TradePlannerPage() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Trade Planning & Position Sizing
+              Trade Planning & Multi-Horizon Decision Support
             </h2>
             <Badge variant="warning" className="gap-1 px-2.5 py-0.5 text-xs font-medium">
               <ShieldAlert className="h-3.5 w-3.5" />
@@ -228,75 +252,75 @@ export default function TradePlannerPage() {
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardDescription>Total Account Equity</CardDescription>
-                <MetricHelp metricId="cash_and_liquidity" />
+                <CardDescription>Available Cash</CardDescription>
+                <Coins className="h-4 w-4 text-sky-600" />
               </div>
               <CardTitle className="text-xl font-mono font-bold text-slate-900 dark:text-slate-100">
-                {formatTnd(plansData.portfolio_total_equity_tnd)}
+                {formatTnd(plansData.available_cash_tnd)}
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-slate-500 dark:text-slate-400">
-              Locally marked against verified BVMT quotes
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardDescription>Available Purchasing Cash</CardDescription>
-                <MetricHelp metricId="cash_and_liquidity" />
-              </div>
-              <CardTitle className="text-xl font-mono font-bold text-teal-700 dark:text-teal-400">
-                {formatTnd(plansData.effective_cash_tnd)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-slate-500 dark:text-slate-400">
-              {Number(plansData.reserved_cash_tnd) > 0 ? (
-                <span className="text-amber-600 font-medium">
-                  {formatTnd(plansData.reserved_cash_tnd)} reserved for open orders
+            <CardContent>
+              <div className="flex justify-between text-xs text-slate-500 font-mono">
+                <span>Reserved: {formatTnd(plansData.reserved_cash_tnd)}</span>
+                <span className="font-semibold text-emerald-600">
+                  Effective: {formatTnd(plansData.effective_cash_tnd)}
                 </span>
-              ) : (
-                "100% available — 0.000 TND pending commitments"
-              )}
+              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardDescription>Max Single-Stock Cap (10%)</CardDescription>
-                <MetricHelp metricId="concentration_ratio" />
+                <CardDescription>Target Max Allocation</CardDescription>
+                <Percent className="h-4 w-4 text-teal-600" />
               </div>
               <CardTitle className="text-xl font-mono font-bold text-slate-900 dark:text-slate-100">
-                {formatTnd((Number(plansData.portfolio_total_equity_tnd) * 0.10).toFixed(3))}
+                8.50% Max Equity
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-slate-500 dark:text-slate-400">
-              Safe Target (8.5%):{" "}
-              <span className="font-semibold text-slate-700 dark:text-slate-300">
-                {formatTnd((Number(plansData.portfolio_total_equity_tnd) * 0.085).toFixed(3))}
-              </span>
+            <CardContent>
+              <div className="text-xs text-slate-500 font-mono">
+                {(Number(plansData.portfolio_total_equity_tnd) * 0.085).toFixed(3)} TND cap per stock
+              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardDescription>Review Horizon</CardDescription>
-                <MetricHelp metricId="holding_period" />
+                <CardDescription>Trading Commissions</CardDescription>
+                <Scale className="h-4 w-4 text-amber-600" />
               </div>
-              <CardTitle className="text-xl font-mono font-bold text-amber-600 dark:text-amber-400">
-                20 Sessions (~1 Mo)
+              <CardTitle className="text-xl font-mono font-bold text-slate-900 dark:text-slate-100">
+                0.50% Buy + 0.50% Sell
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
-              <span>Empirical fee-optimal window</span>
+            <CardContent>
+              <div className="text-xs text-slate-500">
+                ~1.00% round-trip hurdle accounted for
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardDescription>Holding-Period Research</CardDescription>
+                <Clock className="h-4 w-4 text-purple-600" />
+              </div>
+              <CardTitle className="text-xl font-mono font-bold text-slate-900 dark:text-slate-100">
+                20 Sessions Optimal
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
               <button
                 type="button"
-                onClick={() => setShowHoldingResearch((prev) => !prev)}
-                className="text-teal-600 hover:text-teal-800 font-medium underline"
+                onClick={() => setShowHoldingResearch((v) => !v)}
+                className="text-xs font-medium text-teal-700 hover:text-teal-800 dark:text-teal-400 flex items-center gap-1"
               >
-                {showHoldingResearch ? "Hide Evidence" : "View Evidence"}
+                <span>{showHoldingResearch ? "Hide empirical analysis" : "View 6-horizon audit"}</span>
+                {showHoldingResearch ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </button>
             </CardContent>
           </Card>
@@ -324,7 +348,6 @@ export default function TradePlannerPage() {
           </CardHeader>
 
           <CardContent className="space-y-4 text-xs">
-            {/* Horizon Comparison Table */}
             <div className="overflow-x-auto rounded-lg border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-slate-900">
               <table className="w-full text-left">
                 <thead className="bg-amber-100/60 dark:bg-slate-800/80 font-semibold text-slate-700 dark:text-slate-300 border-b border-amber-200 dark:border-amber-800">
@@ -399,7 +422,6 @@ export default function TradePlannerPage() {
               </table>
             </div>
 
-            {/* Scientific Caveats and Reasoning */}
             <div className="space-y-1.5 text-slate-600 dark:text-slate-400 leading-relaxed">
               <div className="font-semibold text-slate-900 dark:text-slate-100">
                 Key Empirical Insights:
@@ -415,11 +437,11 @@ export default function TradePlannerPage() {
         </Card>
       )}
 
-      {/* Main Content: Interactive Calculator + Candidate Cards */}
+      {/* Main Content: Interactive Calculator + Horizon Candidates */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Sizing & Cost Calculator (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
-          <Card className="border-teal-200/90 dark:border-teal-900/60 shadow-sm">
+          <Card className="border-teal-200/90 dark:border-teal-900/60 shadow-sm sticky top-6">
             <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2 text-slate-900 dark:text-slate-100">
@@ -438,7 +460,6 @@ export default function TradePlannerPage() {
             <CardContent className="space-y-4 pt-4 text-xs">
               {selectedPlan ? (
                 <>
-                  {/* Inputs Grid */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -483,6 +504,7 @@ export default function TradePlannerPage() {
                         <option value={10}>10 sessions (2 weeks)</option>
                         <option value={20}>20 sessions (~1 month)</option>
                         <option value={40}>40 sessions (2 months)</option>
+                        <option value={60}>60 sessions (Quarterly)</option>
                       </select>
                       <span className="text-[10px] text-slate-400">Time stop window</span>
                     </div>
@@ -598,68 +620,358 @@ export default function TradePlannerPage() {
                 </>
               ) : (
                 <div className="py-12 text-center text-slate-400">
-                  Select a candidate from the list to populate the calculator.
+                  Select a candidate from the right column to populate the calculator.
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column: Candidate Plan Cards (7 cols) */}
+        {/* Right Column: Multi-Horizon Candidate Cards (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Plan Category Tabs */}
+          {/* Horizon Selector Navigation Bar */}
           <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
             <button
               type="button"
-              onClick={() => setActiveTab("MANUAL_ORDER_PLAN")}
+              onClick={() => setHorizonTab("SWING")}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                activeTab === "MANUAL_ORDER_PLAN"
-                  ? "bg-teal-600 text-white"
+                horizonTab === "SWING"
+                  ? "bg-teal-600 text-white shadow-xs"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
               }`}
             >
-              Manual Order Plans (Top Candidates)
+              Swing Candidates (5–20 Sessions)
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("PAPER_TRADE_CANDIDATE")}
+              onClick={() => setHorizonTab("POSITION")}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                activeTab === "PAPER_TRADE_CANDIDATE"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                horizonTab === "POSITION"
+                  ? "bg-teal-600 text-white shadow-xs"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
               }`}
             >
-              Paper-Trade Candidates
+              Position Candidates (20–60+ Sessions)
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("RESEARCH_CANDIDATE")}
+              onClick={() => setHorizonTab("HOLDINGS")}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                activeTab === "RESEARCH_CANDIDATE"
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                horizonTab === "HOLDINGS"
+                  ? "bg-teal-600 text-white shadow-xs"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
               }`}
             >
-              Research Universe
+              Active Position Reviews ({intelligence?.active_position_reviews.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setHorizonTab("DAY_TRADING")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                horizonTab === "DAY_TRADING"
+                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              Day Trading Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setHorizonTab("ALL_PLANS")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                horizonTab === "ALL_PLANS"
+                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              All Order Plans
             </button>
           </div>
 
-          {/* Cards List */}
-          {loading ? (
-            <div className="py-16 text-center text-slate-400">
-              <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent mb-2" />
-              <p className="text-sm">Calculating portfolio constraints and trade plans...</p>
-            </div>
-          ) : error ? (
-            <div className="p-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-sm">
-              {error}
-            </div>
-          ) : filteredPlans.length === 0 ? (
-            <div className="py-16 text-center text-slate-500 text-sm">
-              No candidates in category {activeTab}.
-            </div>
-          ) : (
+          {/* DAY TRADING TAB NOTICE */}
+          {horizonTab === "DAY_TRADING" && intelligence?.day_trading_notice && (
+            <Card className="border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="warning" className="text-xs font-mono">
+                    {intelligence.day_trading_notice.status}
+                  </Badge>
+                  <ShieldAlert className="h-5 w-5 text-rose-600" />
+                </div>
+                <CardTitle className="text-lg font-bold text-rose-950 dark:text-rose-200 mt-2">
+                  {intelligence.day_trading_notice.headline}
+                </CardTitle>
+                <CardDescription className="text-xs text-rose-800/80 dark:text-rose-300/80">
+                  {intelligence.day_trading_notice.disclaimer}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60">
+                  <div>
+                    <span className="text-[11px] text-slate-500 block">Round-Trip Fee Drag:</span>
+                    <span className="text-base font-bold font-mono text-rose-600">
+                      {intelligence.day_trading_notice.fee_drag_pct}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">simulated over 194 sessions</span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-slate-500 block">Intraday Volatility Collar:</span>
+                    <span className="text-base font-bold font-mono text-slate-800 dark:text-slate-200">
+                      {intelligence.day_trading_notice.intraday_volatility_cap}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">static circuit breaker</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="font-semibold text-slate-900 dark:text-slate-100">
+                    Structural Reasons Why Day Trading is Unavailable:
+                  </div>
+                  <ul className="space-y-1.5 list-disc pl-4 text-slate-600 dark:text-slate-300">
+                    {intelligence.day_trading_notice.reasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* HELD POSITIONS REVIEW TAB */}
+          {horizonTab === "HOLDINGS" && intelligence && (
             <div className="space-y-3.5">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Evaluation of currently owned competition positions against the 10.0% single-stock cap, break-even targets, and stop-loss boundaries.
+              </div>
+              {intelligence.active_position_reviews.map((rev) => (
+                <Card key={rev.symbol} className="border-amber-200/80 dark:border-amber-800/60 bg-white dark:bg-slate-950">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
+                            {rev.symbol}
+                          </h3>
+                          <Badge variant={rev.decision_status === "REVIEW_POSITION" ? "warning" : "info"} className="text-[10px]">
+                            {rev.decision_status}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {rev.horizon_label}
+                          </Badge>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Strategy: {rev.strategy_id} • Review Date: {rev.review_date}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-base">
+                          {formatTnd(rev.price_reference)}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {rev.evidence_status}
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 font-mono text-[11px]">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Held Shares</span>
+                        <span className="font-bold text-slate-900 dark:text-slate-100">{rev.quantity_limit} sh</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Current Weight</span>
+                        <span className="font-bold text-amber-600">{rev.risk_constraints.current_weight_pct}%</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Break-Even Price</span>
+                        <span className="font-bold text-slate-900 dark:text-slate-100">{rev.fee_estimate.break_even_price_tnd} TND</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Stop-Loss Exit</span>
+                        <span className="font-bold text-rose-600">{rev.exit_triggers.stop_loss_price_tnd} TND</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      {rev.supporting_factors.map((f, i) => (
+                        <div key={i} className="flex items-start gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-teal-600 shrink-0 mt-0.5" />
+                          <span>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {rev.contradicting_factors.length > 0 && (
+                      <div className="p-2.5 rounded bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-[11px] space-y-1">
+                        {rev.contradicting_factors.map((cf, i) => (
+                          <div key={i} className="flex items-start gap-1.5">
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                            <span>{cf}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* SWING TRADING OR POSITION TRADING TAB */}
+          {(horizonTab === "SWING" || horizonTab === "POSITION") && intelligence && (
+            <div className="space-y-3.5">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {horizonTab === "SWING"
+                  ? "Swing trading candidates (5–20 sessions): Fast momentum confirmation with strict round-trip fee hurdle and volume caps."
+                  : "Position trading candidates (20–60+ sessions): Multi-month trend persistence for quarterly fundamental holding."}
+              </div>
+
+              {(horizonTab === "SWING" ? intelligence.swing_candidates : intelligence.position_candidates).map((item) => (
+                <Card
+                  key={item.symbol}
+                  className="hover:border-teal-400/80 dark:hover:border-teal-700/80 transition-all border bg-white dark:bg-slate-950"
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
+                            {item.symbol}
+                          </h3>
+                          <Badge
+                            variant={item.decision_status === "MANUAL_ORDER_PLAN" ? "success" : "default"}
+                            className="text-[10px]"
+                          >
+                            {item.decision_status}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {item.horizon_label}
+                          </Badge>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Strategy: {item.strategy_id} • Review: {item.review_date}
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-base">
+                          {formatTnd(item.price_reference)}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          {item.evidence_status}
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3 text-xs">
+                    {/* Sizing & Capital Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 font-mono text-[11px]">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Sized Quantity</span>
+                        <span className="font-bold text-teal-700 dark:text-teal-400">
+                          {item.quantity_limit} Shares
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Est. Purchase Fee</span>
+                        <span className="font-bold text-slate-900 dark:text-slate-100">
+                          {item.fee_estimate.estimated_purchase_fee_tnd} TND
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Break-Even Price</span>
+                        <span className="font-bold text-amber-600">
+                          {item.fee_estimate.break_even_price_tnd} TND
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Stop-Loss Exit</span>
+                        <span className="font-bold text-rose-600">
+                          {item.exit_triggers.stop_loss_price_tnd} TND
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Supporting Evidence */}
+                    <div className="space-y-1">
+                      {item.supporting_factors.map((f, idx) => (
+                        <div key={idx} className="flex items-start gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                          <span className="text-teal-600 font-bold">•</span>
+                          <span>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Contradicting Factors & Limitations */}
+                    {item.contradicting_factors.length > 0 && (
+                      <div className="p-2 rounded bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-900/40 text-amber-900 dark:text-amber-200 text-[11px] space-y-0.5">
+                        {item.contradicting_factors.map((cf, idx) => (
+                          <div key={idx} className="flex items-start gap-1.5">
+                            <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                            <span>{cf}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Footer Actions */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <div className="text-[11px] text-slate-500">
+                        Profit Target: <strong className="font-mono text-emerald-600">{item.exit_triggers.profit_target_price_tnd} TND</strong>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSelectHorizonItem(item)}
+                        className="gap-1 text-xs text-teal-700 dark:text-teal-400 hover:text-teal-900"
+                      >
+                        <span>Test in Calculator</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* ALL GENERATED PLANS TAB */}
+          {horizonTab === "ALL_PLANS" && (
+            <div className="space-y-3.5">
+              <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("MANUAL_ORDER_PLAN")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                    activeTab === "MANUAL_ORDER_PLAN" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  }`}
+                >
+                  Actionable Plans
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("PAPER_TRADE_CANDIDATE")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                    activeTab === "PAPER_TRADE_CANDIDATE" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  }`}
+                >
+                  Paper Trade
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("RESEARCH_CANDIDATE")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                    activeTab === "RESEARCH_CANDIDATE" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  }`}
+                >
+                  Research Candidates
+                </button>
+              </div>
+
               {filteredPlans.map((plan) => {
                 const isSelected = selectedPlan?.instrument_id === plan.instrument_id;
                 return (
@@ -692,11 +1004,6 @@ export default function TradePlannerPage() {
                                 Challenge Universe (42)
                               </Badge>
                             )}
-                            {plan.trading_activity_status === "non_cote" && (
-                              <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-800 border-blue-200">
-                                Pre-Opening Non Coté
-                              </Badge>
-                            )}
                           </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                             {plan.model_name} • Score: {plan.composite_score ?? "N/A"}
@@ -707,28 +1014,11 @@ export default function TradePlannerPage() {
                           <div className="font-mono font-bold text-slate-900 dark:text-slate-100 text-base">
                             {formatTnd(plan.last_verified_price_tnd)}
                           </div>
-                          <div className="text-[10px] text-slate-500 font-mono">
-                            {plan.quote_age_sessions > 0
-                              ? `Quote age: ${plan.quote_age_sessions}s`
-                              : "Verified EOD Quote"}
-                          </div>
                         </div>
                       </div>
                     </CardHeader>
 
                     <CardContent className="space-y-3 text-xs">
-                      {/* Non-Challenge Universe Exclusion Notice */}
-                      {plan.in_challenge_universe === false && (
-                        <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-semibold block">Not in Challenge Universe:</span>
-                            This security is listed on BVMT but excluded from the 42 official Tunis Bourse Challenge quotation sheets. Cannot be entered as an actionable manual order.
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Sizing & Capital Grid */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 font-mono text-[11px]">
                         <div>
                           <span className="text-[10px] text-slate-500 block">Sized Quantity</span>
@@ -743,52 +1033,29 @@ export default function TradePlannerPage() {
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-500 block">Round-Trip Fees</span>
-                          <span className="text-rose-600 font-medium">
-                            {formatTnd(Number(plan.estimated_purchase_fee_tnd) + Number(plan.estimated_sale_fee_tnd))}
-                          </span>
-                        </div>
-                        <div>
                           <span className="text-[10px] text-slate-500 block">Break-Even</span>
                           <span className="font-bold text-amber-600">
                             {formatTnd(plan.break_even_price_tnd)}
                           </span>
                         </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">Horizon</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200">
+                            {plan.intended_holding_horizon_sessions} Sessions
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Supporting Evidence Bullets */}
-                      <div className="space-y-1 text-slate-600 dark:text-slate-400 leading-normal">
+                      <div className="space-y-1">
                         {plan.supporting_evidence.map((ev, idx) => (
-                          <div key={idx} className="flex items-start gap-1.5 text-[11px]">
+                          <div key={idx} className="flex items-start gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
                             <span className="text-teal-600 font-bold">•</span>
                             <span>{ev}</span>
                           </div>
                         ))}
                       </div>
 
-                      {/* Liquidity and Execution Warnings */}
-                      {plan.liquidity_warnings.length > 0 && (
-                        <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-300 text-[11px] space-y-0.5">
-                          {plan.liquidity_warnings.map((w, idx) => (
-                            <div key={idx} className="flex items-center gap-1.5">
-                              <AlertTriangle className="h-3 w-3 shrink-0" />
-                              <span>{w}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Footer Actions / Details Trigger */}
-                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-[10px] font-mono">
-                            Horizon: {plan.intended_holding_horizon_sessions}s
-                          </Badge>
-                          <Badge variant="outline" className="text-[10px] font-mono">
-                            Target: {plan.proposed_position_weight_pct}%
-                          </Badge>
-                        </div>
-
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                         <Button
                           size="sm"
                           variant="outline"
