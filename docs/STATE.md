@@ -1,9 +1,50 @@
 # Working state
 
 ## Current checkpoint
-**Milestone 9: Human-Centered UX + Multi-Horizon Trading Intelligence** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `playwright 1.64.1`).
-All **365 automated Python tests** (including **3 multi-horizon unit tests**, **56 FastAPI integration tests**, **6 challenge universe tests**, **3 challenge quotation tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, and **2 holding-period tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all 28 source files, the **Next.js TypeScript + production build** (`11/11` static pages), and **6 Playwright visual verification screenshots** (`milestone9_01_home_calm_overview.png`, `milestone9_02_planner_swing_trading.png`, `milestone9_03_planner_day_trading_notice.png`, `milestone9_04_planner_held_positions_review.png`, `milestone9_05_market_discover_stocks.png`, `milestone9_06_home_dark_theme.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**Milestone 10: Reliable Account Synchronization & Browser Companion** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `playwright 1.64.1`).
+All **380 automated Python tests** (including **12 sync service & manual import unit tests**, **59 FastAPI integration tests**, **3 multi-horizon unit tests**, **6 challenge universe tests**, **3 challenge quotation tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, and **2 holding-period tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all 31 source files, the **Next.js TypeScript + production build** (`11/11` static pages), and **3 Playwright visual verification screenshots** (`milestone10_01_portfolio_companion_hub.png`, `milestone10_02_portfolio_manual_import.png`, `milestone10_03_portfolio_playwright_async.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+
+## Milestone 10 — Reliable Account Synchronization & Browser Companion (2026-11-09)
+- **Architecture Audit & Root Cause Analysis (`docs/SYNC_ARCHITECTURE_AUDIT.md`)**:
+  - Identified and resolved 5 core failure modes: `RC-01` profile isolation between user's personal Chrome and Playwright, `RC-02` reverse-proxy 30-60s socket timeout on synchronous 180s capture, `RC-03` profile lockfile collisions (`lockfile`/`SingletonLock`), `RC-04` single-source fragility (zero fallback when automation stalls), and `RC-05` confusing UI states.
+- **Canonical Synchronization Service (`src/bvmt/sync_service.py`, `tests/test_sync_service.py`)**:
+  - Implemented single central authority for account observation ingestion, validation, and staging.
+  - Unified schemas: `NormalizedHoldingObservation`, `NormalizedTransactionObservation`, `NormalizedOrderObservation`, `NormalizedAccountObservation`, `IngestionResult`.
+  - Exact Decimal financial values quantized to `0.001 TND` with round-half-up (`quantize_tnd()`). Missing values remain explicitly `None` (zero phantom zeros).
+  - Strict balance equation validation: `available_cash + sum(holdings.market_value) == account_equity` within `0.050 TND` tolerance.
+  - Content-hash duplicate detection: identical snapshots do not duplicate trades or ledger events.
+  - Cryptographic 48-char local pairing token generation and constant-time digest verification (`secrets.compare_digest`).
+- **Manual Import Fallback Parser (`src/bvmt/manual_import.py`, `tests/test_manual_import.py`)**:
+  - Robust French number parsing (`parse_french_number()`): handles thousand-separator spaces, non-breaking spaces, commas, and currency labels.
+  - `parse_manual_portfolio_paste()`: HTML table parser (`SimpleHTMLTableExtractor`) and plain text parser for data copied directly from `displayp.aspx`.
+  - `parse_manual_portfolio_csv()`: flexible CSV parser supporting semicolon/comma delimiters and French headers.
+  - `parse_manual_transactions_csv()`: parses transaction records from `display_histo.aspx` with column header auto-detection.
+- **Asynchronous Playwright Collector Job Lifecycle (`src/bvmt/playwright_worker.py`)**:
+  - In-memory thread-safe `PlaywrightJobManager` (`global_job_manager`) returning `job_id` immediately (HTTP 202 pattern).
+  - Stale profile lockfile auto-cleanup (`clean_stale_profile_lock()`).
+  - Structured background job status polling (`QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`) and cancellation support.
+- **Chrome Browser Companion Extension (`extension/`)**:
+  - Manifest V3 Chrome extension (`manifest.json`, `content.js`, `popup.html`, `popup.js`, `styles.css`).
+  - Strictly read-only DOM extraction from active tab `displayp.aspx`. Zero passwords, cookies, or personal credentials accessed.
+  - Direct transmission to `http://127.0.0.1:8000/api/sync/extension` with `X-BVMT-Pairing-Token`.
+- **FastAPI Endpoints & Typed Frontend Client (`src/bvmt/api.py`, `tests/test_api.py`, `frontend/src/lib/api.ts`)**:
+  - Registered 7 new synchronization endpoints:
+    1. `GET /api/sync/pairing-token`
+    2. `POST /api/sync/extension`
+    3. `POST /api/sync/manual/paste`
+    4. `POST /api/sync/manual/csv`
+    5. `POST /api/sync/playwright/start`
+    6. `GET /api/sync/playwright/status/{job_id}`
+    7. `POST /api/sync/playwright/cancel/{job_id}`
+- **Frontend Synchronization Hub UI (`frontend/src/app/portfolio/page.tsx`)**:
+  - Redesigned `/portfolio` with 3-channel Synchronization Hub:
+    - *Tab 1: Browser Companion (Primary)*: 1-click token copy, live status indicator, 1-minute setup instructions.
+    - *Tab 2: Manual Paste & CSV (Secondary)*: Textarea for pasting copied tables, file upload dropzone, cash/equity overrides, instant validation messages.
+    - *Tab 3: Automated Playwright (Fallback)*: Background launch button, live polling progress badge, job status, cancel button.
+  - Seamlessly integrates with the existing confirmation gate banner (`SyncConfirmationBanner`) for side-by-side diff review and ledger reconciliation.
+- **Security & Troubleshooting Documentation (`docs/`)**:
+  - Published `docs/BROWSER_COMPANION.md`, `docs/SYNC_SECURITY.md`, `docs/SYNC_TROUBLESHOOTING.md`.
 
 ## Milestone 9 — Human-Centered UX + Multi-Horizon Trading Intelligence (2026-11-09)
 - **Live Real-Competition Snapshot Confirmed (`data/portfolio/snapshots/sync_20261109_091300.json`)**:

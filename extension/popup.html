@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BVMT Intelligence Companion</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <div class="logo-badge">BV</div>
+      <div>
+        <div class="logo-title">BVMT Companion</div>
+        <div class="logo-sub">Local Account Sync</div>
+      </div>
+    </div>
+    <div id="connectionStatus" class="status-badge status-offline">● Offline</div>
+  </div>
+
+  <!-- Pairing Card -->
+  <div class="card">
+    <div class="card-title">Localhost Pairing Token</div>
+    <div class="input-row">
+      <input type="text" id="tokenInput" placeholder="Pairing token from dashboard" />
+      <button id="saveTokenBtn" class="btn-secondary" style="width: auto;">Save</button>
+    </div>
+  </div>
+
+  <!-- Active Tab Check -->
+  <div class="card">
+    <div class="card-title">Active Competition Tab</div>
+    <div id="tabNotice" style="font-size: 11px; color: #475569; margin-bottom: 8px;">
+      Checking active tab...
+    </div>
+    <button id="extractBtn">Extract Account Data</button>
+  </div>
+
+  <!-- Extracted Preview Card (Initially Hidden) -->
+  <div id="previewCard" class="card" style="display: none;">
+    <div class="card-title">Extracted Account Preview</div>
+    <div class="grid-2">
+      <div class="stat-item">
+        <div class="stat-label">Total Equity</div>
+        <div id="prevEquity" class="stat-val">— TND</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Available Cash</div>
+        <div id="prevCash" class="stat-val">— TND</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Holdings Count</div>
+        <div id="prevHoldings" class="stat-val">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">National Rank</div>
+        <div id="prevRank" class="stat-val">—</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 10px;">
+      <button id="sendBtn">Transmit to BVMT Dashboard</button>
+    </div>
+  </div>
+
+  <!-- Alert / Feedback Box -->
+  <div id="msgBox" class="alert-box" style="display: none;"></div>
+
+  <div class="footer">
+    100% Read-Only • Zero Credentials Transmitted • Localhost 127.0.0.1
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

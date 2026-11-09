@@ -651,6 +651,33 @@ export interface ConfirmSnapshotResponse {
   reconciliation_summary: ReconciliationSummaryItem;
 }
 
+export interface PairingTokenResponse {
+  pairing_token: string;
+  status: "ACTIVE";
+  instructions: string;
+}
+
+export interface SyncIngestionResponse {
+  success: boolean;
+  validation_status: string;
+  snapshot_id: string;
+  reconciliation_gap_tnd: string;
+  is_duplicate: boolean;
+  error_messages: string[];
+  warning_messages: string[];
+  captured_snapshot: BrowserSnapshotSummaryItem | null;
+  reconciliation_preview: ReconciliationPreviewResponse | null;
+}
+
+export interface PlaywrightJobResponse {
+  job_id: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  snapshot_data: Record<string, unknown> | null;
+}
+
 export interface ExitConditions {
   stop_loss_pct: string;
   stop_loss_price_tnd: string;
@@ -933,6 +960,39 @@ export const api = {
     fetchJson<BrowserSyncTriggerResponse>(`/api/sync/browser`, {
       method: "POST",
       body: JSON.stringify({ timeout_seconds: timeoutSeconds }),
+    }),
+  getPairingToken: () =>
+    fetchJson<PairingTokenResponse>(`/api/sync/pairing-token`),
+  syncManualPaste: (data: {
+    raw_text: string;
+    cash_override?: string;
+    equity_override?: string;
+    rank_override?: number;
+  }) =>
+    fetchJson<SyncIngestionResponse>(`/api/sync/manual/paste`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  syncManualCsv: (data: {
+    csv_content: string;
+    cash_override?: string;
+    equity_override?: string;
+    rank_override?: number;
+  }) =>
+    fetchJson<SyncIngestionResponse>(`/api/sync/manual/csv`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  startPlaywrightJob: (timeoutSeconds = 180) =>
+    fetchJson<PlaywrightJobResponse>(`/api/sync/playwright/start`, {
+      method: "POST",
+      body: JSON.stringify({ timeout_seconds: timeoutSeconds }),
+    }),
+  getPlaywrightJobStatus: (jobId: string) =>
+    fetchJson<PlaywrightJobResponse>(`/api/sync/playwright/status/${encodeURIComponent(jobId)}`),
+  cancelPlaywrightJob: (jobId: string) =>
+    fetchJson<{ job_id: string; status: string }>(`/api/sync/playwright/cancel/${encodeURIComponent(jobId)}`, {
+      method: "POST",
     }),
   confirmSnapshot: (confirmedByUser: boolean) =>
     fetchJson<ConfirmSnapshotResponse>(`/api/sync/confirm`, {

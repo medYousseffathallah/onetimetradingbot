@@ -159,3 +159,4 @@ To ensure recommendations reflect real Tunisian market context without lookahead
 2. **Corporate Disclosure Intelligence**:
    - Official quarterly revenue indicators (indicateurs d'activité trimestriels) published on Bourse de Tunis.
    - Point-in-time timestamping: No release published after session cutoff ($t > \text{cutoff}$) can influence backtests or signals.
+

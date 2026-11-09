@@ -10,6 +10,16 @@ import {
   TrendingUp,
   Clock,
   Layers,
+  Copy,
+  Check,
+  Chrome,
+  FileText,
+  Upload,
+  Play,
+  StopCircle,
+  Key,
+  ShieldCheck,
+  Info,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -23,6 +33,8 @@ import {
   AccountOverviewResponse,
   HoldingsResponse,
   SnapshotsResponse,
+  PairingTokenResponse,
+  PlaywrightJobResponse,
 } from "@/lib/api";
 import { formatTnd, formatPct, formatTimestamp } from "@/lib/utils";
 import {
@@ -40,56 +52,167 @@ import { SyncConfirmationBanner } from "@/components/sync-banner";
 
 const COLORS = ["#0d9488", "#0284c7", "#f59e0b", "#8b5cf6"];
 
+type SyncTab = "COMPANION" | "MANUAL" | "PLAYWRIGHT";
+
 export default function PortfolioPage() {
   const { mode, refreshTrigger, triggerRefresh } = usePortfolioMode();
   const [overview, setOverview] = useState<AccountOverviewResponse | null>(null);
   const [holdings, setHoldings] = useState<HoldingsResponse | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotsResponse | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Sync Hub states
+  const [activeTab, setActiveTab] = useState<SyncTab>("COMPANION");
+  const [pairingToken, setPairingToken] = useState<PairingTokenResponse | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+
+  // Manual import state
+  const [pasteText, setPasteText] = useState("");
+  const [cashOverride, setCashOverride] = useState("");
+  const [equityOverride, setEquityOverride] = useState("");
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualMessage, setManualMessage] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+
+  // Playwright async state
+  const [activeJob, setActiveJob] = useState<PlaywrightJobResponse | null>(null);
+  const [playwrightLoading, setPlaywrightLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([api.getOverview(mode), api.getHoldings(mode), api.getSnapshots(mode)])
-      .then(([ov, hd, sn]) => {
+    Promise.all([
+      api.getOverview(mode),
+      api.getHoldings(mode),
+      api.getSnapshots(mode),
+      api.getPairingToken().catch(() => null),
+    ])
+      .then(([ov, hd, sn, tok]) => {
         setOverview(ov);
         setHoldings(hd);
         setSnapshots(sn);
+        if (tok) setPairingToken(tok);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [mode, refreshTrigger]);
 
-  const handleSyncNow = async () => {
-    setSyncing(true);
-    setSyncMessage(
-      "Launching read-only browser window... Please log in manually to Tunis Bourse Challenge (displayp.aspx)."
-    );
-    setSyncError(null);
+  // Playwright job polling
+  useEffect(() => {
+    if (
+      !activeJob ||
+      activeJob.status === "COMPLETED" ||
+      activeJob.status === "FAILED" ||
+      activeJob.status === "CANCELLED"
+    ) {
+      return;
+    }
+    const interval = setInterval(async () => {
+      try {
+        const updated = await api.getPlaywrightJobStatus(activeJob.job_id);
+        setActiveJob(updated);
+        if (updated.status === "COMPLETED") {
+          setPlaywrightLoading(false);
+          triggerRefresh();
+        } else if (updated.status === "FAILED" || updated.status === "CANCELLED") {
+          setPlaywrightLoading(false);
+        }
+      } catch {
+        setPlaywrightLoading(false);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [activeJob, triggerRefresh]);
+
+  const handleCopyToken = () => {
+    if (!pairingToken) return;
+    navigator.clipboard.writeText(pairingToken.pairing_token);
+    setTokenCopied(true);
+    setTimeout(() => setTokenCopied(false), 2500);
+  };
+
+  const handleManualPaste = async () => {
+    if (!pasteText.trim()) return;
+    setManualLoading(true);
+    setManualError(null);
+    setManualMessage(null);
     try {
-      const res = await api.triggerBrowserSync(180);
-      setSyncMessage(
-        `Snapshot captured (${formatTnd(
-          res.captured_snapshot.portfolio_total_tnd
-        )}) — review and confirm below to apply.`
+      const res = await api.syncManualPaste({
+        raw_text: pasteText,
+        cash_override: cashOverride.trim() || undefined,
+        equity_override: equityOverride.trim() || undefined,
+      });
+      setManualMessage(
+        `Snapshot parsed: Total ${formatTnd(
+          res.captured_snapshot?.portfolio_total_tnd
+        )} (Cash: ${formatTnd(
+          res.captured_snapshot?.available_cash_tnd
+        )}). Review & confirm in the banner above.`
       );
+      setPasteText("");
       triggerRefresh();
     } catch (err: unknown) {
-      setSyncError(
-        err instanceof Error ? err.message : "Browser synchronization failed or timed out."
-      );
-      setSyncMessage(null);
+      setManualError(err instanceof Error ? err.message : "Failed to parse pasted text.");
     } finally {
-      setSyncing(false);
+      setManualLoading(false);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const content = evt.target?.result as string;
+      if (!content) return;
+      setManualLoading(true);
+      setManualError(null);
+      setManualMessage(null);
+      try {
+        const res = await api.syncManualCsv({
+          csv_content: content,
+          cash_override: cashOverride.trim() || undefined,
+          equity_override: equityOverride.trim() || undefined,
+        });
+        setManualMessage(
+          `CSV snapshot imported: Total ${formatTnd(
+            res.captured_snapshot?.portfolio_total_tnd
+          )}. Review & confirm in the banner above.`
+        );
+        triggerRefresh();
+      } catch (err: unknown) {
+        setManualError(err instanceof Error ? err.message : "Failed to parse CSV file.");
+      } finally {
+        setManualLoading(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleStartPlaywright = async () => {
+    setPlaywrightLoading(true);
+    try {
+      const job = await api.startPlaywrightJob(180);
+      setActiveJob(job);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to start Playwright job.");
+      setPlaywrightLoading(false);
+    }
+  };
+
+  const handleCancelPlaywright = async () => {
+    if (!activeJob) return;
+    try {
+      await api.cancelPlaywrightJob(activeJob.job_id);
+      setActiveJob((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+    } catch {
+      // Ignored
     }
   };
 
   if (loading && !overview) {
     return (
       <div className="p-16 text-center text-sm text-slate-500 dark:text-slate-400">
-        Loading portfolio state and reconciliation history...
+        Loading portfolio state and synchronization channels...
       </div>
     );
   }
@@ -121,15 +244,14 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header & Sync Now Button */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            Competition Portfolio & Sync
+            Competition Portfolio & Synchronization Hub
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Read-only browser synchronization, confirmation-gated reconciliation, and dual
-            valuation audit.
+            Resilient multi-channel account sync: Chrome Companion (zero-cookie), Manual Paste & CSV, or Background Playwright.
           </p>
         </div>
 
@@ -149,36 +271,336 @@ export default function PortfolioPage() {
               Baseline Snapshot
             </Badge>
           )}
-
-          {mode === "REAL_COMPETITION" && (
-            <Button
-              variant="primary"
-              size="md"
-              disabled={syncing}
-              onClick={handleSyncNow}
-              className="gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-              <span>{syncing ? "Waiting for Browser Login..." : "Sync Portfolio"}</span>
-            </Button>
-          )}
         </div>
       </div>
 
-      {syncMessage && (
-        <Card className="border-sky-200 dark:border-sky-900 bg-sky-50/80 dark:bg-sky-950/20">
-          <CardContent className="p-4 text-xs text-sky-900 dark:text-sky-200">{syncMessage}</CardContent>
-        </Card>
-      )}
-
-      {syncError && (
-        <Card className="border-rose-200 dark:border-rose-900 bg-rose-50/80 dark:bg-rose-950/20">
-          <CardContent className="p-4 text-xs text-rose-800 dark:text-rose-300">{syncError}</CardContent>
-        </Card>
-      )}
-
-      {/* Confirmation Banner */}
+      {/* Confirmation Banner (appears whenever a new snapshot is captured by any channel) */}
       <SyncConfirmationBanner />
+
+      {/* Three-Channel Synchronization Hub Card */}
+      {mode === "REAL_COMPETITION" && (
+        <Card className="border-teal-200/80 dark:border-teal-900/60 shadow-sm bg-gradient-to-b from-white to-teal-50/20 dark:from-slate-950 dark:to-slate-900/40">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                  Account Synchronization Hub (Milestone 10)
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Choose your preferred capture method. All methods enforce strict Decimal precision, balance validation, and require explicit confirmation.
+                </CardDescription>
+              </div>
+
+              {/* Channel Tabs */}
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1 rounded-lg border border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("COMPANION")}
+                  className={`flex items-center gap-1.5 text-xs font-medium py-1.5 px-3 rounded-md transition-all ${
+                    activeTab === "COMPANION"
+                      ? "bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 shadow-sm font-semibold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  <Chrome className="h-3.5 w-3.5" />
+                  <span>Browser Companion</span>
+                  <Badge variant="outline" className="text-[10px] py-0 px-1 ml-1 text-teal-600 border-teal-300">
+                    Recommended
+                  </Badge>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("MANUAL")}
+                  className={`flex items-center gap-1.5 text-xs font-medium py-1.5 px-3 rounded-md transition-all ${
+                    activeTab === "MANUAL"
+                      ? "bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 shadow-sm font-semibold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Manual Paste / CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("PLAYWRIGHT")}
+                  className={`flex items-center gap-1.5 text-xs font-medium py-1.5 px-3 rounded-md transition-all ${
+                    activeTab === "PLAYWRIGHT"
+                      ? "bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-300 shadow-sm font-semibold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  <span>Automated Playwright</span>
+                </button>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="pt-2">
+            {/* TAB 1: BROWSER COMPANION */}
+            {activeTab === "COMPANION" && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                <div className="md:col-span-2 space-y-4">
+                  <div className="p-4 rounded-lg bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-900/60 space-y-2">
+                    <h4 className="text-sm font-semibold text-teal-950 dark:text-teal-200 flex items-center gap-2">
+                      <Chrome className="h-4 w-4 text-teal-600" />
+                      Zero-Credential Read-Only Chrome Extension
+                    </h4>
+                    <p className="text-xs text-teal-900/80 dark:text-teal-300/80 leading-relaxed">
+                      Extracts visible figures directly from your active Tunis Bourse Challenge tab (<code>displayp.aspx</code>).
+                      No password, cookies, or session tokens are ever touched or transferred.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Step-by-step Setup (1 Minute):
+                    </p>
+                    <ol className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 list-decimal pl-4">
+                      <li>
+                        Open Chrome and navigate to <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">chrome://extensions</code>.
+                      </li>
+                      <li>Toggle <strong>Developer mode</strong> in the top-right corner.</li>
+                      <li>
+                        Click <strong>Load unpacked</strong> and select the repository folder:{" "}
+                        <code className="font-mono text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-teal-800 dark:text-teal-300">
+                          bvmt-starter-kit/extension
+                        </code>.
+                      </li>
+                      <li>
+                        Click the BVMT icon in Chrome, paste your pairing token, and click <strong>Extract & Sync to Platform</strong>.
+                      </li>
+                    </ol>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Key className="h-3.5 w-3.5 text-amber-500" />
+                      Local Pairing Token
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">
+                      Localhost Only
+                    </Badge>
+                  </div>
+
+                  <div className="p-2 rounded bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-mono text-[11px] break-all select-all text-slate-800 dark:text-slate-200">
+                    {pairingToken?.pairing_token || "Loading pairing token..."}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyToken}
+                    className="w-full gap-2 text-xs"
+                    disabled={!pairingToken}
+                  >
+                    {tokenCopied ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        <span className="text-emerald-700 font-semibold">Token Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>Copy Pairing Token</span>
+                      </>
+                    )}
+                  </Button>
+
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    This token authenticates transmissions from your browser extension to FastAPI (Port 8000).
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: MANUAL PASTE & CSV */}
+            {activeTab === "MANUAL" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Left: Textarea */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                      <span>Paste Table or Text from displayp.aspx</span>
+                      <span className="text-[11px] font-normal text-slate-500">Supports HTML tables or plain text</span>
+                    </label>
+                    <textarea
+                      rows={6}
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      placeholder="Copy the table from Tunis Bourse Challenge displayp.aspx and paste here... (e.g. Liquidités : 44 586,070 DT, Total : 49 979,070 DT, BH BANK 30 13,067 13,090)"
+                      className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+
+                  {/* Right: Overrides and CSV upload */}
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          Cash Override (TND)
+                        </label>
+                        <input
+                          type="text"
+                          value={cashOverride}
+                          onChange={(e) => setCashOverride(e.target.value)}
+                          placeholder="e.g. 44586.070"
+                          className="mt-1 w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          Equity Override (TND)
+                        </label>
+                        <input
+                          type="text"
+                          value={equityOverride}
+                          onChange={(e) => setEquityOverride(e.target.value)}
+                          placeholder="e.g. 49979.070"
+                          className="mt-1 w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-center space-y-1.5">
+                      <Upload className="h-4 w-4 mx-auto text-slate-400" />
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        Or upload a holdings CSV export
+                      </p>
+                      <input
+                        type="file"
+                        accept=".csv,.txt"
+                        onChange={handleFileUpload}
+                        className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {manualMessage && (
+                  <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300">
+                    {manualMessage}
+                  </div>
+                )}
+
+                {manualError && (
+                  <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-300">
+                    {manualError}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={manualLoading || !pasteText.trim()}
+                    onClick={handleManualPaste}
+                    className="gap-2"
+                  >
+                    {manualLoading ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                    <span>Parse, Validate & Stage Snapshot</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: PLAYWRIGHT AUTOMATED */}
+            {activeTab === "PLAYWRIGHT" && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <Play className="h-4 w-4 text-sky-600" />
+                      Asynchronous Background Collector
+                    </h4>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Runs the Playwright browser subprocess in the background with lockfile collision recovery and live status polling.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {activeJob && activeJob.status === "RUNNING" ? (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={handleCancelPlaywright}
+                        className="gap-1.5 text-xs"
+                      >
+                        <StopCircle className="h-3.5 w-3.5" />
+                        <span>Cancel Task</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        disabled={playwrightLoading}
+                        onClick={handleStartPlaywright}
+                        className="gap-1.5 text-xs"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                        <span>Launch Automated Collector</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {activeJob && (
+                  <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300 font-mono">
+                        Job: {activeJob.job_id}
+                      </span>
+                      <Badge
+                        variant={
+                          activeJob.status === "COMPLETED"
+                            ? "success"
+                            : activeJob.status === "RUNNING"
+                            ? "warning"
+                            : activeJob.status === "FAILED"
+                            ? "danger"
+                            : "outline"
+                        }
+                      >
+                        {activeJob.status}
+                      </Badge>
+                    </div>
+
+                    {activeJob.status === "RUNNING" && (
+                      <div className="flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>
+                          Browser collector active. Please log in to Tunis Bourse Challenge if prompted in the opened window...
+                        </span>
+                      </div>
+                    )}
+
+                    {activeJob.status === "COMPLETED" && (
+                      <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                        Collector finished successfully! Review the candidate snapshot in the banner above.
+                      </p>
+                    )}
+
+                    {activeJob.status === "FAILED" && (
+                      <p className="text-xs text-rose-700 dark:text-rose-300">
+                        Collector failed: {activeJob.error_message || "Unknown error."}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Prominent Portfolio Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

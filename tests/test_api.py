@@ -635,6 +635,13 @@ def test_module_app_and_openapi() -> None:
         "/api/sync/browser",
         "/api/sync/preview",
         "/api/sync/confirm",
+        "/api/sync/pairing-token",
+        "/api/sync/extension",
+        "/api/sync/manual/paste",
+        "/api/sync/manual/csv",
+        "/api/sync/playwright/start",
+        "/api/sync/playwright/status/{job_id}",
+        "/api/sync/playwright/cancel/{job_id}",
         "/api/market-data/status",
         "/api/market-data/refresh",
         "/api/trade-plans",
@@ -869,3 +876,127 @@ def test_trading_intelligence_and_macro_endpoints(service: PortfolioStateService
         mi_dh = client.get("/api/macro-intelligence?symbol=DH")
         assert mi_dh.status_code == 200
         assert "Délice Holding" in mi_dh.json()["narrative"]
+
+
+def test_sync_pairing_token_and_companion_endpoints(service: PortfolioStateService) -> None:
+    with TestClient(create_app(service)) as client:
+        # 1. GET /api/sync/pairing-token
+        tok_res = client.get("/api/sync/pairing-token")
+        assert tok_res.status_code == 200
+        tok_data = tok_res.json()
+        token = tok_data["pairing_token"]
+        assert len(token) >= 32
+        assert tok_data["status"] == "ACTIVE"
+
+        # 2. POST /api/sync/extension without token -> 401
+        payload = {
+            "source": "CHROME_EXTENSION",
+            "capture_timestamp": "2026-11-09T09:30:00Z",
+            "snapshot_id": "test_ext_snap_001",
+            "account_equity": "50000.750",
+            "available_cash": "49608.050",
+            "holdings": [
+                {
+                    "symbol": "BH",
+                    "instrument_id": "BH",
+                    "quantity": 30,
+                    "acquisition_price_tnd": "13.067",
+                    "latest_price_tnd": "13.090",
+                    "market_value_tnd": "392.700",
+                }
+            ],
+            "competition_ranking": 118,
+            "total_participants": 14500,
+        }
+        unauth = client.post("/api/sync/extension", json=payload)
+        assert unauth.status_code == 401
+
+        # 3. POST /api/sync/extension with valid header -> 200
+        auth = client.post(
+            "/api/sync/extension",
+            json=payload,
+            headers={"X-BVMT-Pairing-Token": token},
+        )
+        assert auth.status_code == 200
+        ing_data = auth.json()
+        assert ing_data["success"] is True
+        assert ing_data["validation_status"] == "VALID"
+        assert ing_data["captured_snapshot"]["available_cash_tnd"] == "49608.050"
+        assert ing_data["reconciliation_preview"] is not None
+
+        # 4. POST /api/sync/extension with balance mismatch -> 422
+        bad_payload = dict(payload)
+        bad_payload["account_equity"] = "60000.000"  # doesn't match cash + holdings
+        mismatch = client.post(
+            "/api/sync/extension",
+            json=bad_payload,
+            headers={"X-BVMT-Pairing-Token": token},
+        )
+        assert mismatch.status_code == 422
+        assert "validation failed" in mismatch.json()["detail"].lower()
+
+
+def test_manual_paste_and_csv_sync_endpoints(service: PortfolioStateService) -> None:
+    with TestClient(create_app(service)) as client:
+        # 1. POST /api/sync/manual/paste
+        raw_paste = (
+            "Total du portefeuille : 50 000,750 DT\n"
+            "Liquidités : 49 608,050 DT\n"
+            "Rang : #118 / 14 500\n"
+            "BH BANK\t30\t13,067\t13,090\t392,700\n"
+        )
+        paste_res = client.post(
+            "/api/sync/manual/paste",
+            json={"raw_text": raw_paste},
+        )
+        assert paste_res.status_code == 200
+        p_data = paste_res.json()
+        assert p_data["success"] is True
+        assert p_data["validation_status"] == "VALID"
+        assert p_data["captured_snapshot"]["available_cash_tnd"] == "49608.050"
+
+        # 2. POST /api/sync/manual/csv
+        csv_text = (
+            "SYMBOL;QUANTITY;ACQUISITION_PRICE;LATEST_PRICE;MARKET_VALUE\n"
+            "BH;30;13.067;13.090;392.700\n"
+        )
+        csv_res = client.post(
+            "/api/sync/manual/csv",
+            json={
+                "csv_content": csv_text,
+                "cash_override": "49608.050",
+                "equity_override": "50000.750",
+                "rank_override": 118,
+            },
+        )
+        assert csv_res.status_code == 200
+        c_data = csv_res.json()
+        assert c_data["success"] is True
+        assert c_data["validation_status"] == "VALID"
+
+
+def test_playwright_async_endpoints(service: PortfolioStateService) -> None:
+    with TestClient(create_app(service)) as client:
+        # 1. POST /api/sync/playwright/start
+        start_res = client.post(
+            "/api/sync/playwright/start",
+            json={"timeout_seconds": 120},
+        )
+        assert start_res.status_code == 200
+        s_data = start_res.json()
+        job_id = s_data["job_id"]
+        assert job_id.startswith("job_")
+        assert s_data["status"] in {"QUEUED", "RUNNING", "FAILED", "COMPLETED"}
+
+        # 2. GET /api/sync/playwright/status/{job_id}
+        status_res = client.get(f"/api/sync/playwright/status/{job_id}")
+        assert status_res.status_code == 200
+        assert status_res.json()["job_id"] == job_id
+
+        # 3. POST /api/sync/playwright/cancel/{job_id}
+        cancel_res = client.post(f"/api/sync/playwright/cancel/{job_id}")
+        assert cancel_res.status_code == 200
+        assert cancel_res.json()["job_id"] == job_id
+
+        # 4. Unknown job -> 404
+        assert client.get("/api/sync/playwright/status/nonexistent").status_code == 404

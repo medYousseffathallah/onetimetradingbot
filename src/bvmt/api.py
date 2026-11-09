@@ -44,6 +44,10 @@ from bvmt.holding_period import evaluate_holding_periods
 from bvmt.ledger import CompetitionScreenshotSnapshot, ReconciliationReport
 from bvmt.llm import search_document_index
 from bvmt.macro_events import get_all_macro_events, get_macro_narrative_context
+from bvmt.manual_import import (
+    parse_manual_portfolio_csv,
+    parse_manual_portfolio_paste,
+)
 from bvmt.multi_horizon import evaluate_multi_horizon_intelligence
 from bvmt.paper_trading import (
     DATA_DIR,
@@ -52,9 +56,14 @@ from bvmt.paper_trading import (
     load_or_init_paper_journal,
     record_forward_paper_signal,
 )
+from bvmt.playwright_worker import global_job_manager
 from bvmt.portfolio_service import PortfolioStateService
 from bvmt.position_sizing import (
     PendingOrderReservation,
+)
+from bvmt.sync_service import (
+    CanonicalSyncService,
+    NormalizedAccountObservation,
 )
 from bvmt.trade_planner import build_manual_trade_plan
 
@@ -486,6 +495,67 @@ class ConfirmSnapshotRequest(APIModel):
     confirmed_by_user: StrictBool
 
 
+class ManualPasteSyncRequest(APIModel):
+    raw_text: str
+    cash_override: str | None = None
+    equity_override: str | None = None
+    rank_override: int | None = None
+
+
+class ManualCsvSyncRequest(APIModel):
+    csv_content: str
+    cash_override: str | None = None
+    equity_override: str | None = None
+    rank_override: int | None = None
+
+
+class ExtensionSyncRequest(APIModel):
+    source: Literal["CHROME_EXTENSION"] = "CHROME_EXTENSION"
+    capture_timestamp: str
+    snapshot_id: str
+    account_equity: str
+    available_cash: str
+    holdings: list[dict[str, Any]] = Field(default_factory=list)
+    pending_orders: list[dict[str, Any]] = Field(default_factory=list)
+    transactions: list[dict[str, Any]] = Field(default_factory=list)
+    competition_ranking: int | None = None
+    total_participants: int | None = None
+    displayed_overall_performance_pct: str | None = None
+    source_page_type: str = "displayp.aspx"
+    pairing_token: str | None = None
+
+
+class PlaywrightStartRequest(APIModel):
+    timeout_seconds: int = Field(default=180, ge=1, le=600)
+
+
+class PlaywrightJobResponse(APIModel):
+    job_id: str
+    status: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    error_message: str | None = None
+    snapshot_data: dict[str, Any] | None = None
+
+
+class PairingTokenResponse(APIModel):
+    pairing_token: str
+    status: Literal["ACTIVE"] = "ACTIVE"
+    instructions: str
+
+
+class SyncIngestionResponse(APIModel):
+    success: bool
+    validation_status: str
+    snapshot_id: str
+    reconciliation_gap_tnd: Money
+    is_duplicate: bool
+    error_messages: list[str] = Field(default_factory=list)
+    warning_messages: list[str] = Field(default_factory=list)
+    captured_snapshot: BrowserSnapshotSummaryItem | None = None
+    reconciliation_preview: ReconciliationPreviewResponse | None = None
+
+
 class TradePlanCalculateRequest(APIModel):
     instrument_id: str
     symbol: str
@@ -716,8 +786,13 @@ def create_app(
 ) -> FastAPI:
     """Create an offline-default app; supplied services keep all custom path overrides."""
     base = service if service is not None else PortfolioStateService()
+    canonical_sync = CanonicalSyncService(
+        portfolio_service=base,
+        snapshots_dir=base.snapshots_dir,
+    )
     application = FastAPI(title="BVMT local research API", version=__version__)
     application.state.portfolio_service = base
+    application.state.canonical_sync = canonical_sync
 
     def load_strategy_lab() -> StrategyLabResponse:
         # GET only serves saved research; never runs experiments or changes portfolios.
@@ -1301,6 +1376,173 @@ def create_app(
             captured_snapshot=_browser(captured, False),
             reconciliation_preview=_preview(base, captured),
         )
+
+    @application.get("/api/sync/pairing-token")
+    def get_pairing_token() -> PairingTokenResponse:
+        token = canonical_sync.get_pairing_token()
+        return PairingTokenResponse(
+            pairing_token=token,
+            status="ACTIVE",
+            instructions="Copy this pairing token into the BVMT Browser Companion extension popup to authorize local snapshot sync.",
+        )
+
+    @application.post("/api/sync/extension")
+    def extension_sync(
+        body: ExtensionSyncRequest,
+        request: Request,
+    ) -> SyncIngestionResponse:
+        if base.portfolio_mode != "REAL_COMPETITION":
+            raise HTTPException(400, "Extension synchronization requires REAL_COMPETITION mode.")
+
+        header_token = request.headers.get("X-BVMT-Pairing-Token")
+        token_to_verify = header_token or body.pairing_token
+        if not canonical_sync.verify_pairing(token_to_verify):
+            raise HTTPException(
+                401,
+                "Unauthorized pairing token. Please configure the pairing token in the BVMT Companion extension.",
+            )
+
+        try:
+            obs = NormalizedAccountObservation.from_dict(body.model_dump())
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(422, f"Failed to parse extension payload: {exc}") from exc
+
+        result = canonical_sync.ingest_observation(obs)
+        if not result.success:
+            raise HTTPException(
+                422,
+                detail=f"Extension snapshot validation failed: {'; '.join(result.error_messages)}",
+            )
+
+        dom_snap = obs.to_dom_snapshot()
+        return SyncIngestionResponse(
+            success=True,
+            validation_status=result.validation_status,
+            snapshot_id=result.snapshot_id,
+            reconciliation_gap_tnd=result.reconciliation_gap_tnd,
+            is_duplicate=result.is_duplicate,
+            error_messages=result.error_messages,
+            warning_messages=result.warning_messages,
+            captured_snapshot=_browser(dom_snap, False),
+            reconciliation_preview=_preview(base, dom_snap),
+        )
+
+    @application.post("/api/sync/manual/paste")
+    def manual_paste_sync(body: ManualPasteSyncRequest) -> SyncIngestionResponse:
+        if base.portfolio_mode != "REAL_COMPETITION":
+            raise HTTPException(400, "Manual paste synchronization requires REAL_COMPETITION mode.")
+
+        cash_ov = Decimal(body.cash_override) if body.cash_override is not None else None
+        eq_ov = Decimal(body.equity_override) if body.equity_override is not None else None
+
+        try:
+            obs = parse_manual_portfolio_paste(
+                body.raw_text,
+                cash_override=cash_ov,
+                equity_override=eq_ov,
+                rank_override=body.rank_override,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, f"Failed to parse pasted table: {exc}") from exc
+
+        result = canonical_sync.ingest_observation(obs)
+        if not result.success:
+            raise HTTPException(
+                422,
+                detail=f"Manual paste validation failed: {'; '.join(result.error_messages)}",
+            )
+
+        dom_snap = obs.to_dom_snapshot()
+        return SyncIngestionResponse(
+            success=True,
+            validation_status=result.validation_status,
+            snapshot_id=result.snapshot_id,
+            reconciliation_gap_tnd=result.reconciliation_gap_tnd,
+            is_duplicate=result.is_duplicate,
+            error_messages=result.error_messages,
+            warning_messages=result.warning_messages,
+            captured_snapshot=_browser(dom_snap, False),
+            reconciliation_preview=_preview(base, dom_snap),
+        )
+
+    @application.post("/api/sync/manual/csv")
+    def manual_csv_sync(body: ManualCsvSyncRequest) -> SyncIngestionResponse:
+        if base.portfolio_mode != "REAL_COMPETITION":
+            raise HTTPException(400, "Manual CSV synchronization requires REAL_COMPETITION mode.")
+
+        cash_ov = Decimal(body.cash_override) if body.cash_override is not None else None
+        eq_ov = Decimal(body.equity_override) if body.equity_override is not None else None
+
+        try:
+            obs = parse_manual_portfolio_csv(
+                body.csv_content,
+                cash=cash_ov,
+                equity=eq_ov,
+                rank=body.rank_override,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, f"Failed to parse CSV holdings: {exc}") from exc
+
+        result = canonical_sync.ingest_observation(obs)
+        if not result.success:
+            raise HTTPException(
+                422,
+                detail=f"Manual CSV validation failed: {'; '.join(result.error_messages)}",
+            )
+
+        dom_snap = obs.to_dom_snapshot()
+        return SyncIngestionResponse(
+            success=True,
+            validation_status=result.validation_status,
+            snapshot_id=result.snapshot_id,
+            reconciliation_gap_tnd=result.reconciliation_gap_tnd,
+            is_duplicate=result.is_duplicate,
+            error_messages=result.error_messages,
+            warning_messages=result.warning_messages,
+            captured_snapshot=_browser(dom_snap, False),
+            reconciliation_preview=_preview(base, dom_snap),
+        )
+
+    @application.post("/api/sync/playwright/start")
+    def playwright_sync_start(body: PlaywrightStartRequest) -> PlaywrightJobResponse:
+        if base.portfolio_mode != "REAL_COMPETITION":
+            raise HTTPException(400, "Playwright synchronization requires REAL_COMPETITION mode.")
+
+        job = global_job_manager.start_job(
+            user_data_dir=base.snapshots_dir.parent / "browser_profile",
+            snapshots_dir=base.snapshots_dir,
+            timeout_seconds=body.timeout_seconds,
+        )
+        return PlaywrightJobResponse(
+            job_id=job.job_id,
+            status=job.status,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            error_message=job.error_message,
+            snapshot_data=job.snapshot_data,
+        )
+
+    @application.get("/api/sync/playwright/status/{job_id}")
+    def playwright_sync_status(job_id: str) -> PlaywrightJobResponse:
+        job = global_job_manager.get_job(job_id)
+        if job is None:
+            raise HTTPException(404, f"Job {job_id} not found.")
+        return PlaywrightJobResponse(
+            job_id=job.job_id,
+            status=job.status,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            error_message=job.error_message,
+            snapshot_data=job.snapshot_data,
+        )
+
+    @application.post("/api/sync/playwright/cancel/{job_id}")
+    def playwright_sync_cancel(job_id: str) -> dict[str, Any]:
+        job = global_job_manager.get_job(job_id)
+        if job is None:
+            raise HTTPException(404, f"Job {job_id} not found.")
+        cancelled = global_job_manager.cancel_job(job_id)
+        return {"job_id": job_id, "status": "CANCELLED" if cancelled else job.status}
 
     @application.get("/api/sync/preview")
     def sync_preview(mode: PortfolioMode = "REAL_COMPETITION") -> ReconciliationPreviewResponse:

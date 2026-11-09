@@ -66,3 +66,4 @@ Every technical term (e.g. `10% Volume Cap`, `ATR Volatility`, `Quotation Group`
 - **1366 × 768**: Typical laptop display. Compact sidebar, 2-column card layouts, horizontally scrollable data tables.
 - **1920 × 1080**: Standard desktop display. Generous whitespace, 4-column KPI grids, side-by-side calculator and candidate lists.
 - **Tablet / Mobile (768px & below)**: Stacked column cards, full-width touch targets (min 44px height), collapsible navigation drawer.
+
