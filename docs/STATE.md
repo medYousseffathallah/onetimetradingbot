@@ -1,9 +1,27 @@
 # Working state
 
 ## Current checkpoint
-**P0 Recover Research Coverage for Excluded & N/A Stocks, Sparse-Data Analytics & Market Explorer Redesign** verified end-to-end on `main` on 2026-11-08 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
-All **332 automated Python tests** (including **8 research coverage tests**, **8 glossary tests**, and **54 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run --no-sync python scripts/check.py`), strict Mypy across 21 source files, the **Next.js TypeScript + production build** (`10/10` static pages), and **6 Playwright visual audit screenshots** (`recovered_01_market_all_76.png` through `recovered_06_market_advanced_metrics.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
+**Urgent Monday Sprint: Trade Planning, Deterministic Position Sizing, Holding-Period Optimization & `/planner` Terminal** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `streamlit 1.66.1`, `playwright 1.64.1`).
+All **346 automated Python tests** (including **10 deterministic position sizing tests**, **3 holding-period tests**, **2 trade planner tests**, and **55 FastAPI `TestClient` integration tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across 24 source files, the **Next.js TypeScript + production build** (`11/11` static pages including `/planner`), and **3 Playwright visual audit screenshots** (`planner_01_overview.png`, `planner_02_holding_research.png`, `planner_03_calculator_recalculated.png`) pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
 Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`), `gemini/dashboard` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-gemini-dashboard`), and `codex/data-research` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-codex-research`).
+
+## Urgent Monday Sprint (2026-11-09)
+- **Phase 0 — Immediate Pre-Market Check & Watchlist (`artifacts/monday_premarket_readiness_report.md`, `scratch/run_phase0_audit.py`)**:
+  - Verified 9 prerequisites: backend & frontend healthy, official BVMT data through 2026-11-06 (194 sessions, 14,480 accepted bars), zero sessions behind preceding open, real portfolio synchronized (`sync_20261107_122006.json`, rank #118 / 14,530), cash (`49,608.050 TND`) + `BH BANK` (`392.700 TND`) = `50,000.750 TND` total equity (0.000 TND discrepancy), 37 eligible equities, zero synthetic data in real mode, zero automated trading possible.
+  - Active research candidates identified: `STA` (Rank 1, 115.900 TND, +5.85% mom), `MONOPRIX` (Rank 2, 12.290 TND, +8.76% mom), `ESSOUKNA` (Rank 3, 4.640 TND, +8.41% mom). `BH BANK` (30 sh @ 13.065 cost) recommended to HOLD.
+- **Phase 1 & 2 — Deterministic Position Sizing & Trade Planning (`src/bvmt/position_sizing.py`, `src/bvmt/trade_planner.py`, `docs/POSITION_SIZING.md`, `docs/TRADE_PLANNING_GUIDE.md`)**:
+  - Implemented `PositionSizingEngine` enforcing effective cash (deducting pending buy reservations with fees), 10.0% competition concentration cap (8.5% target buffer), 10% median daily volume participation, and risk budgets.
+  - Modeled complete transaction friction: 0.50% purchase + 0.50% sale fee (1.00% round trip), and exact break-even exit price ($P_{\text{limit}} \times 1.005 / 0.995$).
+  - Added structured trade plan generation populating 21 attributes, 3 candidate classifications (`MANUAL_ORDER_PLAN`, `PAPER_TRADE_CANDIDATE`, `RESEARCH_CANDIDATE`), explicit review date (20 sessions), and exit triggers (stop-loss -5.0%, profit target +12.0%, trailing breakdown).
+- **Phase 3 — Empirical Holding-Period Optimization (`src/bvmt/holding_period.py`, `docs/HOLDING_PERIOD_RESEARCH.md`)**:
+  - Evaluated Model G across 6 horizons (1, 5, 10, 19, 20, 40 sessions) on 194 sessions of 2026 data.
+  - Discovered that Day Trading (1 session) generates `8,414.45 TND` in fees (16.8% capital drag), destroying net return. Monthly review (19-20 sessions) achieves the optimal net efficiency (+17.05% return, 4.4%–5.4% max drawdown, < 2.4% fee drag).
+  - Outlier dependency disclosed: `SOTETEL` accounts for 70.5%–88.9% of strategy gains, maintaining an `INCONCLUSIVE` scientific verdict.
+- **Phase 4 — Trade Planner Next.js Interface (`frontend/src/app/planner/page.tsx`, `frontend/src/components/app-shell.tsx`, `frontend/src/lib/api.ts`)**:
+  - Interactive `/planner` page with 4 KPI cards, Holding-Period Research table, live Order Sizing Calculator with instant recalculation, and 3 category tabs.
+  - Verified visual appearance via Playwright screenshots.
+- **Phase 5 & 6 — Documentation & Operational Manual (`docs/MONDAY_2026_11_09_OPERATIONS.md`)**:
+  - Complete operational runbook for the human trader covering Pre-Opening (09:00–10:00), Continuous Trading (10:00–14:00), and Post-Session Reconciliation (14:15+).
 
 ## P0 Recover Research Coverage for Excluded & N/A Stocks (2026-11-08)
 - **Phase 0 — Root-Cause Diagnosis across all 76 Listed Instruments (`artifacts/instrument_diagnostics_report.json`, `docs/INSTRUMENT_DIAGNOSTICS_REPORT.md`)**:

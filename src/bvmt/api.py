@@ -38,6 +38,7 @@ from bvmt.browser import (
 from bvmt.dashboard import DashboardAppState
 from bvmt.data import inspect_market_dataset_provenance, read_bars_csv
 from bvmt.glossary import export_full_glossary, get_eligibility_explanation
+from bvmt.holding_period import evaluate_holding_periods
 from bvmt.ledger import CompetitionScreenshotSnapshot, ReconciliationReport
 from bvmt.llm import search_document_index
 from bvmt.paper_trading import (
@@ -48,6 +49,10 @@ from bvmt.paper_trading import (
     record_forward_paper_signal,
 )
 from bvmt.portfolio_service import PortfolioStateService
+from bvmt.position_sizing import (
+    PendingOrderReservation,
+)
+from bvmt.trade_planner import build_manual_trade_plan
 
 PortfolioMode = Literal["REAL_COMPETITION", "SYNTHETIC_DEMO"]
 Money = Annotated[
@@ -472,6 +477,26 @@ class BrowserSyncTriggerResponse(APIModel):
 
 class ConfirmSnapshotRequest(APIModel):
     confirmed_by_user: StrictBool
+
+
+class TradePlanCalculateRequest(APIModel):
+    instrument_id: str
+    symbol: str
+    limit_price_tnd: Decimal
+    target_weight_ratio: Decimal = Decimal("0.0850")
+    risk_budget_tnd: Decimal | None = None
+    intended_holding_horizon_sessions: int = 20
+    portfolio_mode: PortfolioMode = "REAL_COMPETITION"
+
+
+class TradePlansResponse(APIModel):
+    as_of: str
+    session_date: str
+    portfolio_total_equity_tnd: Money
+    available_cash_tnd: Money
+    reserved_cash_tnd: Money
+    effective_cash_tnd: Money
+    plans: list[dict[str, Any]]
 
 
 class ReconciliationSummaryItem(APIModel):
@@ -1277,6 +1302,158 @@ def create_app(
         return ConfirmSnapshotResponse(
             overview=_overview(base, state), reconciliation_summary=_reconciliation(report)
         )
+
+    @application.get("/api/trade-plans")
+    def trade_plans(mode: PortfolioMode = "REAL_COMPETITION") -> TradePlansResponse:
+        state = for_mode(mode).load_state()
+        report = state.recommendations
+        valuation = state.ledger.valuate(state.price_map)
+        tot_eq = valuation.total_equity_tnd
+        cash = valuation.available_cash_tnd
+
+        # Pending reservations
+        pending_res: list[PendingOrderReservation] = []
+        for po in state.ledger.orders.values():
+            if po.status in {"PENDING", "PARTIALLY_FILLED"}:
+                pending_res.append(
+                    PendingOrderReservation(
+                        order_id=po.order_id,
+                        instrument_id=po.instrument_id,
+                        side=po.side,
+                        remaining_shares=po.remaining_shares,
+                        limit_price_tnd=Decimal(str(po.limit_price_tnd)),
+                    )
+                )
+        reserved = sum((p.reserved_cash_tnd for p in pending_res), Decimal("0.000"))
+        effective_cash = max(Decimal("0.000"), cash - reserved)
+
+        held_map = state.ledger.holdings
+
+        plans: list[dict[str, Any]] = []
+        for r in report.recommendations:
+            if not r.reference_price_tnd or Decimal(r.reference_price_tnd) <= Decimal("0"):
+                continue
+            ref_price = Decimal(r.reference_price_tnd)
+            pos = held_map.get(r.instrument_id)
+            held_sh = pos.total_shares if pos else 0
+            avg_cost = pos.average_cost_tnd if pos else Decimal("0.000")
+            med_turnover = (
+                Decimal(r.median_turnover_20s_tnd)
+                if r.median_turnover_20s_tnd
+                else Decimal("0.000")
+            )
+            med_vol = int(med_turnover // ref_price) if ref_price > 0 else 0
+
+            plan = build_manual_trade_plan(
+                instrument_id=r.instrument_id,
+                symbol=r.symbol,
+                stock_name=r.symbol,
+                isin=None,
+                market_segment="PRINCIPAL",
+                limit_price_tnd=ref_price,
+                portfolio_total_equity_tnd=tot_eq,
+                available_cash_tnd=cash,
+                existing_shares=held_sh,
+                existing_average_cost_tnd=avg_cost,
+                median_daily_turnover_20s_tnd=med_turnover,
+                median_daily_volume_20s=med_vol,
+                research_rank=r.rank,
+                composite_score=(
+                    Decimal(str(r.composite_score)) if r.composite_score is not None else None
+                ),
+                momentum_20s=Decimal(str(r.momentum_20s)) if r.momentum_20s is not None else None,
+                momentum_60s=Decimal(str(r.momentum_60s)) if r.momentum_60s is not None else None,
+                pending_orders=pending_res,
+                as_of_session=report.latest_open_session,
+            )
+            plans.append(plan.to_dict())
+
+        return TradePlansResponse(
+            as_of=report.generated_at,
+            session_date=report.latest_open_session,
+            portfolio_total_equity_tnd=tot_eq,
+            available_cash_tnd=cash,
+            reserved_cash_tnd=reserved,
+            effective_cash_tnd=effective_cash,
+            plans=plans,
+        )
+
+    @application.post("/api/trade-plans/calculate")
+    def trade_plan_calculate(body: TradePlanCalculateRequest) -> dict[str, Any]:
+        state = for_mode(body.portfolio_mode).load_state()
+        valuation = state.ledger.valuate(state.price_map)
+        tot_eq = valuation.total_equity_tnd
+        cash = valuation.available_cash_tnd
+
+        pending_res: list[PendingOrderReservation] = []
+        for po in state.ledger.orders.values():
+            if po.status in {"PENDING", "PARTIALLY_FILLED"}:
+                pending_res.append(
+                    PendingOrderReservation(
+                        order_id=po.order_id,
+                        instrument_id=po.instrument_id,
+                        side=po.side,
+                        remaining_shares=po.remaining_shares,
+                        limit_price_tnd=Decimal(str(po.limit_price_tnd)),
+                    )
+                )
+
+        held_map = state.ledger.holdings
+        pos = held_map.get(body.instrument_id)
+        held_sh = pos.total_shares if pos else 0
+        avg_cost = pos.average_cost_tnd if pos else Decimal("0.000")
+
+        med_turnover = Decimal("25000.000")
+        med_vol = int(med_turnover // body.limit_price_tnd) if body.limit_price_tnd > 0 else 0
+        rank_val = None
+        comp_score = None
+        mom20 = None
+        mom60 = None
+        for r in state.recommendations.recommendations:
+            if r.instrument_id == body.instrument_id:
+                rank_val = r.rank
+                if r.composite_score is not None:
+                    comp_score = Decimal(str(r.composite_score))
+                if r.momentum_20s is not None:
+                    mom20 = Decimal(str(r.momentum_20s))
+                if r.momentum_60s is not None:
+                    mom60 = Decimal(str(r.momentum_60s))
+                if r.median_turnover_20s_tnd:
+                    med_turnover = Decimal(r.median_turnover_20s_tnd)
+                    med_vol = (
+                        int(med_turnover // body.limit_price_tnd) if body.limit_price_tnd > 0 else 0
+                    )
+                break
+
+        plan = build_manual_trade_plan(
+            instrument_id=body.instrument_id,
+            symbol=body.symbol,
+            stock_name=body.symbol,
+            isin=None,
+            market_segment="PRINCIPAL",
+            limit_price_tnd=body.limit_price_tnd,
+            portfolio_total_equity_tnd=tot_eq,
+            available_cash_tnd=cash,
+            existing_shares=held_sh,
+            existing_average_cost_tnd=avg_cost,
+            median_daily_turnover_20s_tnd=med_turnover,
+            median_daily_volume_20s=med_vol,
+            research_rank=rank_val,
+            composite_score=comp_score,
+            momentum_20s=mom20,
+            momentum_60s=mom60,
+            pending_orders=pending_res,
+            target_weight_ratio=body.target_weight_ratio,
+            risk_budget_tnd=body.risk_budget_tnd,
+            intended_holding_horizon_sessions=body.intended_holding_horizon_sessions,
+            as_of_session=state.recommendations.latest_open_session,
+        )
+        return plan.to_dict()
+
+    @application.get("/api/holding-periods")
+    def holding_periods() -> dict[str, Any]:
+        report = evaluate_holding_periods()
+        return report.to_dict()
 
     return application
 

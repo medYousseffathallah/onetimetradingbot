@@ -648,6 +648,111 @@ export interface ConfirmSnapshotResponse {
   reconciliation_summary: ReconciliationSummaryItem;
 }
 
+export interface ExitConditions {
+  stop_loss_pct: string;
+  stop_loss_price_tnd: string;
+  profit_target_pct: string;
+  profit_target_price_tnd: string;
+  trailing_support_rule: string;
+  time_stop_sessions: number;
+  review_trigger: string;
+}
+
+export interface ManualTradePlan {
+  plan_id: string;
+  instrument_id: string;
+  symbol: string;
+  stock_name: string;
+  isin: string | null;
+  market_segment: string;
+  model_name: string;
+  model_version: string;
+  research_rank: number | null;
+  research_score: string | null;
+  composite_score: string | null;
+  plan_category: "RESEARCH_CANDIDATE" | "PAPER_TRADE_CANDIDATE" | "MANUAL_ORDER_PLAN";
+  data_source: string;
+  data_timestamp: string;
+  last_verified_price_tnd: string;
+  current_quote_tnd: string | null;
+  current_quote_timestamp: string | null;
+  proposed_limit_price_tnd: string;
+  quote_age_sessions: number;
+  suggested_max_shares: number;
+  estimated_gross_order_value_tnd: string;
+  estimated_purchase_fee_tnd: string;
+  estimated_total_purchase_cost_tnd: string;
+  estimated_sale_fee_tnd: string;
+  break_even_price_tnd: string;
+  break_even_gain_pct: string;
+  effective_available_cash_tnd: string;
+  cash_remaining_after_purchase_tnd: string;
+  existing_position_shares: number;
+  existing_position_exposure_tnd: string;
+  proposed_position_weight_pct: string;
+  binding_constraint: string;
+  intended_holding_horizon_sessions: number;
+  review_date: string;
+  exit_conditions: ExitConditions;
+  confidence_status: string;
+  validation_status: string;
+  is_actionable: boolean;
+  rejection_reasons: string[];
+  liquidity_warnings: string[];
+  execution_warnings: string[];
+  supporting_evidence: string[];
+}
+
+export interface TradePlansResponse {
+  as_of: string;
+  session_date: string;
+  portfolio_total_equity_tnd: string;
+  available_cash_tnd: string;
+  reserved_cash_tnd: string;
+  effective_cash_tnd: string;
+  plans: ManualTradePlan[];
+}
+
+export interface TradePlanCalculateRequest {
+  instrument_id: string;
+  symbol: string;
+  limit_price_tnd: string;
+  target_weight_ratio?: string;
+  risk_budget_tnd?: string | null;
+  intended_holding_horizon_sessions?: number;
+  portfolio_mode?: PortfolioMode;
+}
+
+export interface HoldingPeriodHorizonMetric {
+  horizon_sessions: number;
+  horizon_label: string;
+  net_return_pct: number;
+  liquidated_return_pct: number;
+  max_drawdown_pct: number;
+  total_fees_tnd: number;
+  turnover_ratio: number;
+  trade_count: number;
+  hit_rate_pct: number;
+  top_winner_symbol: string | null;
+  top_winner_pnl_share_pct: number;
+  fee_drag_pct_of_equity: number;
+  execution_feasibility_score: string;
+  summary_verdict: string;
+}
+
+export interface HoldingPeriodResearchReport {
+  model_id: string;
+  model_name: string;
+  dataset_session_count: number;
+  warmup_sessions: number;
+  active_test_sessions: number;
+  is_statistically_conclusive: boolean;
+  recommended_review_horizon_sessions: number;
+  verdict: string;
+  reasoning: string[];
+  horizons: HoldingPeriodHorizonMetric[];
+}
+
 export interface BrowserSyncTriggerResponse {
   captured_snapshot: BrowserSnapshotSummaryItem;
   reconciliation_preview: ReconciliationPreviewResponse;
@@ -732,4 +837,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ confirmed_by_user: confirmedByUser }),
     }),
+  getTradePlans: (mode: PortfolioMode = "REAL_COMPETITION") =>
+    fetchJson<TradePlansResponse>(`/api/trade-plans?mode=${mode}`),
+  calculateTradePlan: (body: TradePlanCalculateRequest) =>
+    fetchJson<ManualTradePlan>(`/api/trade-plans/calculate`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getHoldingPeriods: () =>
+    fetchJson<HoldingPeriodResearchReport>(`/api/holding-periods`),
 };

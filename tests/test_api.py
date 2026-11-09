@@ -637,6 +637,9 @@ def test_module_app_and_openapi() -> None:
         "/api/sync/confirm",
         "/api/market-data/status",
         "/api/market-data/refresh",
+        "/api/trade-plans",
+        "/api/trade-plans/calculate",
+        "/api/holding-periods",
     }
     assert schema["paths"]["/api/overview"]["get"]["responses"]["200"]["content"][
         "application/json"
@@ -793,3 +796,40 @@ def test_market_data_status_and_refresh_endpoints(service: PortfolioStateService
 
     # Ensure zero mutation to competition ledger
     assert ledger_bytes(service) == before
+
+
+def test_trade_plans_endpoints(service: PortfolioStateService) -> None:
+    with TestClient(create_app(service)) as client:
+        # GET /api/trade-plans
+        res = client.get("/api/trade-plans")
+        assert res.status_code == 200
+        data = res.json()
+        assert "plans" in data
+        assert "portfolio_total_equity_tnd" in data
+        assert "available_cash_tnd" in data
+        assert len(data["plans"]) > 0
+
+        # POST /api/trade-plans/calculate
+        calc_req = {
+            "instrument_id": "STA",
+            "symbol": "STA",
+            "limit_price_tnd": "115.900",
+            "target_weight_ratio": "0.0850",
+            "intended_holding_horizon_sessions": 20,
+            "portfolio_mode": "REAL_COMPETITION",
+        }
+        calc_res = client.post("/api/trade-plans/calculate", json=calc_req)
+        assert calc_res.status_code == 200
+        calc_data = calc_res.json()
+        assert calc_data["symbol"] == "STA"
+        assert calc_data["suggested_max_shares"] > 0
+        assert "break_even_price_tnd" in calc_data
+        assert "exit_conditions" in calc_data
+
+        # GET /api/holding-periods
+        hp_res = client.get("/api/holding-periods")
+        assert hp_res.status_code == 200
+        hp_data = hp_res.json()
+        assert "horizons" in hp_data
+        assert hp_data["is_statistically_conclusive"] is False
+        assert "INCONCLUSIVE" in hp_data["verdict"]

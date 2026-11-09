@@ -11,6 +11,7 @@ import {
   FileSearch,
   FlaskConical,
   ShieldCheck,
+  Calculator,
   Lock,
   Radio,
   Sun,
@@ -44,6 +45,7 @@ export function usePortfolioMode() {
 const NAV_ITEMS = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+  { href: "/planner", label: "Trade Planner", icon: Calculator },
   { href: "/transactions", label: "Transactions & Orders", icon: ArrowLeftRight },
   { href: "/market", label: "Market Explorer", icon: BarChart3 },
   { href: "/research", label: "Stock Research", icon: FileSearch },

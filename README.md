@@ -20,14 +20,17 @@ The **Tunis Bourse Challenge** (`2026-10-01` to `2027-05-31`) is an educational 
 
 ## 2. Implemented Features
 
-- **Modern 7-Page Next.js 15 + FastAPI Financial Terminal (`frontend/`, `src/bvmt/api.py`):**
+- **Modern 8-Page Next.js 15 + FastAPI Financial Terminal (`frontend/`, `src/bvmt/api.py`):**
   - **Overview (`/`):** Dual valuation audit comparing **Website-Reported Competition Account Values (`displayp.aspx`)** (`50,000.750 TND` total equity, `49,608.050 TND` cash, `392.700 TND` `BH BANK` market value, `+0.750 TND` unrealized P&L, rank `#118 / 14,530`) against **Locally Recalculated BVMT Mark-to-Market Valuation**.
   - **Portfolio (`/portfolio`):** One-click read-only browser synchronization, confirmation-gated reconciliation preview, capital allocation chart, and immutable snapshot history.
   - **Transactions & Orders (`/transactions`):** Executed transaction history (`display_histo.aspx` movements + local fills) and open/pending order tracking.
   - **Market Explorer (`/market`):** Official BVMT dataset provenance (`194` sessions through `2026-11-06`, `76` stocks, `14,480` bars), point-in-time momentum/liquidity rankings, and 7-gate eligibility diagnostics.
+  - **Trade Planner (`/planner`):** Deterministic position-sizing engine, interactive limit order calculator, pending order cash reservation accounting, 10% competition concentration cap (8.5% target), 0.50% purchase + 0.50% sale fee break-even modeling, candidate categorization (`MANUAL_ORDER_PLAN`, `PAPER_TRADE_CANDIDATE`, `RESEARCH_CANDIDATE`), and holding-period horizon optimization.
   - **Stock Research (`/research`):** Point-in-time French/Arabic/English financial disclosure search (BM25 + vector sidecar) and verbatim-quote-verified corporate event catalysts.
   - **Strategy Lab (`/strategy`):** Comparative evaluation of **Baselines A–G** and **Multi-Factor Enhancements H–I**, 7-fold rolling walk-forward validation, equity/drawdown curves, fee/liquidity sensitivity grids, and explicit statistical conclusiveness disclosures.
-  - **System Health (`/health`):** Competition rule blocker audit (`configs/competition.json`), Alibaba Cloud Model Studio free-quota/offline lock status, and deduplicated local alert center.
+  - **System Health (`/health`):** Official BVMT market data gateway status, competition rule blocker audit (`configs/competition.json`), Alibaba Cloud Model Studio free-quota/offline lock status, and deduplicated local alert center.
+- **Deterministic Position Sizing Engine (`src/bvmt/position_sizing.py`):** Enforces minimum capacity across effective cash (net of pending orders), concentration (10% hard cap, 8.5% target), executable liquidity (10% median daily volume), and risk budget thresholds.
+- **Holding-Period Research & Horizon Optimization (`src/bvmt/holding_period.py`):** Multi-horizon evaluation across 1, 5, 10, 19, 20, and 40 sessions proving that day trading (1 session) incurs a catastrophic 16.8% fee drag (`8,414 TND`), while a 19–20 session monthly review horizon achieves the optimal net efficiency (+17.05% return, 4.4%–5.4% max drawdown, < 2.4% fee friction).
 - **Streamlit Fallback Interface (`src/bvmt/dashboard.py`):** Available at any time via `.\start_bvmt.bat --streamlit` or `uv run bvmt dashboard`.
 - **Read-Only Playwright Portfolio & Movements Collector (`src/bvmt/browser.py`):** Launches an isolated Chrome profile (`data/browser_profile`), waits for manual login on `displayp.aspx`, extracts the 12-cell `tbody.alri` holdings table and `display_histo.aspx` movements, validates `Cash + Holdings == Total`, and requires explicit user confirmation (`confirmed_by_user=True`) before updating `data/portfolio/real_competition_ledger.json`.
 
@@ -42,7 +45,7 @@ The **Tunis Bourse Challenge** (`2026-10-01` to `2027-05-31`) is an educational 
 | **Primary Web Interface** | `Next.js 15` (App Router), `TypeScript 5.7`, `Tailwind CSS`, `shadcn/ui` primitives, `Recharts`, `Lucide` icons (`127.0.0.1:3000`) |
 | **Fallback Web Interface** | `Streamlit 1.66+` (`127.0.0.1:8501`) |
 | **Authenticated Collector** | `Playwright` (isolated persistent Chrome context, read-only URL allowlist) |
-| **Quality & Verification** | `pytest` (`332+` tests), `ruff`, `mypy --strict`, `pip-audit`, `uv` lockfile |
+| **Quality & Verification** | `pytest` (`346+` tests), `ruff`, `mypy --strict`, `uv` lockfile |
 
 ---
 
@@ -481,6 +484,39 @@ Market Explorer decouples quantitative equity research from active competition e
 - **Conservative Hypothetical Order Capacity (Zero Volume Lookahead)**: Sized strictly using pre-session information ($t \le \text{cutoff}$), capping order capacity at $\min(0.10 \times \text{Turnover}_{20s}, 0.085 \times \text{Equity})$ with zero next-day volume lookahead.
 - **7-Tab Explorer Navigation**: Filter equities by `All (76)`, `Strategy Eligible (40)`, `Research Ready (50)`, `Partial Data (12)`, `Illiquid / Stale (14)`, `Restricted (12)`, and `Missing Data (0)`.
 - **Dedicated Endpoint**: `GET /api/market-research` exposes complete sparse analytics and classification matrices across all 76 listed instruments.
+
+---
+
+## 16. Monday Operational Sprint: Trade Planning, Deterministic Sizing & Horizon Optimization
+
+In preparation for the Monday, November 9, 2026 BVMT session (09:00–14:15 Africa/Tunis), the platform was expanded to bridge the gap between quantitative ranking models and human manual execution on `https://www.tunisbourse-challenge.com`.
+
+### 16.1 Deterministic Position Sizing Architecture (`src/bvmt/position_sizing.py`)
+Every proposed order is sized strictly according to the minimum capacity across four independent constraints:
+1. **Effective Purchasing Cash:** Deducts cash committed to open, pending buy orders (with fees) to prevent over-allocation.
+2. **Competition Concentration Cap:** 10.0% hard limit of total equity, targeting an 8.5% safety buffer.
+3. **Executable Liquidity Cap:** Strictly limited to 10% of 20-session median daily volume to avoid unexecutable orders on thin books.
+4. **Complete Cost Modeling:** Full accounting of 0.50% purchase fee, 0.50% sale fee (1.00% round-trip friction), and exact break-even price calculation ($P_{\text{limit}} \times 1.005 / 0.995$).
+- Full documentation: [`docs/POSITION_SIZING.md`](docs/POSITION_SIZING.md)
+
+### 16.2 Trade Planning Engine & Next.js Interface (`src/bvmt/trade_planner.py` & `/planner`)
+- Structures every research candidate into an actionable manual trade plan.
+- Categorizes all 76 listed instruments into:
+  - `MANUAL_ORDER_PLAN`: Actionable candidate with exact limit price, suggested share quantity, fee outlay, and pre-calculated exit conditions.
+  - `PAPER_TRADE_CANDIDATE`: Valid signal but blocked by cash or concentration constraints; logged for forward paper-trading.
+  - `RESEARCH_CANDIDATE`: Monitoring list for future liquidity expansion.
+- Full workflow guide: [`docs/TRADE_PLANNING_GUIDE.md`](docs/TRADE_PLANNING_GUIDE.md)
+
+### 16.3 Empirical Holding-Period Research (`src/bvmt/holding_period.py`)
+Multi-horizon backtesting across 194 sessions of 2026 BVMT data revealed critical structural insights:
+- **Day Trading (1 session) is unviable:** Generates **`8,414.45 TND` in fees (16.8% of capital)**, destroying returns.
+- **Monthly Review (19–20 sessions) is optimal:** Reduces fee drag to `< 2.4%` (`1,192.79 TND`), generates `+17.05%` net return, and compresses max drawdown to `4.4%–5.4%`.
+- **Outlier Sensitivity Disclosed:** `SOTETEL` accounts for `70.5%–88.9%` of total strategy gains, leading to an **`INCONCLUSIVE`** statistical classification due to sample size.
+- Full research report: [`docs/HOLDING_PERIOD_RESEARCH.md`](docs/HOLDING_PERIOD_RESEARCH.md)
+
+### 16.4 Operational Runbook
+- Complete step-by-step user instructions for pre-opening, continuous matching, and post-session reconciliation: [`docs/MONDAY_2026_11_09_OPERATIONS.md`](docs/MONDAY_2026_11_09_OPERATIONS.md)
+
 
 
 
