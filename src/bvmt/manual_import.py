@@ -97,21 +97,25 @@ def parse_manual_portfolio_paste(
             except Exception:
                 pass
 
-    # Check for total equity: "Total Portefeuille : 49 979,070" or "Total du portefeuille"
+    # Check for total equity: "Total Portefeuille : 49 979,070", "Votre portefeuille : 50061,96 DT", or "Totaux 50061.96"
     if extracted_equity is None:
         eq_match = re.search(
-            r"Total\s*(?:du)?\s*portefeuille\s*:?\s*([0-9\s,\.]+)", text, re.IGNORECASE
-        )
+            r"(?:Votre\s+portefeuille|Total\s*(?:du)?\s*portefeuille)\s*:?\s*([0-9\s,\.]+)",
+            text,
+            re.IGNORECASE,
+        ) or re.search(r"Totaux\s+([0-9\s,\.]+)", text, re.IGNORECASE)
         if eq_match:
             try:
                 extracted_equity = quantize_tnd(parse_french_number(eq_match.group(1)))
             except Exception:
                 pass
 
-    # Check for rank: "Rang : 133 / 14 547" or "Classement : 133"
+    # Check for rank: "Rang : 133 / 14 547", "Classement : 133", or "Votre classement : 112 / 14573"
     if extracted_rank is None:
         rank_match = re.search(
-            r"(?:Rang|Classement)\s*:?\s*#?([0-9\s]+)(?:\s*/\s*([0-9\s]+))?", text, re.IGNORECASE
+            r"(?:Votre\s+classement|Rang|Classement)\s*:?\s*#?([0-9\s]+)(?:\s*/\s*([0-9\s]+))?",
+            text,
+            re.IGNORECASE,
         )
         if rank_match:
             try:
@@ -143,22 +147,32 @@ def parse_manual_portfolio_paste(
                 rows.append([p.strip() for p in parts if p.strip()])
 
     for row in rows:
-        if len(row) < 3:
+        if len(row) < 2:
             continue
-        first_cell = row[0].upper()
+        first_cell = row[0].upper().strip()
         if any(
-            h in first_cell for h in ["VALEUR", "SYMBOLE", "ACTION", "TITRE", "TOTAL", "LIQUIDIT"]
+            h in first_cell for h in ["VALEUR", "SYMBOLE", "TITRE", "TOTAUX", "TOTAL", "LIQUIDIT"]
         ):
             continue
 
-        # Look for symbol and numeric values in the row
-        sym = row[0].strip().upper()
+        # Check if Column 0 is a "Vendre" button or action label, where symbol is in Column 1
+        sym = ""
+        candidate_num_cells: list[str] = []
+
+        if first_cell == "VENDRE" or "ACTION" in first_cell or not first_cell:
+            if len(row) >= 3:
+                sym = row[1].strip().upper()
+                candidate_num_cells = row[2:]
+        else:
+            sym = row[0].strip().upper()
+            candidate_num_cells = row[1:]
+
         # Filter out rows that are clearly not stocks
-        if not re.match(r"^[A-Z0-9._\s-]+$", sym) or len(sym) > 40:
+        if not sym or sym == "VENDRE" or len(sym) > 50 or "LIQUIDIT" in sym or "TOTAUX" in sym:
             continue
 
         numbers: list[Decimal] = []
-        for cell in row[1:]:
+        for cell in candidate_num_cells:
             try:
                 val = parse_french_number(cell)
                 numbers.append(val)
@@ -166,17 +180,29 @@ def parse_manual_portfolio_paste(
                 continue
 
         if len(numbers) >= 2:
-            # Typically: Quantity (int), Acquisition Price, [Latest Price], [Market Value]
-            # e.g.: [263, 19.095, 19.000, 4997.000]
             try:
                 qty = int(numbers[0])
                 acq_px = quantize_tnd(numbers[1])
-                lat_px = quantize_tnd(numbers[2]) if len(numbers) >= 3 else acq_px
-                mkt_val = (
-                    quantize_tnd(numbers[3])
-                    if len(numbers) >= 4
-                    else quantize_tnd(Decimal(qty) * lat_px)
-                )
+                lat_px = acq_px
+                mkt_val = quantize_tnd(Decimal(qty) * lat_px)
+
+                # Check if row contains Montant column:
+                # [qty, acq_px, montant, dernier, capital, ...]
+                # Identity: montant ~= qty * acq_px
+                if len(numbers) >= 4 and abs(Decimal(qty) * acq_px - numbers[2]) < Decimal("1.000"):
+                    lat_px = quantize_tnd(numbers[3])
+                    mkt_val = (
+                        quantize_tnd(numbers[4])
+                        if len(numbers) >= 5
+                        else quantize_tnd(Decimal(qty) * lat_px)
+                    )
+                elif len(numbers) >= 3:
+                    lat_px = quantize_tnd(numbers[2])
+                    mkt_val = (
+                        quantize_tnd(numbers[3])
+                        if len(numbers) >= 4
+                        else quantize_tnd(Decimal(qty) * lat_px)
+                    )
 
                 holdings.append(
                     NormalizedHoldingObservation(

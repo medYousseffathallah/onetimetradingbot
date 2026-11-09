@@ -141,3 +141,77 @@ def test_parse_manual_transactions_csv() -> None:
 def test_parse_manual_paste_empty_raises() -> None:
     with pytest.raises(ValueError, match="empty"):
         parse_manual_portfolio_paste("   ")
+
+
+def test_parse_real_challenge_displayp_table() -> None:
+    """Validate extraction of live Tunis Bourse Challenge table layout (with Vendre and Montant columns)."""
+    raw_html = """
+    <div>
+        <p>Votre portefeuille : 50061,96 DT</p>
+        <p>Votre classement : 112 / 14573</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Vendre</th>
+                    <th>Nom de valeur</th>
+                    <th>Quantité</th>
+                    <th>Prix</th>
+                    <th>Montant</th>
+                    <th>Dernier</th>
+                    <th>Capital</th>
+                    <th>Gain (dt)</th>
+                    <th>Gain (%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>vendre</td><td>BH BANK</td><td>30</td><td>13.065</td><td>391.95</td><td>13.09</td><td>392.70</td><td>0.75</td><td>0.19%</td></tr>
+                <tr><td>vendre</td><td>DELICE HOLDING</td><td>263</td><td>19.095</td><td>5021.99</td><td>19.09</td><td>5020.67</td><td>-1.31</td><td>-0.03%</td></tr>
+                <tr><td>vendre</td><td>NEW BODY LINE</td><td>200</td><td>2.462</td><td>492.45</td><td>2.49</td><td>498.00</td><td>5.55</td><td>1.13%</td></tr>
+                <tr><td>vendre</td><td>STA</td><td>22</td><td>115.575</td><td>2542.65</td><td>114.90</td><td>2527.80</td><td>-14.85</td><td>-0.58%</td></tr>
+                <tr><td>Liquidités</td><td>41622.79</td></tr>
+                <tr><td>Totaux</td><td>50061.96</td><td>61.96</td><td>0.12%</td></tr>
+            </tbody>
+        </table>
+    </div>
+    """
+
+    obs = parse_manual_portfolio_paste(raw_html)
+    assert obs.account_equity == Decimal("50061.960")
+    assert obs.available_cash == Decimal("41622.790")
+    assert obs.competition_ranking == 112
+    assert obs.total_participants == 14573
+    assert len(obs.holdings) == 4
+
+    h_map = {h.symbol: h for h in obs.holdings}
+    assert "BH BANK" in h_map
+    bh = h_map["BH BANK"]
+    assert bh.quantity == 30
+    assert bh.acquisition_price_tnd == Decimal("13.065")
+    assert bh.latest_price_tnd == Decimal("13.090")
+    assert bh.market_value_tnd == Decimal("392.700")
+
+    assert "DELICE HOLDING" in h_map
+    dh = h_map["DELICE HOLDING"]
+    assert dh.quantity == 263
+    assert dh.acquisition_price_tnd == Decimal("19.095")
+    assert dh.latest_price_tnd == Decimal("19.090")
+    assert dh.market_value_tnd == Decimal("5020.670")
+
+    assert "NEW BODY LINE" in h_map
+    nbl = h_map["NEW BODY LINE"]
+    assert nbl.quantity == 200
+    assert nbl.acquisition_price_tnd == Decimal("2.462")
+    assert nbl.latest_price_tnd == Decimal("2.490")
+    assert nbl.market_value_tnd == Decimal("498.000")
+
+    assert "STA" in h_map
+    sta = h_map["STA"]
+    assert sta.quantity == 22
+    assert sta.acquisition_price_tnd == Decimal("115.575")
+    assert sta.latest_price_tnd == Decimal("114.900")
+    assert sta.market_value_tnd == Decimal("2527.800")
+
+    # Strict zero-balance reconciliation check
+    holdings_sum = sum(h.market_value_tnd for h in obs.holdings)
+    assert holdings_sum == Decimal("8439.170")
+    assert obs.available_cash + holdings_sum == obs.account_equity

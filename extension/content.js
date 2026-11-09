@@ -5,7 +5,13 @@
 (() => {
   function parseFrenchNumber(str) {
     if (!str) return null;
-    const clean = str.replace(/\xa0/g, "").replace(/\s/g, "").replace(/DT/gi, "").replace(/,/g, ".");
+    const clean = str
+      .replace(/\xa0/g, "")
+      .replace(/\s/g, "")
+      .replace(/DT/gi, "")
+      .replace(/dt/gi, "")
+      .replace(/%/g, "")
+      .replace(/,/g, ".");
     const num = parseFloat(clean);
     return isNaN(num) ? null : num;
   }
@@ -26,17 +32,19 @@
       cash = parseFrenchNumber(cashMatch[1]);
     }
 
-    // 2. Extract Total Equity (Total portefeuille)
+    // 2. Extract Total Equity (Votre portefeuille / Total portefeuille / Totaux)
     let equity = null;
-    const eqMatch = pageText.match(/Total\s*(?:du)?\s*portefeuille\s*:?\s*([0-9\s,\.]+)/i);
+    const eqMatch =
+      pageText.match(/(?:Votre\s+portefeuille|Total\s*(?:du)?\s*portefeuille)\s*:?\s*([0-9\s,\.]+)/i) ||
+      pageText.match(/Totaux\s+([0-9\s,\.]+)/i);
     if (eqMatch) {
       equity = parseFrenchNumber(eqMatch[1]);
     }
 
-    // 3. Extract Ranking
+    // 3. Extract Ranking (Votre classement / Rang / Classement)
     let rank = null;
     let participants = null;
-    const rankMatch = pageText.match(/(?:Rang|Classement)\s*:?\s*#?([0-9\s]+)(?:\s*\/\s*([0-9\s]+))?/i);
+    const rankMatch = pageText.match(/(?:Votre\s+classement|Rang|Classement)\s*:?\s*#?([0-9\s]+)(?:\s*\/\s*([0-9\s]+))?/i);
     if (rankMatch) {
       rank = parseInt(rankMatch[1].replace(/\s/g, ""), 10);
       if (rankMatch[2]) {
@@ -64,27 +72,63 @@
       const rows = targetTable.querySelectorAll("tr");
       for (const row of rows) {
         const cells = Array.from(row.querySelectorAll("td, th")).map(c => c.innerText.trim());
-        if (cells.length < 3) continue;
+        if (cells.length < 2) continue;
+
         const first = cells[0].toLowerCase();
-        if (first.includes("valeur") || first.includes("titre") || first.includes("symbole") || first.includes("total") || first.includes("liquidit")) {
+        // Skip header or footer rows
+        if (
+          first.includes("valeur") ||
+          first.includes("symbole") ||
+          first.includes("titre") ||
+          first.includes("totaux") ||
+          first.includes("total") ||
+          first.includes("liquidit")
+        ) {
           continue;
         }
 
-        const sym = cells[0].toUpperCase();
-        if (!sym || sym.length > 40) continue;
+        // Determine symbol column:
+        // On challenge table, Column 0 is "Vendre" button and Column 1 is "Nom de valeur"
+        let sym = "";
+        let numCells = [];
 
-        // Find numbers in remaining cells
+        if (first === "vendre" || first === "" || first.includes("action")) {
+          if (cells.length >= 3) {
+            sym = cells[1].toUpperCase();
+            numCells = cells.slice(2);
+          }
+        } else {
+          sym = cells[0].toUpperCase();
+          numCells = cells.slice(1);
+        }
+
+        if (!sym || sym === "VENDRE" || sym.length > 50 || sym.includes("LIQUIDIT") || sym.includes("TOTAUX")) {
+          continue;
+        }
+
+        // Extract numbers from subsequent cells
         const nums = [];
-        for (let i = 1; i < cells.length; i++) {
-          const val = parseFrenchNumber(cells[i]);
+        for (const c of numCells) {
+          const val = parseFrenchNumber(c);
           if (val !== null) nums.push(val);
         }
 
         if (nums.length >= 2) {
           const qty = Math.round(nums[0]);
           const acqPx = nums[1];
-          const latPx = nums.length >= 3 ? nums[2] : acqPx;
-          const mktVal = nums.length >= 4 ? nums[3] : (qty * latPx);
+          let latPx = acqPx;
+          let mktVal = qty * latPx;
+
+          // Check if table contains Montant column:
+          // [qty, acqPx, montant, dernier, capital, gain, gain%]
+          // Identity: montant ~= qty * acqPx
+          if (nums.length >= 4 && Math.abs(qty * acqPx - nums[2]) < 1.0) {
+            latPx = nums[3];
+            mktVal = nums.length >= 5 ? nums[4] : qty * latPx;
+          } else if (nums.length >= 3) {
+            latPx = nums[2];
+            mktVal = nums.length >= 4 ? nums[3] : qty * latPx;
+          }
 
           holdings.push({
             symbol: sym,

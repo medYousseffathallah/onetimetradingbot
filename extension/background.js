@@ -3,3 +3,4 @@
 chrome.runtime.onInstalled.addListener(() => {
   console.log("BVMT Intelligence Companion extension installed.");
 });
+
