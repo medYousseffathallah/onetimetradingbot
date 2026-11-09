@@ -49,3 +49,4 @@ The resolution logic is programmatically guaranteed in `src/bvmt/challenge_unive
 - `resolve_challenge_record(query: str) -> ChallengeSecurityRecord | None`
 - Resolves by challenge symbol, ticker, ISIN, or normalized company name.
 - Non-members return `None`, causing `is_challenge_member = False` and strict order suppression.
+

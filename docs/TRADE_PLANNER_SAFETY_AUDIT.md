@@ -74,3 +74,4 @@ This document presents the rigorous scientific and operational audit of the Trad
    ```python
    suggested_shares = max(0, min(max_shares_by_cash, max_shares_by_cap, max_shares_by_vol))
    ```
+

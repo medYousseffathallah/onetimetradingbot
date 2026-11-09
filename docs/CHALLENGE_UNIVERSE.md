@@ -96,3 +96,4 @@ The Tunis Bourse Challenge (`https://www.tunisbourse-challenge.com`) does not qu
    - Single daily match auction at 13:00 Africa/Tunis.
    - Static threshold ±5.0% around reference close.
    - Orders cannot match continuously during the day.
+
