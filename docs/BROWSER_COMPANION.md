@@ -26,6 +26,10 @@ The **BVMT Browser Companion** is a lightweight, zero-credential Chrome extensio
    ```
 6. The extension **BVMT Intelligence Companion** will appear in your extension toolbar. Pin it for easy access.
 
+> [!NOTE]
+> **Reloading After Updates**:
+> If you have already loaded the extension, navigate to `chrome://extensions/` and click the **circular Reload icon (⟳)** on the **BVMT Intelligence Companion** card to apply the latest permissions and script updates.
+
 ---
 
 ## 3. Configuration & Pairing
@@ -53,3 +57,4 @@ The **BVMT Browser Companion** is a lightweight, zero-credential Chrome extensio
 5. Switch to your BVMT dashboard at `http://127.0.0.1:3000/portfolio`.
 6. A yellow banner will appear: **Snapshot captured — awaiting confirmation**.
 7. Review the side-by-side reconciliation diff, check the confirmation box, and click **Confirm Snapshot & Reconcile Ledger**.
+

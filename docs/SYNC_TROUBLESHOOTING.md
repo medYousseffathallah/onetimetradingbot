@@ -43,3 +43,4 @@ Solutions for common portfolio synchronization issues.
 ### Error: "Browser session timed out after 180 seconds"
 - **Cause**: Manual login in the opened Chromium window was not completed before the timeout.
 - **Fix**: Use the **Browser Companion Extension** instead, which eliminates Playwright startup latency entirely.
+

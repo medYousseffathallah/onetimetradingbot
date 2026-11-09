@@ -1,16 +1,24 @@
 {
   "manifest_version": 3,
   "name": "BVMT Intelligence Companion",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local-first read-only account synchronization companion for Tunis Bourse Challenge.",
   "permissions": [
     "activeTab",
+    "scripting",
     "storage"
   ],
   "host_permissions": [
+    "https://www.tunisbourse-challenge.com/*",
+    "https://tunisbourse-challenge.com/*",
+    "http://www.tunisbourse.com.tn/*",
+    "https://www.tunisbourse.com.tn/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Sync Tunis Bourse Challenge Account"

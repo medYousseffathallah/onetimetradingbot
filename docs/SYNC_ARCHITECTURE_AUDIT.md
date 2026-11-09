@@ -140,3 +140,4 @@ flowchart TD
 3. **No Phantom Zeroes**: Unavailable fields must remain `None`, never fabricated as `0.000` or `0`.
 4. **Zero Cloud/Secret Leakage**: Extension transmits strictly structured numerical/text fields to `http://127.0.0.1:8000/api/sync/extension` accompanied by a local pairing token. Cookies and passwords are never read or transmitted.
 5. **Human-in-the-Loop**: No snapshot updates the confirmed competition ledger without explicit user confirmation.
+

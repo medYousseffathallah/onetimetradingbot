@@ -368,7 +368,7 @@ export default function PortfolioPage() {
                         Click <strong>Load unpacked</strong> and select the repository folder:{" "}
                         <code className="font-mono text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-teal-800 dark:text-teal-300">
                           bvmt-starter-kit/extension
-                        </code>.
+                        </code> (if already loaded, click the <strong>⟳ Reload</strong> icon).
                       </li>
                       <li>
                         Click the BVMT icon in Chrome, paste your pairing token, and click <strong>Extract & Sync to Platform</strong>.

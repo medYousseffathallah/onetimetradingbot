@@ -46,3 +46,4 @@ A snapshot capture NEVER mutates the active trading ledger directly.
 1. **Ingestion**: Produces an immutable, content-hashed snapshot JSON in `data/portfolio/snapshots/sync_*.json`.
 2. **Preview**: The platform computes a dry-run diff against the last confirmed state (`cash_before`, `cash_after`, `equity_before`, `equity_after`, position share deltas).
 3. **Explicit Confirmation**: The user must review the diff in the UI and submit `POST /api/sync/confirm` with `confirmed_by_user=true`.
+

@@ -3,6 +3,24 @@ const BACKEND_URL = "http://127.0.0.1:8000";
 
 let extractedData = null;
 
+function isAllowedChallengeUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "tunisbourse-challenge.com" ||
+      host === "www.tunisbourse-challenge.com" ||
+      host === "tunisbourse.com.tn" ||
+      host === "www.tunisbourse.com.tn" ||
+      host === "localhost" ||
+      host === "127.0.0.1"
+    );
+  } catch {
+    return false;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const tokenInput = document.getElementById("tokenInput");
   const saveTokenBtn = document.getElementById("saveTokenBtn");
@@ -24,15 +42,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // 1. Load saved pairing token
-  const stored = await chrome.storage.local.get(["pairingToken"]);
-  if (stored.pairingToken) {
-    tokenInput.value = stored.pairingToken;
+  try {
+    if (chrome?.storage?.local) {
+      const stored = await chrome.storage.local.get(["pairingToken"]);
+      if (stored.pairingToken) {
+        tokenInput.value = stored.pairingToken;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not read local storage:", err);
   }
 
   saveTokenBtn.addEventListener("click", async () => {
     const val = tokenInput.value.trim();
-    await chrome.storage.local.set({ pairingToken: val });
-    showMsg("Pairing token saved locally.");
+    if (!val) {
+      showMsg("Please enter a valid pairing token.", true);
+      return;
+    }
+    try {
+      if (chrome?.storage?.local) {
+        await chrome.storage.local.set({ pairingToken: val });
+        showMsg("Pairing token saved locally.");
+      } else {
+        showMsg("Storage API unavailable. Token will be used for this session only.");
+      }
+    } catch (err) {
+      showMsg(`Failed to save token: ${err.message}`, true);
+    }
     checkBackend();
   });
 
@@ -54,16 +90,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   checkBackend();
 
-  // 3. Check Active Tab URL
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const isChallenge = tab && tab.url && (tab.url.includes("tunisbourse-challenge.com") || tab.url.includes("localhost") || tab.url.includes("127.0.0.1"));
+  // 3. Inspect Active Tab Safely
+  let activeTab = null;
+  try {
+    if (chrome?.tabs?.query) {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs && tabs.length > 0) {
+        activeTab = tabs[0];
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to query active tab:", err);
+  }
 
-  if (isChallenge) {
-    tabNotice.innerHTML = `Active Tab: <strong style="color: #0f172a;">${tab.title || "Tunis Bourse Challenge"}</strong>`;
-    extractBtn.disabled = false;
-  } else {
-    tabNotice.innerHTML = `<span style="color: #b91c1c;">Please navigate to <strong>tunisbourse-challenge.com</strong> in this browser window.</span>`;
+  if (!activeTab || typeof activeTab.id !== "number") {
+    tabNotice.innerHTML = `<span style="color: #b91c1c;">No active browser tab found. Open Tunis Bourse Challenge and reopen the extension.</span>`;
     extractBtn.disabled = true;
+  } else {
+    const url = activeTab.url || "";
+    const isChallenge = isAllowedChallengeUrl(url);
+
+    if (isChallenge) {
+      tabNotice.innerHTML = `Active Tab: <strong style="color: #0f172a;">${activeTab.title || url}</strong>`;
+      extractBtn.disabled = false;
+    } else {
+      tabNotice.innerHTML = `<span style="color: #b91c1c;">Active page is not a Tunis Bourse Challenge portal. Please navigate to <strong>tunisbourse-challenge.com/displayp.aspx</strong>.</span>`;
+      extractBtn.disabled = true;
+    }
   }
 
   // 4. Extract Account Data
@@ -73,13 +126,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     extractBtn.innerText = "Extracting DOM...";
 
     try {
+      // Defensive Scripting API check
+      if (!chrome?.scripting?.executeScript) {
+        throw new Error(
+          "Chrome Scripting API unavailable. Check extension permissions and reload the extension."
+        );
+      }
+
+      // Re-verify current active tab
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const targetTab = tabs && tabs.length > 0 ? tabs[0] : null;
+
+      if (!targetTab || typeof targetTab.id !== "number") {
+        throw new Error("No active browser tab detected. Please reopen the extension on the competition tab.");
+      }
+
+      const targetUrl = targetTab.url || "";
+      if (
+        targetUrl.startsWith("chrome://") ||
+        targetUrl.startsWith("chrome-extension://") ||
+        targetUrl.startsWith("edge://") ||
+        targetUrl.startsWith("about:")
+      ) {
+        throw new Error("Cannot run on internal browser pages. Navigate to tunisbourse-challenge.com/displayp.aspx.");
+      }
+
+      if (!isAllowedChallengeUrl(targetUrl)) {
+        throw new Error(
+          "Active tab is not an authorized Tunis Bourse Challenge domain. Navigate to tunisbourse-challenge.com/displayp.aspx."
+        );
+      }
+
       const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["content.js"]
+        target: { tabId: targetTab.id },
+        files: ["content.js"],
       });
 
-      if (!results || !results[0] || !results[0].result) {
-        throw new Error("Unable to read content from active tab.");
+      if (!results || !results[0] || results[0].result === undefined || results[0].result === null) {
+        throw new Error("Unable to read content from active tab. Ensure the page is completely loaded.");
       }
 
       const res = results[0].result;
@@ -93,9 +177,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       prevHoldings.innerText = res.holdings.length.toString();
       prevRank.innerText = res.competition_ranking ? `#${res.competition_ranking}` : "—";
       previewCard.style.display = "block";
-      showMsg("Account data extracted successfully. Click Transmit to sync.");
+      showMsg("Account data extracted successfully! Click 'Transmit to Platform' to stage the snapshot.");
     } catch (err) {
-      showMsg(err.message, true);
+      showMsg(err.message || String(err), true);
     } finally {
       extractBtn.disabled = false;
       extractBtn.innerText = "Extract Account Data";
@@ -104,8 +188,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // 5. Transmit to Localhost API
   sendBtn.addEventListener("click", async () => {
-    if (!extractedData) return;
+    if (!extractedData) {
+      showMsg("No extracted data available. Click 'Extract Account Data' first.", true);
+      return;
+    }
     const token = tokenInput.value.trim();
+    if (!token) {
+      showMsg("Please enter and save your local pairing token before transmitting.", true);
+      return;
+    }
+
     sendBtn.disabled = true;
     sendBtn.innerText = "Transmitting to Dashboard...";
 
@@ -120,27 +212,28 @@ document.addEventListener("DOMContentLoaded", async () => {
         competition_ranking: extractedData.competition_ranking,
         total_participants: extractedData.total_participants,
         source_page_type: extractedData.source_page_type,
-        pairing_token: token
+        pairing_token: token,
       };
 
       const res = await fetch(`${BACKEND_URL}/api/sync/extension`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-BVMT-Pairing-Token": token
+          "X-BVMT-Pairing-Token": token,
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       const resData = await res.json();
       if (!res.ok) {
-        throw new Error(resData.detail || resData.error || "Failed to transmit snapshot to localhost.");
+        const errorDetail = resData.detail || resData.error || "Failed to transmit snapshot to localhost.";
+        throw new Error(typeof errorDetail === "string" ? errorDetail : JSON.stringify(errorDetail));
       }
 
-      showMsg("✓ Snapshot transmitted to local dashboard! Switch to BVMT Intelligence to review & confirm.");
+      showMsg("✓ Snapshot staged successfully! Switch to the BVMT Dashboard to review reconciliation & confirm.");
       sendBtn.innerText = "Transmitted Successfully";
     } catch (err) {
-      showMsg(err.message, true);
+      showMsg(err.message || String(err), true);
       sendBtn.disabled = false;
       sendBtn.innerText = "Transmit to BVMT Dashboard";
     }
