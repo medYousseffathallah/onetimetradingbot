@@ -694,15 +694,15 @@ export default function TradePlannerPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <Badge variant="warning" className="text-xs font-mono">
-                    {intelligence.day_trading_notice.status}
+                    {intelligence.day_trading_notice.status || "UNAVAILABLE"}
                   </Badge>
                   <ShieldAlert className="h-5 w-5 text-rose-600" />
                 </div>
                 <CardTitle className="text-lg font-bold text-rose-950 dark:text-rose-200 mt-2">
-                  {intelligence.day_trading_notice.headline}
+                  {intelligence.day_trading_notice.headline || "Intraday Day Trading Is Structurally Unfeasible on BVMT"}
                 </CardTitle>
                 <CardDescription className="text-xs text-rose-800/80 dark:text-rose-300/80">
-                  {intelligence.day_trading_notice.disclaimer}
+                  {intelligence.day_trading_notice.disclaimer || "Discrete fixing auctions, static circuit breaker collars, and round-trip fee friction eliminate intraday scalping viability."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-xs">
@@ -710,14 +710,14 @@ export default function TradePlannerPage() {
                   <div>
                     <span className="text-[11px] text-slate-500 block">Round-Trip Fee Drag:</span>
                     <span className="text-base font-bold font-mono text-rose-600">
-                      {intelligence.day_trading_notice.fee_drag_pct}
+                      {intelligence.day_trading_notice.fee_drag_pct || "16.8% of capital"}
                     </span>
                     <span className="text-[10px] text-slate-400 block">simulated over 194 sessions</span>
                   </div>
                   <div>
                     <span className="text-[11px] text-slate-500 block">Intraday Volatility Collar:</span>
                     <span className="text-base font-bold font-mono text-slate-800 dark:text-slate-200">
-                      {intelligence.day_trading_notice.intraday_volatility_cap}
+                      {intelligence.day_trading_notice.intraday_volatility_cap || "±3.0% to ±5.0%"}
                     </span>
                     <span className="text-[10px] text-slate-400 block">static circuit breaker</span>
                   </div>
@@ -728,7 +728,11 @@ export default function TradePlannerPage() {
                     Structural Reasons Why Day Trading is Unavailable:
                   </div>
                   <ul className="space-y-1.5 list-disc pl-4 text-slate-600 dark:text-slate-300">
-                    {intelligence.day_trading_notice.reasons.map((r, i) => (
+                    {(
+                      intelligence.day_trading_notice.reasons ||
+                      (intelligence.day_trading_notice as any).primary_reasons ||
+                      []
+                    ).map((r: string, i: number) => (
                       <li key={i}>{r}</li>
                     ))}
                   </ul>

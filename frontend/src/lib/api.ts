@@ -945,11 +945,12 @@ export interface HorizonDecisionItem {
 
 export interface DayTradingNotice {
   status: string;
-  headline: string;
-  reasons: string[];
-  fee_drag_pct: string;
-  intraday_volatility_cap: string;
-  disclaimer: string;
+  headline?: string;
+  reasons?: string[];
+  primary_reasons?: string[];
+  fee_drag_pct?: string;
+  intraday_volatility_cap?: string;
+  disclaimer?: string;
 }
 
 export interface MultiHorizonIntelligenceReport {

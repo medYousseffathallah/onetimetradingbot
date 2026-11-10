@@ -111,16 +111,22 @@ class MultiHorizonIntelligenceReport:
 
 def build_day_trading_notice() -> dict[str, Any]:
     """Explicitly documents why day trading is UNAVAILABLE for actionable order execution."""
+    reasons = [
+        "Lack of real-time L2 order book and sub-minute tick feeds on Bourse de Tunis.",
+        "Official BVMT execution model operates with periodic match auctions (10:00, 14:15) and static 3% / 5% volatility collars.",
+        "1.00% round-trip transaction fee drag destroys intraday edge (empirical simulation generated 8,414 TND fees = 16.8% capital drag on 194 sessions).",
+        "Zero lookahead rule prohibits assuming same-close execution for signals derived from that close.",
+    ]
     return {
         "status": "UNAVAILABLE_RESEARCH_ONLY",
         "horizon": "DAY_INTRADAY",
         "is_executable": False,
-        "primary_reasons": [
-            "Lack of real-time L2 order book and sub-minute tick feeds on Bourse de Tunis.",
-            "Official BVMT execution model operates with periodic match auctions (10:00, 14:15) and static 3% / 5% volatility collars.",
-            "1.00% round-trip transaction fee drag destroys intraday edge (empirical simulation generated 8,414 TND fees = 16.8% capital drag on 194 sessions).",
-            "Zero lookahead rule prohibits assuming same-close execution for signals derived from that close.",
-        ],
+        "headline": "Intraday Day Trading Is Structurally Unfeasible on BVMT",
+        "disclaimer": "Discrete fixing auctions, static circuit breaker collars, and round-trip fee friction eliminate intraday scalping viability.",
+        "reasons": reasons,
+        "primary_reasons": reasons,
+        "fee_drag_pct": "16.8% of capital",
+        "intraday_volatility_cap": "±3.0% to ±5.0%",
         "permitted_alternative": "Use Swing Trading (5-20 sessions) or Position Trading (20-60 sessions) where fee drag is contained under 2.4% of capital.",
     }
 
