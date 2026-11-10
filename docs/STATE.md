@@ -1,9 +1,13 @@
 # Working state
 
 ## Current checkpoint
-**Milestone 12: Daily Session Accounting, Sync Verification and Strategy Feedback** verified end-to-end on `main` on 2026-11-09 (Windows PowerShell, CPython 3.13.18 in `.venv`, `uv 0.13.7`, `fastapi 0.162.1`, `pydantic 2.14.3`, `next 15.5.29`, `react 19`, `playwright 1.64.1`).
-All **387 automated Python tests** (including **8 manual import & regression tests**, **2 session accounting unit & API tests**, **60 FastAPI integration tests**, **12 deterministic position sizing tests**, **5 trade planner tests**, and **2 holding-period tests**), the full Python developer quality gate (`uv run python scripts/check.py`), strict Mypy across all 32 source files, the **Next.js TypeScript + production build** (`12/12` static pages including `/daily-summary`), pass with **zero live LLM API calls**, **zero autonomous order submission**, and **zero paid cloud resources**.
-Central GitHub repository synchronized across `main` (`c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`).
+**Tuesday, November 10, 2026 — Pre-Market Operational Readiness & Trade Planner Hotfix** verified on `main` (commit `36ebc34`).
+- **P0 Hotfix (`frontend/src/app/planner/page.tsx`, `src/bvmt/multi_horizon.py`)**: Resolved runtime crash on `/planner` caused by `day_trading_notice` schema key mismatch (`reasons` vs `primary_reasons`). Backend now serves both keys and all notice metadata; frontend hardened with defensive fallbacks.
+- **Service Status**:
+  - FastAPI backend active on `http://127.0.0.1:8000` (Health 200, Trading Intelligence 200).
+  - Next.js 15 frontend active on `http://127.0.0.1:3000` (`/planner` 200, `/daily-summary` 200).
+- **Chrome Companion Readiness**: Pairing token configured, active tab `tunisbourse-challenge.com/displayp.aspx` detected, DOM table parser verified against official competition layout (Vendre button skipped, Montant mapped correctly, Cash `41,622.790 TND`, Equity `50,061.960 TND`, Rank `#112 / 14,573`).
+- All **388 automated Python tests** pass, full production build verified. Zero live cloud LLM calls, zero autonomous order execution.
 
 ## Milestone 12 — Daily Session Accounting, Sync Verification and Strategy Feedback (2026-11-09)
 - **Session Reconciliation Autopsy (`docs/NOVEMBER_09_SESSION_RECONCILIATION.md`)**:
