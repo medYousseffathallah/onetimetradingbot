@@ -1,5 +1,148 @@
 # Working state
 
+## M14 joint integration — corrected research, no promotion (2026-11-11)
+
+- Reconciled main6f0b64d plus dirty P0/reuse tree and Gemini fdfae2a plus its two
+  pre-existing formatting edits. Imported six reviewed research docs/two scripts/
+  test module by allowlist; no branch merge/cherry-pick/reset/clean or remote push.
+- Original10 characterization tests passed on starting integration code. Original
+  quant, folds/peers and Challenge accounting artifacts reproduced exactly (only
+  generated timestamp excluded). Audited-source manifest20/22 matches; newer
+  data.py/calendar.py source differences disclosed. Named transcript not located;
+  actual files/artifacts supplied evidence. No vendor model identity invented.
+- Canonical ISIN projection repairs15/42 holding filter and POULINA68+128 split;
+  all42 members accounted separately from usable history. Raw source identities,
+  times and data retained. Conflicting aliases/ranges reject. Coverage/suspensions
+  use the same mapping. Empty Challenge research returns insufficient evidence.
+- Explicit aware decision cutoffs exclude future/unknown events. No fabricated
+  turnover, cost-price reference, review date or arbitrary quantity defaults.
+  Static catalog remains unverified and cannot earn sparse catalyst score.
+  Challenge filters run before ranking/top-k/cash allocation across explicit
+  scopes. Nullable exposure/headroom and config/ledger-sensitive cache tests pass.
+- Bounded/versioned numerical score replaces1e-6 explosions without a tuned floor.
+  Sparse evaluator has exact executable exits and consistent known denominators;
+  unsupported compounded portfolio return/DD are null. Frozen config not promoted.
+- Accepted immutable experiment: m14_correctness_192f2d93ee102f6e (27 hashes verified).
+  Latest Challenge G18.599541% vs original19.424436%; C14.653892%. Sparse Challenge
+  coverage73.81->100%, precision59.26->57.69%, feasibility40.91->36.11% on small
+  executable samples. No predictive improvement claimed; historical holdout already
+  contaminated. Three in-flight mixed-source runs rejected, not accepted as results.
+- Final `uv run python scripts/check.py` exit0:516 passed,1 Starlette warning,
+  103.21s;94 formatted files,Ruff clean,mypy37 modules,10 valid skills. Frontend
+  typecheck exit0; final-source isolated Next15.5.29 production build exit0.
+- Browser/prototype suites PASS. Paired copied-data cold API/page audit PASS,
+  five alternating pairs, identical responses, zero protected-file changes,
+  external attempts or writes. Overview API2950->2189ms; rankings3821->3318ms;
+  page medians6157->5487ms and6207->5387ms. Not TCP/disk-cold/production SLO.
+- Local commits62fa30d(evidence),149bc03(correctness),641cb2d(validation reuse),
+  plus final documentation commit in history. User source-refresh/gateway-test
+  changes and coupled review test remain uncommitted; tests certify the manifested
+  working tree, not a clean-checkout claim. No real accounts/orders modified.
+- Deliverables: M14_JOINT_INTEGRATION_REVIEW.md, M14_QUANT_CORRECTNESS_FIXES.md,
+  M14_CORRECTED_STRATEGY_RESULTS.md, M14_NEXT_RESEARCH_GATES.md. Self-contained
+  GEMINI_M14_CORRECTED_FOLLOWUP.md prepared; no new Gemini invocation claimed.
+- Next exact action: independent Gemini corrected-result review and locked v2
+  directional-awakening specification, before any experimental promotion. Official
+  rule evidence72 blockers, missing source/publication/corporate-action history,
+  account/order/history acceptance and human UX approval remain open. Never confirm
+  a staged snapshot or submit trades from this engineering task.
+
+## Recent-work summary documentation (2026-11-11)
+
+- Added root `summary.md` covering recent M13 integration, P0 recovery, M14
+  audits/prototypes, and newer validation-reuse/review work still marked WORKING.
+- Sources inspected: Git HEAD/history/status, task/state records, M14 register
+  and contracts, implementation/test files, and saved paired-validation artifacts.
+  Historical gates are attributed to their checkpoints; no fresh application
+  test/build/benchmark run is claimed for this documentation-only task.
+- Next exact action remains completion/review of the newer reuse slice and full
+  gate, followed by the outstanding research/account/UX acceptance tasks. This
+  summary does not mark those tasks complete or authorize account changes.
+
+## Milestone 14 - Codex orchestration (2026-11-11; quantitative phase BLOCKED)
+
+- Verified actual Codex CLI0.167.1, main6f0b64d plus pre-existing uncommitted P0
+  changes. Active model ID unavailable in checked metadata. Codex is now the
+  persistent lead/integrator per AGENTS.md; M14 ownership amendment recorded.
+- Gemini CLI lookup and `gemini --version` failed. Antigravity IDE1.107.0 is
+  installed/running, but no genuine callable Gemini session was established.
+  Complete G1-G7 assignment/startup in docs/handoffs/GEMINI_M14_QUANT_TASK.md.
+  All five research outputs, ICF reproduction, experimental comparison and v2
+  promotion remain BLOCKED / WAITING_FOR_AGENT. No Gemini work is claimed.
+- Actual Codex specialists `/root/m14_perf` and `/root/m14_ux` delivered isolated
+  performance evidence and UX artifacts. Lead independently inspected code,
+  browser-tested layouts/interactions and required an allocation-legend fix.
+- Additive reliability fix: /api/market-data/status now defaults check_remote=False
+  and explicitly propagates remote-probe opt-in. Two regressions fail before/
+  pass after; existing P0 financial guards remain. No model decisions changed.
+- Final full gate: `uv run python scripts/check.py` exit0; **441 passed**,
+  1 Starlette deprecation warning,139.87s;78 files formatted, Ruff clean,
+  mypy35 files clean,10 local skills valid. Frontend typecheck exit0 and
+  current-source production build pass (disposable copy, existing dependencies).
+- Performance:21 in-process API routes all200, n=8 warm p95 maximum304.575ms;
+  cache4/4 checks pass,61 input/source hashes unchanged,0 external attempts.
+  Old<180ms range not reproduced for3 routes. Cold state5.72s/cold route up to
+  6.58s remains a bottleneck; repeated bar validation profiled, not removed.
+- UX: docs/M14_UX_BLUEPRINT.md,8 annotated wireframes,2 interactive high-fidelity
+  prototypes in docs/prototypes/m14 (overview.html/research.html). Synthetic
+  fixtures only. No production redesign. Contracts/blueprint await human review.
+- Chrome157.0.8103.39 verifies8 prototype views at1440/390px plus14 interaction
+  checks. Isolated production browser test:9 pages/115 synthetic API responses
+  all200,0 runtime errors/external/write requests. Warm reload p95 range1.04-2.03s;
+  six sidebar samples0.64-0.86s. Fixture rendering, not live account/API timings.
+- Safety: all16 starting account JSONs unchanged, no account JSON added; original
+  user data.py/test_gateway.py edits and official configs preserved. No account
+  confirmations/trades/paid APIs/installs/deployments/commits/merges/pushes.
+  Other worktrees retain original HEAD/status. Local manifests under artifacts/m14.
+- Outstanding:72 official-rule evidence blockers; account capture/order/history
+  verification; authenticated Browser Companion acceptance NOT TESTED. EOD age
+  remains relative to dataset cutoff, never evidence of executable intraday quotes.
+- Next exact action: user launches the complete Gemini handoff in the existing
+  isolated worktree, preserving its two dirty files. Codex reviews reproducible
+  G1-G7 outputs before approving experiments. Review UX/contracts before redesign;
+  follow docs/M14_BROWSER_SYNC_ACCEPTANCE.md without auto-confirming staged state.
+- Full task/evidence/commit register: docs/M14_ORCHESTRATION_PLAN.md,
+  docs/M14_AGENT_HANDOFF.md, docs/M14_INTEGRATION_REPORT.md.
+
+## P0 Operational Recovery (2026-11-11, Codex CLI on main)
+
+- Actual `codex --version`: `codex-cli 0.167.1`; active model not exposed by
+  checked CLI/configuration output. Root and all three worktrees verified.
+  Main remains at `6f0b64d`; clean Codex worktree at `4a57b44`; Gemini worktree
+  at `fdfae2a` has existing dirty `playwright_worker.py` / `portfolio_service.py`.
+- Implemented API recovery guards in `src/bvmt/api.py` for real-account rankings,
+  actionable overview counts, both planner routes and multi-horizon decisions.
+  Unknown rules, nonmembership, conflicting IDs, missing/future/stale quote
+  evidence and unverified/pending account synchronization suppress quantities.
+  Blocked plan notional, fees, remaining cash and exposure stay consistent.
+- Identifier conflict checks in `browser.py` / `challenge_universe.py` reject
+  mismatched ISINs and prevent alternate symbols promoting excluded IDs.
+  Static registry quote freshness is UNKNOWN. Mapping documentation reconciled
+  against the existing registry, without claiming new official verification.
+- `trade_planner.py` no longer invents 16:00 quote times. API plans distinguish
+  user limits from observed prices, allow null price/age evidence, and retain
+  null intraday quote timestamps. Frontend types and missing-age text updated.
+- Evidence: 14 focused recovery tests pass; frontend `npm.cmd run typecheck`
+  exits 0; demo exits 0 with execution disabled; rules-check exits 2 with 72
+  evidence blockers. Final `uv run python scripts/check.py` exits 0: 75 files
+  formatted, Ruff clean, mypy 35 modules clean, 10 skills valid, **439 tests
+  passed**, 1 Starlette deprecation warning, 157.52s.
+- A Codex read-only reviewer was invoked and found no remaining material
+  blockers within the revised scope. Gemini command unavailable on PATH;
+  no Gemini invocation claimed. Separate G-P0 Streamlit worktree task, owned
+  files and acceptance checks are in `docs/P0_OPERATIONAL_RECOVERY.md`.
+- Protected files: both pre-existing user edits and all 15 existing account JSON
+  files match saved SHA-256 hashes (17 files). No account snapshot overwritten,
+  synchronization/trade confirmed, branch pushed or paid API called.
+- Remaining blockers: pending account capture `2026-11-10T11:07:02.522000+00:00`,
+  unverified transaction history/pending orders and official competition rules.
+  Local bars/calendar extend through 2026-11-10; publication times are absent.
+  EOD quote age is relative to the dataset cutoff, not proof of live freshness.
+- Next exact action: review the G-P0 task in the dirty Gemini worktree while
+  preserving its edits; validate the Browser Companion with the user, obtain
+  movement history and review pending synchronization manually. Never confirm
+  the staged account or submit orders from this coding task.
+
 ## Current checkpoint
 **Wednesday, November 11, 2026 — Milestone 13 Integrated & Verified on `main` (`bvmt-starter-kit`)**.
 - **Integrated Workstreams**:

@@ -1,5 +1,34 @@
 # Task backlog
 
+## M14 joint integration (2026-11-11)
+
+Gemini audit evidence reproduced and imported; identity, Challenge scope, PIT,
+numerical/unknown-state and evaluator defects repaired. Corrected retrospective
+studies and paired cold API/page measurements recorded. Final working-tree gate:
+516 tests passed; frontend typecheck and isolated production build passed.
+No predictive improvement or strategy promotion. See
+`docs/M14_JOINT_INTEGRATION_REVIEW.md`, `docs/M14_QUANT_CORRECTNESS_FIXES.md`,
+`docs/M14_CORRECTED_STRATEGY_RESULTS.md`, `docs/M14_NEXT_RESEARCH_GATES.md`.
+Next: genuine Gemini independently reviews the corrected manifest/results via the
+new follow-up; official rules, account/history acceptance and prospective evidence
+remain blocked. Preserve the documented remaining user working-tree edits.
+
+## Milestone 14 - Codex orchestration and Decision Engine v2 [RESEARCH BLOCKED]
+
+Codex plan/handoff, independent reliability/performance audit and UX blueprint
+with two local prototypes are implemented. Gemini G1-G7 is WAITING_FOR_AGENT;
+no v2 model, experiments or promotion are claimed. Read
+`docs/M14_ORCHESTRATION_PLAN.md`, `docs/M14_AGENT_HANDOFF.md` and
+`docs/M14_INTEGRATION_REPORT.md` for current evidence and exact next actions.
+
+## P0 Operational Recovery (2026-11-11)
+
+API recovery guards, identifier consistency and honest quote metadata implemented;
+full offline gate passes (439 tests), frontend typecheck passes. Pending account
+sync remains unconfirmed; legacy Streamlit integration is a separate queued task.
+See `docs/P0_OPERATIONAL_RECOVERY.md` for evidence and the unexecuted Gemini
+Streamlit worktree task. No account writes, pushes or live paid APIs authorized.
+
 Status: T01–T06, R01/R02, Milestones 1A–1C, Milestone 2, Milestone 3, Milestone 4, and Milestone 5 (Independent Strategy Audit, Risk-Normalized & Equal-Budget Comparisons, and Immutable Forward Paper-Trading Journal) COMPLETED; 305/305 Python tests and Next.js 15 production build passing with zero live API calls.
 
 ## T01 - Reproduce and verify rules [DONE]

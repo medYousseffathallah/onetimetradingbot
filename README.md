@@ -1,5 +1,22 @@
 # BVMT Trading Intelligence — Quantitative Research & Decision-Support Platform
 
+## Milestone 14 checkpoint
+
+Codex leads orchestration and integration; Gemini's quantitative audit is
+**WAITING_FOR_AGENT** because no Gemini CLI or callable agent session was found.
+Antigravity IDE is installed, but that is not execution evidence. Start with the
+[orchestration plan](docs/M14_ORCHESTRATION_PLAN.md) and
+[complete Gemini handoff](docs/handoffs/GEMINI_M14_QUANT_TASK.md).
+
+Production safety remains blocked by unverified competition rules and account
+reconciliation. EOD evidence is not an executable intraday quote. Dates, fees,
+performance figures and horizon claims in the historical sections below are not
+new verification of official rules, live account state or predictive skill.
+Decision Engine v2 has not been implemented or promoted. The
+[UX blueprint](docs/M14_UX_BLUEPRINT.md) and local prototypes are review artifacts,
+not a deployed redesign. See [integration evidence](docs/M14_INTEGRATION_REPORT.md).
+
+
 **BVMT Trading Intelligence** is an offline-first, human-supervised quantitative equity research, portfolio reconciliation, and decision-support platform designed for the **Tunis Bourse Challenge** (`https://www.tunisbourse-challenge.com`) and the **Bourse des Valeurs Mobilières de Tunis (BVMT)**.
 
 > [!IMPORTANT]

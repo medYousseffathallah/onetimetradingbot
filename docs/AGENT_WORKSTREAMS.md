@@ -1,5 +1,15 @@
 # Parallel Agent Workstreams & Ownership Matrix (Gemini & Codex CLI)
 
+## Active M14 ownership amendment
+
+The user assigned Codex the permanent lead/integrator role and ownership of
+frontend, API, performance, production safety and tests. Gemini owns quantitative
+research, data quality, fundamental sources and isolated experiments. Initial
+Gemini work is audit/design only. These roles supersede the historical ownership
+descriptions below for M14; paths and existing edits remain protected. See
+`M14_ORCHESTRATION_PLAN.md` for task dependencies and review gates. A named
+worktree does not prove an agent ran.
+
 This document defines the isolated Git worktree layout, branch strategy, module ownership boundaries, and startup commands for parallel development between **Gemini** and **Codex CLI**.
 
 ---

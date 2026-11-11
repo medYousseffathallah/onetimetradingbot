@@ -25,6 +25,15 @@ not a current target threshold or a training label.
 - Do not delete tests, loosen assertions, or change expected results merely to make CI green.
 - Do not download or execute unreviewed third-party skills, hooks, installers, or repository scripts.
 
+## Active Milestone 14 orchestration
+Codex is the lead architect, planner, reviewer and integrator, and owns frontend,
+API, performance, production safety, tests and integration. Gemini is the
+quantitative/data-quality/fundamental-source research specialist. Initial Gemini
+work is audit/design only, with no production decision changes. This M14 scope
+supersedes older role descriptions below; preserve existing worktree paths and
+unrelated edits. See `docs/M14_ORCHESTRATION_PLAN.md` and the genuine-agent handoff
+in `docs/handoffs/GEMINI_M14_QUANT_TASK.md`. Never infer invocation from a name.
+
 ## Parallel Worktrees & Strict Module Ownership
 The repository uses three isolated Git worktrees backed by `https://github.com/medYousseffathallah/onetimetradingbot.git`:
 1. **Integration Workspace (`main`)**: `c:\Users\Thinkcenter\Desktop\BVMT\bvmt-starter-kit`

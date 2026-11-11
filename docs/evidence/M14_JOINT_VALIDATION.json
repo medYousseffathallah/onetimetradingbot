@@ -1,0 +1,156 @@
+{
+  "scope": "Final manifested working tree, not clean-checkout certification of HEAD alone",
+  "validation": {
+    "offline_gate": "exit0;516 passed;1 Starlette warning;103.21s;94 formatted;Ruff clean;mypy37;10 skills",
+    "frontend_typecheck": "exit0",
+    "isolated_production_build": "exit0;Next15.5.29;13 static entries",
+    "browser": "PASS prototype and9-page fixture suite; paired copied-data pages77 API200;0 runtime/external/write"
+  },
+  "account_preservation": {
+    "start_count": 16,
+    "end_count": 16,
+    "changed_count": 0,
+    "added_count": 0,
+    "ledger_sha256": "0A1B86CB281187A0E9AB88A4CDE6D4DE173A5DF162111266CE1988DCBF91D395"
+  },
+  "protected_original_working_bytes_unchanged": {
+    "src/bvmt/data.py": true,
+    "tests/test_gateway.py": true,
+    "tests/test_m14_review_fixes.py": true
+  },
+  "gemini_original_research_files_unchanged": {
+    "M14_DECISION_ENGINE_V2_PROPOSAL.md": true,
+    "M14_EXPERIMENT_PLAN.md": true,
+    "M14_FUNDAMENTAL_DATA_GAPS.md": true,
+    "m14_g5_folds_and_peers.py": true,
+    "M14_GEMINI_TO_CODEX_HANDOFF.md": true,
+    "M14_ICF_CASE_STUDY.md": true,
+    "m14_quant_audit.py": true,
+    "M14_SCORING_AUDIT.md": true,
+    "test_m14_quant_audit.py": true
+  },
+  "research": {
+    "experiment_id": "m14_correctness_192f2d93ee102f6e",
+    "artifact_sha256": "af7db319b5e61eff0707923779ae81ab3bd753d1a34f6b91f134a6947e2c485f",
+    "status": "RETROSPECTIVE_CONTAMINATED_RESEARCH_ONLY",
+    "promotion": false
+  },
+  "performance": {
+    "scope": "Alternating five paired application-cache-cold in-process API requests. Same final code/inputs; only validation proof reuse disabled for reference. OS caches retained, not TCP/disk-cold or browser speedup.",
+    "summary": {
+      "/api/overview": {
+        "reference_median_ms": 2950.303,
+        "reuse_median_ms": 2189.013,
+        "median_reduction_pct": 25.8
+      },
+      "/api/rankings": {
+        "reference_median_ms": 3821.362,
+        "reuse_median_ms": 3317.703,
+        "median_reduction_pct": 13.18
+      }
+    },
+    "responses_equal": true,
+    "protected_files_changed": [],
+    "external_attempts": 0,
+    "page_loading": {
+      "scope": "Current production Next build; copied real EOD/account inputs; browser API callbacks via TestClient, not TCP API. Warm JS/OS caches, cold application caches; includes550ms effect allowance. No production account writes.",
+      "samples_ms": {
+        "/": {
+          "reference": [
+            5972.795,
+            5740.462,
+            6701.238,
+            6721.494,
+            6156.997
+          ],
+          "reuse": [
+            5486.929,
+            5305.781,
+            5530.75,
+            4480.76,
+            6863.028
+          ]
+        },
+        "/market": {
+          "reference": [
+            6070.976,
+            5850.512,
+            6832.762,
+            6768.369,
+            6207.165
+          ],
+          "reuse": [
+            5722.513,
+            5387.429,
+            5347.553,
+            5743.189,
+            4484.411
+          ]
+        }
+      },
+      "summary": {
+        "/": {
+          "reference_median_ms": 6156.997,
+          "reuse_median_ms": 5486.929,
+          "median_reduction_pct": 10.88
+        },
+        "/market": {
+          "reference_median_ms": 6207.165,
+          "reuse_median_ms": 5387.429,
+          "median_reduction_pct": 13.21
+        }
+      },
+      "api_responses": 77,
+      "runtime_errors": 0,
+      "external_requests": 0,
+      "write_requests": 0
+    }
+  },
+  "source_hashes": {
+    "src/bvmt/api.py": "B583E849CCEDEAF839813B351C31DA9B6426EAB2F73AACC503CF571CF1CEB70E",
+    "src/bvmt/browser.py": "77F608009C899B277A96F9F4865C449370987CC438057FDCEF31A56091D5D1FC",
+    "src/bvmt/calendar.py": "63CC72D60A4CB1E38537BA797411209269C31B71F367C1CF8ACC2ECE0176A1FA",
+    "src/bvmt/challenge_quotations.py": "68E566AFAF493E5B44A6E5E1E0583B043A5E51E10F39BFBF81D0F5DB4161FDB8",
+    "src/bvmt/challenge_universe.py": "BF6902BC86BC9DD3996642428F1F903C8D6087B51C78BB9E830FF01A374E349A",
+    "src/bvmt/cli.py": "99656D4185FD9583C9893C9A977350EF3787CE839142B2DE349E7A0BC9939D9E",
+    "src/bvmt/dashboard.py": "F218E26ADE82DB5CD775D687540DBEA204D89BD9967425683616296D69B9C197",
+    "src/bvmt/data.py": "B4AC874ABC001DD033933D43B2E3EB321C7FACDD6A514843EF3527AB6E17F8C3",
+    "src/bvmt/execution.py": "F7F5527CFC9FDA6DF755D8C081306F10E7FCD5115952880C8BA22D5BB9DC8063",
+    "src/bvmt/features.py": "31CADDEA2AF98506822CC9DE9C38BA4CA544267DCCEF3B3D1CE5D7E3C1506C80",
+    "src/bvmt/gateway.py": "5E19E107CDBC32C6AD9813E619C79B700B1C3361C9A3563B1C5B01118D8BA245",
+    "src/bvmt/glossary.py": "4BD7B4626910AADCA0AF175C7BC3BA7154F2BC3952B46D5F5468EAF93C51EDB0",
+    "src/bvmt/holding_period.py": "A37F390FB2E14C41416963E8FEAF52904A431388E408466679AD104DB0FD3996",
+    "src/bvmt/ledger.py": "3E38F4569CC543BD64E77B3AE76D6645BDB620426F957B089EB65E62BB0E055E",
+    "src/bvmt/llm.py": "3CFC42FFCB9A553CA6B36EEE027583BDDE29962BCA6A8F759C742024F505618F",
+    "src/bvmt/macro_events.py": "BC38B9E40F9ABFE3CBECAC6AA788191EF1BA59D2AB26C2407CBC2C279847F2E6",
+    "src/bvmt/manual_import.py": "27FE4DD847401E524241D97BE8EE5F43E794C32D9BB01767DC691D0E4C392F68",
+    "src/bvmt/multi_horizon.py": "2AAC09A80B70759D769767D1608306CA9FEEA1906955C8C30EB7697A22472A46",
+    "src/bvmt/notifications.py": "603BA5F0EF548DF54964A6D3F77ACA4176DA01F3651AAA66874D18F608273AF2",
+    "src/bvmt/paper_trading.py": "E02E4755DA30B0CA76C59408AFBC906F52A3F30F89C013FFFE2B657546C2778F",
+    "src/bvmt/perf_cache.py": "F57E4487151C03546534A05FEF199A05700FC6FD12F62666A8AF6A7A8C866B5E",
+    "src/bvmt/playwright_worker.py": "AA3BC63E8725AF67E387BCAD6C117CF950335CA54DC079871D8F5C44DB05CED7",
+    "src/bvmt/portfolio_service.py": "72DF880DF95F265D80A78BCD41CC82F20DF56B659BF15C19D191BEA7143AD4EC",
+    "src/bvmt/position_sizing.py": "EB6133B10DE28B7E443B770A0F60E91583E0D93875FC4C532520ABFADC3E9ABC",
+    "src/bvmt/recommendations.py": "88C83A50F6253571F2EE6A44EE443B3018BA95DCF3EDB080CB10B3992F85492B",
+    "src/bvmt/research_coverage.py": "6BACB765D02B2FE4F258E4DB9D2E30815F7A560DC6725013D678054018936522",
+    "src/bvmt/research_identity.py": "4998D3DE826D771FDB49ECBA0010209AB9E6F705454521C39B3B0F86B56A07B8",
+    "src/bvmt/research_scoring.py": "E840BBA49F2FB98F18BD547D76C05A31849D7A9A81EDF6B8EF2FC0414EB17400",
+    "src/bvmt/rules.py": "42A8928546B2F3DD9AC4B7D266B1137E3C30BFAF2A83C0863644135ECF723045",
+    "src/bvmt/session_accounting.py": "18E91ECC16E52B8BE212A82452804D1D828AB2CBFC7FE77F7C4A74FB0E934D45",
+    "src/bvmt/snapshots.py": "599C0689C723CF4C96C91B42E0F2645C06BCC2D4307A44D4E261ACF6F701DC8E",
+    "src/bvmt/sparse_generalization.py": "45C3A1CB2DF0680BB4561F4EF94444320AC63A33536484D85E9CB895A4EC1504",
+    "src/bvmt/sparse_research.py": "CDE74676315F1A4FA1ABD587A446DBF74E400FCF420D850C5540C038CF3269C5",
+    "src/bvmt/strategies.py": "4B4BFC74261F7FCAA443DC31ECC3D02A65F89B892A833E70A088066ED08D8186",
+    "src/bvmt/sync_service.py": "9E5656054CD4A9901E89D7D690750AC6E9358824BEA4C6BD8B7A922DAEA01C79",
+    "src/bvmt/trade_planner.py": "4A2700ED81105B585FAC75015D502F39A6D254B3D898F028FC35FCAEA96B9BE9",
+    "src/bvmt/__init__.py": "F5DECCD98129DBE5EECC9871B73A65F9FD3792809B5408C6A0CAF1C4A21B4D5E",
+    "frontend/src/lib/api.ts": "50D1025C3AD0010183BE39B48F917117D3BBC726AECA59C8CE0F32531D4685B8",
+    "frontend/src/lib/utils.ts": "9D3CB0B341383087C6EAFF2AFBD4FF4AC3CA66D66361529ED5ED449DCEBDA5C2",
+    "frontend/src/app/planner/page.tsx": "A5341B285E8A59A0AA5CF821096CDE211A0F2AAE181A7657CA4581F6D4F39C56",
+    "configs/competition.json": "0B71F5AAE60ED4CACE88288BC63884EF85F8C12BAE739AAFCB4328921393D451",
+    "configs/llm_budget.example.json": "E5458C64AE99AE1B40C7D7D4EF2C37701312FAB181501FCD3D2CAA923B78A24F",
+    "configs/research.json": "46CAD32000F6C0F6F771223BDDA7862C9C0FEF4831185AA21EB8B3106F101091",
+    "configs/sources.json": "9D338181B4F715FF32C1507200346B481C247185535DA86A62D6E69A9DF29AD9",
+    "configs/sparse_research_v1.json": "F0BF9E10577CD04A540C35C2494DCA9A060A25FA39A2226FAF6AAFA04663DE22"
+  }
+}
