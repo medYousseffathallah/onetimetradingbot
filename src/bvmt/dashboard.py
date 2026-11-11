@@ -14,11 +14,12 @@ and prominently distinguishes SYNTHETIC DEMO DATA from real market data.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import os
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ from bvmt.browser import (
     BalanceMismatchError,
     CompetitionPortfolioDOMSnapshot,
     LayoutChangedError,
+    load_browser_snapshots_with_warnings,
     load_latest_browser_snapshot,
     parse_competition_portfolio_html,
     save_browser_snapshot,
@@ -69,7 +71,7 @@ from bvmt.llm import (
     load_usage_ledger,
     search_document_index,
 )
-from bvmt.notifications import NotificationCenter
+from bvmt.notifications import AlertRecord, NotificationCenter
 from bvmt.recommendations import (
     RecommendationReport,
     VerifiedEventSignal,
@@ -77,6 +79,7 @@ from bvmt.recommendations import (
 )
 from bvmt.research_coverage import MarketResearchReport, evaluate_market_research_coverage
 from bvmt.rules import competition_blockers
+from bvmt.snapshots import atomic_write_text
 
 if not hasattr(_bvmt_browser, "run_browser_sync_subprocess"):
     _bvmt_browser = importlib.reload(_bvmt_browser)
@@ -278,6 +281,86 @@ def evaluate_account_sync_freshness(
     }
 
 
+def snapshot_status_path(snapshots_dir: Path) -> Path:
+    return snapshots_dir.parent / "snapshot_status.json"
+
+
+def snapshot_rejection_keys(dom_snap: CompetitionPortfolioDOMSnapshot) -> set[str]:
+    keys = {
+        dom_snap.retrieved_at.isoformat(),
+        f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}",
+    }
+    if dom_snap.snapshot_id:
+        keys.add(dom_snap.snapshot_id)
+    return keys
+
+
+def load_rejected_snapshot_keys(snapshots_dir: Path) -> set[str]:
+    status_file = snapshot_status_path(snapshots_dir)
+    if not status_file.is_file():
+        return set()
+    try:
+        raw = json.loads(status_file.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    if not isinstance(raw, dict):
+        return set()
+    keys = raw.get("rejected_keys", [])
+    return {str(k) for k in keys if str(k).strip()} if isinstance(keys, list) else set()
+
+
+def mark_snapshot_rejected(
+    snapshots_dir: Path,
+    dom_snap: CompetitionPortfolioDOMSnapshot,
+    *,
+    reason: str | None = None,
+) -> dict[str, object]:
+    status_file = snapshot_status_path(snapshots_dir)
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    existing: dict[str, Any] = {}
+    if status_file.is_file():
+        try:
+            loaded = json.loads(status_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except Exception:
+            existing = {}
+    raw_keys = existing.get("rejected_keys")
+    rejected_keys = (
+        {str(k) for k in raw_keys if str(k).strip()} if isinstance(raw_keys, list) else set()
+    )
+    rejected_keys.update(snapshot_rejection_keys(dom_snap))
+    raw_rejections = existing.get("rejections")
+    rejections: list[object] = list(raw_rejections) if isinstance(raw_rejections, list) else []
+    snap_id = dom_snap.snapshot_id or f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    entry: dict[str, object] = {
+        "snapshot_id": snap_id,
+        "capture_timestamp": dom_snap.retrieved_at.isoformat(),
+        "reason": reason,
+        "rejected_at": datetime.now(UTC).isoformat(),
+    }
+    rejections.append(entry)
+    payload = {
+        "schema_version": 1,
+        "rejected_keys": sorted(rejected_keys),
+        "rejections": rejections,
+    }
+    atomic_write_text(
+        status_file,
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        allow_identical=True,
+        allow_overwrite=True,
+    )
+    return entry
+
+
+def is_histo_only_dom_snapshot(dom_snap: CompetitionPortfolioDOMSnapshot) -> bool:
+    return (
+        "/display_histo.aspx" in dom_snap.source_url
+        or "manual_transactions" in dom_snap.source_url
+    ) and not dom_snap.holdings
+
+
 def apply_confirmed_browser_sync_to_state(
     state: DashboardAppState,
     dom_snap: CompetitionPortfolioDOMSnapshot,
@@ -294,21 +377,60 @@ def apply_confirmed_browser_sync_to_state(
         raise ValueError(
             "Explicit user confirmation (confirmed_by_user=True) is required before applying browser sync"
         )
-    new_acct_snap = build_snapshot_from_dom(dom_snap)
-    comp_acct_snap = new_acct_snap.to_competition_account_snapshot(
+    histo_only = is_histo_only_dom_snapshot(dom_snap) and state.account_snapshot is not None
+    raw_acct_snap = build_snapshot_from_dom(dom_snap)
+    comp_acct_snap = raw_acct_snap.to_competition_account_snapshot(
         as_of=dom_snap.retrieved_at.isoformat()
     )
+    if histo_only:
+        prev = state.account_snapshot
+        assert prev is not None
+        prev_comp = prev.to_competition_account_snapshot(as_of=dom_snap.retrieved_at.isoformat())
+        comp_acct_snap = replace(
+            comp_acct_snap,
+            settled_cash_tnd=state.ledger.settled_cash_tnd,
+            available_cash_tnd=None,
+            holdings=list(prev_comp.holdings),
+            pending_orders_verified=True,
+            transactions_imported=True,
+        )
+        new_acct_snap = replace(
+            raw_acct_snap,
+            implied_initial_cash_tnd=prev.implied_initial_cash_tnd,
+            available_cash_tnd=prev.available_cash_tnd,
+            portfolio_total_tnd=prev.portfolio_total_tnd,
+            competition_rank=prev.competition_rank,
+            competition_participants=prev.competition_participants,
+            displayed_overall_performance_pct=prev.displayed_overall_performance_pct,
+            displayed_total_pnl_tnd=prev.displayed_total_pnl_tnd,
+            holdings=list(prev.holdings),
+            transactions_imported=True,
+            pending_orders_verified=True,
+        )
+    else:
+        # Preserve verification flags across channels (displayp.aspx must not reset display_histo.aspx provenance)
+        new_acct_snap = replace(
+            raw_acct_snap,
+            transactions_imported=(
+                raw_acct_snap.transactions_imported or state.ledger.transactions_imported
+            ),
+            pending_orders_verified=(
+                raw_acct_snap.pending_orders_verified or state.ledger.pending_orders_verified
+            ),
+        )
+
     recon_report = state.ledger.apply_reconciliation_snapshot(
         comp_acct_snap,
         confirmed_by_user=True,
         applied_at=dom_snap.retrieved_at,
         notes=f"Browser DOM sync ({new_acct_snap.snapshot_id})",
+        sync_holdings_and_cash=not histo_only,
     )
     state.ledger.record_account_snapshot(
         new_acct_snap,
         confirmed_by_user=True,
         recorded_at=dom_snap.retrieved_at,
-        sync_holdings_and_cash=True,
+        sync_holdings_and_cash=not histo_only,
     )
     state.ledger.save(state.ledger_path)
     state.account_snapshot = new_acct_snap
@@ -600,19 +722,66 @@ def build_dashboard_state(
         "total_models_count": len(llm_cfg.models),
     }
 
-    latest_browser_snap = load_latest_browser_snapshot(snapshots_dir)
+    loaded_snapshots, snapshot_load_warnings = load_browser_snapshots_with_warnings(snapshots_dir)
+    rejected_keys = load_rejected_snapshot_keys(snapshots_dir)
+    if snapshot_load_warnings:
+        session_str = latest_bar_date.isoformat() if latest_bar_date else cutoff.date().isoformat()
+        for idx, warn_msg in enumerate(snapshot_load_warnings):
+            alert_id = (
+                f"ALT-SYNC-WARN-{hashlib.sha256(warn_msg.encode('utf-8')).hexdigest()[:10].upper()}"
+            )
+            notifications._upsert_alert(
+                AlertRecord(
+                    alert_id=alert_id,
+                    created_at_utc=cutoff.isoformat(),
+                    session_date=session_str,
+                    category="ALERT_SYNC_WARNING",
+                    severity="WARNING",
+                    instrument_id=None,
+                    related_order_id=None,
+                    related_recommendation_id=None,
+                    caught_up_after_power_off=False,
+                    title=f"Corrupt or Unreadable Sync Snapshot (#{idx + 1})",
+                    message=warn_msg,
+                    status="OPEN",
+                )
+            )
+        notifications.save(alerts_path)
+
     confirmed_timestamps = {
         s.capture_timestamp for s in ledger.snapshot_history if s.capture_timestamp
     }
-    if account_snapshot is not None and account_snapshot.capture_timestamp:
-        confirmed_timestamps.add(account_snapshot.capture_timestamp)
+    confirmed_ids = {s.snapshot_id for s in ledger.snapshot_history if s.snapshot_id}
+    if account_snapshot is not None:
+        if account_snapshot.capture_timestamp:
+            confirmed_timestamps.add(account_snapshot.capture_timestamp)
+        if account_snapshot.snapshot_id:
+            confirmed_ids.add(account_snapshot.snapshot_id)
+        if (ledger.transactions_imported and not account_snapshot.transactions_imported) or (
+            ledger.pending_orders_verified and not account_snapshot.pending_orders_verified
+        ):
+            account_snapshot = replace(
+                account_snapshot,
+                transactions_imported=(
+                    account_snapshot.transactions_imported or ledger.transactions_imported
+                ),
+                pending_orders_verified=(
+                    account_snapshot.pending_orders_verified or ledger.pending_orders_verified
+                ),
+            )
+
+    visible_snapshots = [
+        s for _, s in loaded_snapshots if not (snapshot_rejection_keys(s) & rejected_keys)
+    ]
+    latest_browser_snap = visible_snapshots[0] if visible_snapshots else None
     pending_browser_snap: CompetitionPortfolioDOMSnapshot | None = None
-    if (
-        portfolio_mode == "REAL_COMPETITION"
-        and latest_browser_snap is not None
-        and latest_browser_snap.retrieved_at.isoformat() not in confirmed_timestamps
-    ):
-        pending_browser_snap = latest_browser_snap
+    if portfolio_mode == "REAL_COMPETITION":
+        for candidate_snap in visible_snapshots:
+            ts_iso = candidate_snap.retrieved_at.isoformat()
+            cand_id = candidate_snap.snapshot_id
+            if ts_iso not in confirmed_timestamps and (not cand_id or cand_id not in confirmed_ids):
+                pending_browser_snap = candidate_snap
+                break
 
     market_data_provenance = inspect_market_dataset_provenance(bars_path)
     market_data_provenance["bars_path"] = bars_path.as_posix()

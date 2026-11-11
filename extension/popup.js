@@ -21,6 +21,58 @@ function isAllowedChallengeUrl(url) {
   }
 }
 
+async function sendUploadViaBackground(endpointUrl, pairingToken, payload) {
+  if (typeof chrome !== "undefined" && chrome?.runtime?.sendMessage) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: "BVMT_SYNC_UPLOAD",
+            endpointUrl,
+            pairingToken,
+            payload,
+          },
+          (resp) => {
+            if (chrome.runtime?.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            if (!resp) {
+              reject(new Error("Background relay returned empty response."));
+              return;
+            }
+            resolve(resp);
+          }
+        );
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  const res = await fetch(endpointUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-BVMT-Pairing-Token": pairingToken,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  return {
+    ok: res.ok,
+    status: res.status,
+    data,
+    error: res.ok
+      ? null
+      : typeof data?.detail === "string"
+        ? data.detail
+        : data?.detail
+          ? JSON.stringify(data.detail)
+          : data?.error || `HTTP ${res.status}`,
+  };
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const tokenInput = document.getElementById("tokenInput");
   const saveTokenBtn = document.getElementById("saveTokenBtn");
@@ -167,15 +219,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       const res = results[0].result;
-      if (res.error) {
-        throw new Error(res.message || "Failed to extract account data.");
+      const valErrors = Array.isArray(res.validation_errors) ? res.validation_errors : [];
+      if (res.success === false || res.error || valErrors.length > 0) {
+        extractedData = null;
+        sendBtn.disabled = true;
+        previewCard.style.display = "none";
+        const errDetail = valErrors.length > 0 ? valErrors.join("; ") : (res.message || "DOM extraction failed validation.");
+        throw new Error(errDetail);
       }
 
       extractedData = res;
-      prevEquity.innerText = `${res.account_equity} TND`;
-      prevCash.innerText = `${res.available_cash} TND`;
-      prevHoldings.innerText = res.holdings.length.toString();
-      prevRank.innerText = res.competition_ranking ? `#${res.competition_ranking}` : "—";
+      if (res.source_page_type === "display_histo.aspx") {
+        prevEquity.innerText = "Ledger anchored";
+        prevCash.innerText = "Ledger anchored";
+        const txCount = Array.isArray(res.transactions) ? res.transactions.length : 0;
+        const ordCount = Array.isArray(res.pending_orders) ? res.pending_orders.length : 0;
+        prevHoldings.innerText = `${txCount} tx / ${ordCount} open`;
+        prevRank.innerText = "Movements";
+      } else {
+        prevEquity.innerText = res.account_equity !== null ? `${res.account_equity} TND` : "—";
+        prevCash.innerText = res.available_cash !== null ? `${res.available_cash} TND` : "—";
+        prevHoldings.innerText = Array.isArray(res.holdings) ? res.holdings.length.toString() : "0";
+        prevRank.innerText = res.competition_ranking ? `#${res.competition_ranking}` : "—";
+      }
+      sendBtn.disabled = false;
+      sendBtn.innerText = "Transmit to BVMT Dashboard";
       previewCard.style.display = "block";
       showMsg("Account data extracted successfully! Click 'Transmit to Platform' to stage the snapshot.");
     } catch (err) {
@@ -186,10 +254,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // 5. Transmit to Localhost API
+  // 5. Transmit to Localhost API via background worker relay
   sendBtn.addEventListener("click", async () => {
     if (!extractedData) {
       showMsg("No extracted data available. Click 'Extract Account Data' first.", true);
+      return;
+    }
+    const valErrors = Array.isArray(extractedData.validation_errors)
+      ? extractedData.validation_errors
+      : [];
+    if (extractedData.success === false || valErrors.length > 0) {
+      showMsg("Transmission blocked: extracted DOM contains validation errors.", true);
       return;
     }
     const token = tokenInput.value.trim();
@@ -204,30 +279,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const payload = {
         source: "CHROME_EXTENSION",
+        source_schema_version: extractedData.source_schema_version || "2026.11-v2",
         capture_timestamp: extractedData.extracted_at,
         snapshot_id: `ext_${Date.now()}`,
         account_equity: extractedData.account_equity,
         available_cash: extractedData.available_cash,
-        holdings: extractedData.holdings,
+        holdings: extractedData.holdings || [],
+        transactions: extractedData.transactions || [],
+        pending_orders: extractedData.pending_orders || [],
         competition_ranking: extractedData.competition_ranking,
         total_participants: extractedData.total_participants,
+        displayed_overall_performance_pct: extractedData.displayed_overall_performance_pct ?? null,
         source_page_type: extractedData.source_page_type,
+        is_reconciled: extractedData.is_reconciled ?? null,
+        reconciliation_gap_tnd: extractedData.reconciliation_gap_tnd ?? null,
+        validation_errors: valErrors,
         pairing_token: token,
       };
 
-      const res = await fetch(`${BACKEND_URL}/api/sync/extension`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-BVMT-Pairing-Token": token,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const resData = await res.json();
-      if (!res.ok) {
-        const errorDetail = resData.detail || resData.error || "Failed to transmit snapshot to localhost.";
-        throw new Error(typeof errorDetail === "string" ? errorDetail : JSON.stringify(errorDetail));
+      const relayRes = await sendUploadViaBackground(
+        `${BACKEND_URL}/api/sync/extension`,
+        token,
+        payload
+      );
+      if (!relayRes.ok) {
+        throw new Error(relayRes.error || "Failed to transmit snapshot to localhost.");
       }
 
       showMsg("✓ Snapshot staged successfully! Switch to the BVMT Dashboard to review reconciliation & confirm.");

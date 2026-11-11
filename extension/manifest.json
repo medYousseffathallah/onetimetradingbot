@@ -11,10 +11,15 @@
   "host_permissions": [
     "https://www.tunisbourse-challenge.com/*",
     "https://tunisbourse-challenge.com/*",
+    "http://tunisbourse-challenge.com/*",
     "http://www.tunisbourse.com.tn/*",
     "https://www.tunisbourse.com.tn/*",
+    "http://tunisbourse.com.tn/*",
+    "https://tunisbourse.com.tn/*",
     "http://127.0.0.1:8000/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
   "background": {
     "service_worker": "background.js"

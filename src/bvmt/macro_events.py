@@ -12,9 +12,13 @@ may influence quantitative backtests or strategy decisions. Zero LLM hallucinati
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
+
+from bvmt.challenge_universe import resolve_challenge_record
 
 MacroCategory = Literal[
     "MONETARY_POLICY",
@@ -153,18 +157,75 @@ VERIFIED_MACRO_EVENTS: list[MacroEventItem] = [
 ]
 
 
+_EXTRA_SYMBOL_ALIASES: dict[str, tuple[str, ...]] = {
+    "POULINA_GROUP_HOLDING": ("PGH", "POULINA_GP_HOLDING", "POULINA GP HOLDING", "TN0005700018"),
+    "POULINA_GP_HOLDING": ("PGH", "POULINA_GROUP_HOLDING", "POULINA GROUP HOLDING", "TN0005700018"),
+    "PGH": ("POULINA_GP_HOLDING", "POULINA_GROUP_HOLDING", "POULINA GP HOLDING", "TN0005700018"),
+    "CARTHAGE_CEMENT": ("CC", "CARTHAGE CEMENT", "TN0007400013"),
+    "CC": ("CARTHAGE_CEMENT", "CARTHAGE CEMENT", "TN0007400013"),
+    "SOTIPAPIER": ("STPAP", "SOTIPAPIER", "TN0007630015"),
+    "STPAP": ("SOTIPAPIER", "TN0007630015"),
+    "ICF": ("ICF", "TN0003200755"),
+}
+
+
+def _norm_alias_token(value: str) -> str:
+    return re.sub(r"[^A-Z0-9._-]+", "_", value.strip().upper()).strip("_")
+
+
+def resolve_instrument_aliases(
+    identifier: str,
+    *,
+    extra_aliases: Sequence[str] = (),
+) -> frozenset[str]:
+    """Return canonical uppercase aliases (ID, symbol, challenge ticker, ISIN) for matching."""
+    seeds = [identifier, *extra_aliases]
+    aliases: set[str] = set()
+    for raw in seeds:
+        cleaned = raw.strip().upper()
+        if not cleaned:
+            continue
+        aliases.add(cleaned)
+        norm = _norm_alias_token(cleaned)
+        if norm:
+            aliases.add(norm)
+        for lookup in (cleaned, norm):
+            if lookup in _EXTRA_SYMBOL_ALIASES:
+                for al in _EXTRA_SYMBOL_ALIASES[lookup]:
+                    aliases.add(al.upper())
+                    aliases.add(_norm_alias_token(al))
+            chal = resolve_challenge_record(lookup)
+            if chal is not None:
+                aliases.add(chal.challenge_symbol.upper())
+                aliases.add(chal.canonical_instrument_id.upper())
+                aliases.add(chal.canonical_bvmt_symbol.upper())
+                aliases.add(_norm_alias_token(chal.canonical_bvmt_symbol))
+                aliases.add(chal.verified_isin.upper())
+    return frozenset(a for a in aliases if a)
+
+
 def get_verified_macro_intelligence(
     cutoff: datetime | None = None,
     category: MacroCategory | None = None,
     instrument_id: str | None = None,
+    *,
+    include_aliases: bool = True,
+    extra_aliases: Sequence[str] = (),
 ) -> list[MacroEventItem]:
     """Retrieve verified point-in-time macroeconomic events on or before cutoff.
 
-    Ensures complete absence of lookahead bias.
+    Ensures complete absence of lookahead bias and resolves canonical symbol aliases
+    (e.g., CC <-> CARTHAGE_CEMENT, STPAP <-> SOTIPAPIER, DH <-> DELICE_HOLDING).
     """
     effective_cutoff = cutoff or datetime(2026, 11, 6, 23, 59, 59, tzinfo=UTC)
     if effective_cutoff.tzinfo is None:
         effective_cutoff = effective_cutoff.replace(tzinfo=UTC)
+
+    target_aliases = (
+        resolve_instrument_aliases(instrument_id, extra_aliases=extra_aliases)
+        if instrument_id and include_aliases
+        else (frozenset({instrument_id}) if instrument_id else frozenset())
+    )
 
     events: list[MacroEventItem] = []
     for ev in VERIFIED_MACRO_EVENTS:
@@ -173,18 +234,35 @@ def get_verified_macro_intelligence(
             continue
         if category and ev.category != category:
             continue
-        if instrument_id and instrument_id not in ev.affected_instrument_ids:
-            continue
+        if instrument_id:
+            if include_aliases:
+                ev_tokens = {
+                    token.upper() for token in (*ev.affected_instrument_ids, *ev.affected_symbols)
+                }
+                ev_tokens |= {_norm_alias_token(token) for token in ev_tokens}
+                if not (target_aliases & ev_tokens):
+                    continue
+            elif instrument_id not in ev.affected_instrument_ids:
+                continue
         events.append(ev)
 
     return events
 
 
 def get_instrument_macro_context(
-    instrument_id: str, cutoff: datetime | None = None
+    instrument_id: str,
+    cutoff: datetime | None = None,
+    *,
+    include_aliases: bool = True,
+    extra_aliases: Sequence[str] = (),
 ) -> list[MacroEventItem]:
     """Get all point-in-time macroeconomic events impacting a specific instrument."""
-    return get_verified_macro_intelligence(cutoff=cutoff, instrument_id=instrument_id)
+    return get_verified_macro_intelligence(
+        cutoff=cutoff,
+        instrument_id=instrument_id,
+        include_aliases=include_aliases,
+        extra_aliases=extra_aliases,
+    )
 
 
 def get_all_macro_events(cutoff: datetime | None = None) -> list[MacroEventItem]:

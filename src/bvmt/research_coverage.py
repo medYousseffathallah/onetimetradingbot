@@ -255,11 +255,12 @@ def evaluate_market_research_coverage(
     latest_date = latest_session.session_date
     total_sessions = len(open_sessions)
 
-    # 20-session and 60-session windows
+    # 20-session and 60-session windows ([-21:] includes anchor t-20 plus 20 recent sessions)
     window_20 = open_sessions[-21:] if len(open_sessions) >= 21 else open_sessions
     window_60 = open_sessions[-61:] if len(open_sessions) >= 61 else open_sessions
+    recent_window_20 = window_20[1:] if len(window_20) > 1 else window_20
     dates_in_60 = {s.session_date for s in window_60}
-    dates_in_20 = {s.session_date for s in window_20}
+    dates_in_recent_20 = {s.session_date for s in recent_window_20}
 
     # Point-in-time bars on or before cutoff
     pit_bars: dict[tuple[str, date], DailyBar] = {}
@@ -312,18 +313,18 @@ def evaluate_market_research_coverage(
         inst_bar_dates = {b.session_date for b in inst_bars}
         missing_60 = [d for d in dates_in_60 if d not in inst_bar_dates]
 
-        # 20-session window metrics
-        bars_in_20 = [b for b in inst_bars if b.session_date in dates_in_20]
-        traded_in_20 = [b for b in bars_in_20 if b.status == "traded"]
+        # 20-session recent window metrics (strictly 20 sessions [t-19..t], matching features.py)
+        recent_bars_20 = [b for b in inst_bars if b.session_date in dates_in_recent_20]
+        traded_in_20 = [b for b in recent_bars_20 if b.status == "traded"]
         trade_freq_20_flt = (
-            len(traded_in_20) / max(1, len(window_20) - 1) if len(window_20) > 1 else 0.0
+            len(traded_in_20) / len(recent_window_20)
+            if len(window_20) > 1
+            else (1.0 if traded_in_20 else 0.0)
         )
         trade_freq_20 = Decimal(str(round(trade_freq_20_flt, 4)))
 
         turnovers_20 = (
-            [b.turnover_tnd for b in bars_in_20[1:]]
-            if len(bars_in_20) > 1
-            else ([b.turnover_tnd for b in bars_in_20] if bars_in_20 else [Decimal("0")])
+            [b.turnover_tnd for b in recent_bars_20] if recent_bars_20 else [Decimal("0")]
         )
         med_turnover_20 = (
             Decimal(str(median(turnovers_20))).quantize(Decimal("0.001"))
