@@ -17,7 +17,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from bvmt.data import DailyBar, aware_timestamp, validate_bar
+from bvmt.data import DailyBar, aware_timestamp, validate_bar_records
 from bvmt.perf_cache import BoundedLruCache, file_fingerprint, register_cache
 from bvmt.snapshots import validate_safe_id
 
@@ -488,9 +488,7 @@ def evaluate_coverage(
         raise ValueError("stale_after_open_sessions must be >= 1")
     inst_list = list(instruments)
     cal_list = validate_exchange_calendar(calendar)
-    bar_list = list(bars)
-    for bar in bar_list:
-        validate_bar(bar)
+    bar_list = validate_bar_records(bars)
 
     duplicated_symbols: list[str] = []
     listing_inconsistencies: list[str] = []

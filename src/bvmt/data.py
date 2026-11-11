@@ -14,13 +14,19 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from bvmt import __version__
-from bvmt.perf_cache import BoundedLruCache, file_fingerprint, register_cache
+from bvmt.perf_cache import (
+    BoundedLruCache,
+    file_fingerprint,
+    get_cache_generation,
+    register_cache,
+)
 from bvmt.snapshots import (
     atomic_write_bytes,
     atomic_write_text,
@@ -81,7 +87,7 @@ FRENCH_BVMT_REQUIRED_COLUMNS = frozenset(
 FRENCH_BVMT_OPTIONAL_COLUMNS = frozenset({"statut", "date_publication"})
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DailyBar:
     instrument_id: str
     symbol: str
@@ -218,18 +224,88 @@ def validate_bar(bar: DailyBar) -> None:
             raise ValueError("Ingestion cannot precede publication")
 
 
-def validate_bars(bars: Iterable[DailyBar]) -> list[DailyBar]:
-    result = list(bars)
-    if not result:
-        raise ValueError("Dataset is empty")
+BAR_VALIDATION_VERSION = "daily_bar_invariants_v1"
+
+
+@dataclass(frozen=True)
+class _ValidatedBarArtifact:
+    """Private proof over immutable row values; never stores research decisions."""
+
+    rows: tuple[DailyBar, ...]
+    duplicate_keys: tuple[tuple[str, date], ...]
+
+
+_VALIDATED_BAR_ARTIFACTS: BoundedLruCache[
+    tuple[str, int, tuple[int, ...]], _ValidatedBarArtifact
+] = BoundedLruCache(8)
+register_cache(_VALIDATED_BAR_ARTIFACTS)  # type: ignore[arg-type]
+
+
+def _immutable_bar_values(bar: DailyBar) -> bool:
+    """Only standard immutable values may back reusable validation evidence."""
+    return (
+        type(bar) is DailyBar
+        and all(
+            type(value) is str
+            for value in (bar.instrument_id, bar.symbol, bar.status, bar.source_id)
+        )
+        and (bar.isin is None or type(bar.isin) is str)
+        and type(bar.session_date) is date
+        and type(bar.volume_shares) is int
+        and all(
+            type(value) is Decimal
+            for value in (bar.open, bar.high, bar.low, bar.close, bar.turnover_tnd)
+        )
+        and type(bar.ingested_at) is datetime
+        and type(bar.ingested_at.tzinfo) in (timezone, ZoneInfo)
+        and (
+            bar.published_at is None
+            or (
+                type(bar.published_at) is datetime
+                and type(bar.published_at.tzinfo) in (timezone, ZoneInfo)
+            )
+        )
+    )
+
+
+def _validated_bar_artifact(bars: Iterable[DailyBar]) -> _ValidatedBarArtifact:
+    # Artifact rows retain strong references, so their object IDs cannot be
+    # recycled while a proof is cached. Reuse requires those exact immutable
+    # records, not merely value-equal data or a caller's validation claim.
+    rows = tuple(bars)
+    key = (BAR_VALIDATION_VERSION, get_cache_generation(), tuple(id(bar) for bar in rows))
+    cached = _VALIDATED_BAR_ARTIFACTS.get(key)
+    if cached is not None and all(
+        current is previous for current, previous in zip(rows, cached.rows, strict=True)
+    ):
+        return cached
     seen: set[tuple[str, date]] = set()
-    for bar in result:
+    duplicates: list[tuple[str, date]] = []
+    for bar in rows:
         validate_bar(bar)
-        key = (bar.instrument_id, bar.session_date)
-        if key in seen:
-            raise ValueError(f"Duplicate instrument/session: {key}")
-        seen.add(key)
-    return result
+        bar_key = (bar.instrument_id, bar.session_date)
+        if bar_key in seen:
+            duplicates.append(bar_key)
+        seen.add(bar_key)
+    artifact = _ValidatedBarArtifact(rows, tuple(duplicates))
+    if all(_immutable_bar_values(bar) for bar in rows):
+        _VALIDATED_BAR_ARTIFACTS.set(key, artifact)
+    return artifact
+
+
+def validate_bar_records(bars: Iterable[DailyBar]) -> list[DailyBar]:
+    """Validate rows while preserving empty/duplicate coverage diagnostics."""
+    return list(_validated_bar_artifact(bars).rows)
+
+
+def validate_bars(bars: Iterable[DailyBar]) -> list[DailyBar]:
+    """Validate a nonempty unique batch, reusing only identical immutable rows."""
+    artifact = _validated_bar_artifact(bars)
+    if not artifact.rows:
+        raise ValueError("Dataset is empty")
+    if artifact.duplicate_keys:
+        raise ValueError(f"Duplicate instrument/session: {artifact.duplicate_keys[0]}")
+    return list(artifact.rows)
 
 
 def _parse_canonical_row(
@@ -281,15 +357,16 @@ def _parse_canonical_row(
     return bar
 
 
-_BARS_CACHE: BoundedLruCache[tuple[str, int, int, str], tuple[DailyBar, ...]] = BoundedLruCache(16)
+_BARS_CACHE: BoundedLruCache[tuple[object, ...], tuple[DailyBar, ...]] = BoundedLruCache(16)
 register_cache(_BARS_CACHE)  # type: ignore[arg-type]
 
 
 def read_bars_csv(path: Path) -> list[DailyBar]:
     """Read canonical dot-decimal CSV; reject the whole batch on invalid records."""
     fp = file_fingerprint(path)
+    cache_key = (fp, CANONICAL_PARSER_VERSION, BAR_VALIDATION_VERSION)
     if fp is not None:
-        cached = _BARS_CACHE.get(fp)
+        cached = _BARS_CACHE.get(cache_key)
         if cached is not None:
             return list(cached)
     required = set(CANONICAL_COLUMNS)
@@ -306,7 +383,7 @@ def read_bars_csv(path: Path) -> list[DailyBar]:
                 raise ValueError(f"Invalid canonical CSV row {line_number}: {exc}") from exc
     validated = validate_bars(bars)
     if fp is not None:
-        _BARS_CACHE.set(fp, tuple(validated))
+        _BARS_CACHE.set(cache_key, tuple(validated))
     return validated
 
 
