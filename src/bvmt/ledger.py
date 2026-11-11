@@ -9,14 +9,13 @@ from __future__ import annotations
 import csv
 import io
 import json
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-from bvmt.browser import CompetitionPortfolioDOMSnapshot
+from bvmt.browser import CompetitionPortfolioDOMSnapshot, resolve_canonical_instrument
 from bvmt.data import DailyBar, aware_timestamp
 from bvmt.snapshots import (
     atomic_write_text,
@@ -337,6 +336,8 @@ class CompetitionAccountSnapshot:
     holdings: list[AccountHoldingRecord] = field(default_factory=list)
     transactions: list[AccountTransactionRecord] = field(default_factory=list)
     pending_orders: list[AccountPendingOrderRecord] = field(default_factory=list)
+    pending_orders_verified: bool = True
+    transactions_imported: bool = True
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -536,6 +537,8 @@ class CompetitionScreenshotSnapshot:
             ],
             transactions=list(self.imported_transactions),
             pending_orders=list(self.imported_pending_orders),
+            pending_orders_verified=self.pending_orders_verified,
+            transactions_imported=self.transactions_imported,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -665,33 +668,38 @@ def build_snapshot_from_dom(
     snapshot_id: str | None = None,
 ) -> CompetitionScreenshotSnapshot:
     """Transform an authenticated browser DOM extraction into an auditable CompetitionScreenshotSnapshot."""
-    holdings = [
-        ScreenshotHoldingSnapshot(
-            symbol=h.symbol,
-            instrument_id=re.sub(r"[^A-Z0-9._-]+", "_", h.symbol.strip().upper()).strip("_"),
-            isin="TN0001900604" if "BH" in h.symbol.upper() else None,
-            quantity=h.quantity,
-            displayed_acquisition_price_tnd=quantize_tnd(h.acquisition_price_tnd),
-            displayed_acquisition_amount_tnd=quantize_tnd(h.acquisition_amount_tnd),
-            displayed_last_price_tnd=quantize_tnd(h.latest_price_tnd),
-            current_market_value_tnd=quantize_tnd(h.market_value_tnd),
-            displayed_unrealized_pnl_tnd=quantize_tnd(h.gain_tnd),
-            displayed_unrealized_return_pct=quantize_tnd(h.gain_pct),
-            portfolio_allocation_pct=quantize_tnd(
-                (h.market_value_tnd / dom_snap.portfolio_total_tnd * Decimal(100))
-                if dom_snap.portfolio_total_tnd > 0
-                else Decimal(0)
-            ),
+    holdings: list[ScreenshotHoldingSnapshot] = []
+    for h in dom_snap.holdings:
+        canon_id, _, canon_isin = resolve_canonical_instrument(
+            h.symbol,
             displayed_symbol=getattr(h, "displayed_symbol", None),
-            displayed_identifier=getattr(h, "displayed_identifier", None),
         )
-        for h in dom_snap.holdings
-    ]
+        holdings.append(
+            ScreenshotHoldingSnapshot(
+                symbol=h.symbol,
+                instrument_id=canon_id,
+                isin=canon_isin,
+                quantity=h.quantity,
+                displayed_acquisition_price_tnd=quantize_tnd(h.acquisition_price_tnd),
+                displayed_acquisition_amount_tnd=quantize_tnd(h.acquisition_amount_tnd),
+                displayed_last_price_tnd=quantize_tnd(h.latest_price_tnd),
+                current_market_value_tnd=quantize_tnd(h.market_value_tnd),
+                displayed_unrealized_pnl_tnd=quantize_tnd(h.gain_tnd),
+                displayed_unrealized_return_pct=quantize_tnd(h.gain_pct),
+                portfolio_allocation_pct=quantize_tnd(
+                    (h.market_value_tnd / dom_snap.portfolio_total_tnd * Decimal(100))
+                    if dom_snap.portfolio_total_tnd > 0
+                    else Decimal(0)
+                ),
+                displayed_symbol=getattr(h, "displayed_symbol", None),
+                displayed_identifier=getattr(h, "displayed_identifier", None),
+            )
+        )
     imported_txs = [
         AccountTransactionRecord(
             transaction_id=t.transaction_id,
             order_id=t.order_id,
-            instrument_id=t.instrument_id,
+            instrument_id=resolve_canonical_instrument(t.symbol)[0],
             symbol=t.symbol,
             side=t.side,
             filled_shares=t.filled_shares,
@@ -704,7 +712,7 @@ def build_snapshot_from_dom(
     imported_pends = [
         AccountPendingOrderRecord(
             order_id=p.order_id,
-            instrument_id=p.instrument_id,
+            instrument_id=resolve_canonical_instrument(p.symbol)[0],
             symbol=p.symbol,
             side=p.side,
             requested_shares=p.requested_shares,
@@ -718,7 +726,11 @@ def build_snapshot_from_dom(
     ]
     mov_captured = bool(dom_snap.movements_page_captured)
     stamp = dom_snap.retrieved_at.isoformat()
-    snap_id = snapshot_id or f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    snap_id = (
+        snapshot_id
+        or getattr(dom_snap, "snapshot_id", None)
+        or f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    )
     lims = [
         "Extracted directly from authenticated displayp.aspx DOM via local browser session.",
         "Requires confirmation-gated reconciliation before mutating local ledger.",
@@ -2140,6 +2152,53 @@ class PortfolioLedger:
         )
         return ledger
 
+    @staticmethod
+    def _screenshot_fingerprint(snap: CompetitionScreenshotSnapshot) -> tuple[object, ...]:
+        return (
+            snap.capture_timestamp,
+            quantize_tnd(snap.portfolio_total_tnd),
+            quantize_tnd(snap.available_cash_tnd),
+            tuple(
+                sorted(
+                    (
+                        h.instrument_id,
+                        h.quantity,
+                        quantize_tnd(h.displayed_acquisition_price_tnd),
+                        quantize_tnd(h.displayed_last_price_tnd),
+                        quantize_tnd(h.current_market_value_tnd),
+                    )
+                    for h in snap.holdings
+                )
+            ),
+            tuple(
+                sorted(
+                    (
+                        t.transaction_id,
+                        t.instrument_id,
+                        t.side,
+                        t.filled_shares,
+                        quantize_tnd(t.execution_price_tnd),
+                        quantize_tnd(t.fee_tnd),
+                    )
+                    for t in snap.imported_transactions
+                )
+            ),
+            tuple(
+                sorted(
+                    (
+                        p.order_id,
+                        p.instrument_id,
+                        p.side,
+                        p.requested_shares,
+                        p.remaining_shares,
+                        quantize_tnd(p.limit_price_tnd),
+                        p.status,
+                    )
+                    for p in snap.imported_pending_orders
+                )
+            ),
+        )
+
     def record_account_snapshot(
         self,
         snapshot: CompetitionScreenshotSnapshot,
@@ -2148,7 +2207,7 @@ class PortfolioLedger:
         recorded_at: datetime,
         sync_holdings_and_cash: bool = True,
     ) -> CompetitionScreenshotSnapshot:
-        """Append an additional user-supplied competition account snapshot to snapshot_history."""
+        """Append an additional user-supplied competition account snapshot to snapshot_history safely."""
         if confirmed_by_user is not True:
             raise ValueError(
                 "Explicit user confirmation (confirmed_by_user=True) is required before recording an account snapshot"
@@ -2156,13 +2215,24 @@ class PortfolioLedger:
         if recorded_at.tzinfo is None or recorded_at.utcoffset() is None:
             raise ValueError("recorded_at must be timezone-aware")
 
+        target_fp = self._screenshot_fingerprint(snapshot)
+        for existing_snap in self.snapshot_history:
+            if (
+                existing_snap.snapshot_id == snapshot.snapshot_id
+                and existing_snap.capture_timestamp == snapshot.capture_timestamp
+            ) or self._screenshot_fingerprint(existing_snap) == target_fp:
+                return existing_snap
+
         if self.opening_snapshot is None:
             self.opening_snapshot = snapshot
         self.snapshot_history.append(snapshot)
+        # Preserve verification provenance across channels (displayp.aspx must not wipe display_histo.aspx)
+        self.transactions_imported = self.transactions_imported or snapshot.transactions_imported
+        self.pending_orders_verified = (
+            self.pending_orders_verified or snapshot.pending_orders_verified
+        )
         if sync_holdings_and_cash:
             self.settled_cash_tnd = quantize_tnd(snapshot.available_cash_tnd)
-            self.transactions_imported = snapshot.transactions_imported
-            self.pending_orders_verified = snapshot.pending_orders_verified
             new_holdings: dict[str, HoldingPosition] = {}
             for h in snapshot.holdings:
                 existing = self.holdings.get(h.instrument_id)
@@ -2174,10 +2244,25 @@ class PortfolioLedger:
                     average_cost_tnd=quantize_tnd(h.displayed_acquisition_price_tnd),
                     cost_basis_tnd=quantize_tnd(h.displayed_acquisition_amount_tnd),
                     realized_pnl_tnd=existing.realized_pnl_tnd if existing else Decimal("0.000"),
-                    total_fees_paid_tnd=existing.total_fees_paid_tnd
-                    if existing
-                    else Decimal("0.000"),
+                    total_fees_paid_tnd=(
+                        existing.total_fees_paid_tnd if existing else Decimal("0.000")
+                    ),
                 )
+            for inst_id, existing in self.holdings.items():
+                if inst_id not in new_holdings and (
+                    existing.realized_pnl_tnd != Decimal("0.000")
+                    or existing.total_fees_paid_tnd != Decimal("0.000")
+                ):
+                    new_holdings[inst_id] = HoldingPosition(
+                        instrument_id=existing.instrument_id,
+                        symbol=existing.symbol,
+                        total_shares=0,
+                        reserved_sell_shares=0,
+                        average_cost_tnd=existing.average_cost_tnd,
+                        cost_basis_tnd=Decimal("0.000"),
+                        realized_pnl_tnd=existing.realized_pnl_tnd,
+                        total_fees_paid_tnd=existing.total_fees_paid_tnd,
+                    )
             self.holdings = new_holdings
             self._reconcile_reservations()
 
@@ -2439,7 +2524,7 @@ class PortfolioLedger:
         for oid in all_open_ids:
             loc_o = local_open_orders.get(oid)
             acc_o = acct_open_orders.get(oid)
-            if loc_o is not None and acc_o is None:
+            if loc_o is not None and acc_o is None and snapshot.pending_orders_verified:
                 discrepancies.append(
                     ReconciliationDiscrepancy(
                         discrepancy_type="unmatched_pending_order",
@@ -2513,6 +2598,7 @@ class PortfolioLedger:
         confirmed_by_user: bool,
         applied_at: datetime,
         notes: str = "",
+        sync_holdings_and_cash: bool = True,
     ) -> ReconciliationReport:
         """Apply user-confirmed competition snapshot adjustments to the local ledger and log to audit_log.
 
@@ -2526,9 +2612,39 @@ class PortfolioLedger:
             raise ValueError("applied_at must be timezone-aware")
 
         pre_report = self.reconcile_with_snapshot(snapshot, evaluated_at=applied_at)
+
+        # Idempotent guard: skip duplicate mutation/audit if identical timestamp + state already latest
+        if self.snapshot_history:
+            last_snap = self.snapshot_history[-1]
+            same_ts = last_snap.capture_timestamp == snapshot.as_of
+            same_cash = quantize_tnd(last_snap.available_cash_tnd) == quantize_tnd(
+                snapshot.settled_cash_tnd
+            )
+            same_holds = sorted(
+                (h.instrument_id, h.quantity, quantize_tnd(h.displayed_acquisition_price_tnd))
+                for h in last_snap.holdings
+            ) == sorted(
+                (h.instrument_id, h.total_shares, quantize_tnd(h.average_cost_tnd))
+                for h in snapshot.holdings
+            )
+            same_txs = sorted(t.transaction_id for t in last_snap.imported_transactions) == sorted(
+                t.transaction_id for t in snapshot.transactions
+            )
+            same_pends = sorted(p.order_id for p in last_snap.imported_pending_orders) == sorted(
+                p.order_id for p in snapshot.pending_orders
+            )
+            if same_ts and (not sync_holdings_and_cash or (same_cash and same_holds)) and same_txs and same_pends:
+                return pre_report
+
         if snapshot.initial_cash_tnd is not None and snapshot.initial_cash_tnd > Decimal("0"):
             self.initial_cash_tnd = quantize_tnd(snapshot.initial_cash_tnd)
-        self.settled_cash_tnd = quantize_tnd(snapshot.settled_cash_tnd)
+        prev_holdings = dict(self.holdings)
+        if sync_holdings_and_cash:
+            self.settled_cash_tnd = quantize_tnd(snapshot.settled_cash_tnd)
+        self.transactions_imported = self.transactions_imported or snapshot.transactions_imported
+        self.pending_orders_verified = (
+            self.pending_orders_verified or snapshot.pending_orders_verified
+        )
 
         # Deduplicate imported transactions preserving order
         dedup_txs: list[AccountTransactionRecord] = []
@@ -2543,85 +2659,158 @@ class PortfolioLedger:
             seen_exact.add(exact_key)
             dedup_txs.append(tx)
 
-        # Sync holdings from competition snapshot
-        new_holdings: dict[str, HoldingPosition] = {}
-        for h in snapshot.holdings:
-            cost_basis = quantize_tnd(Decimal(h.total_shares) * quantize_tnd(h.average_cost_tnd))
-            new_holdings[h.instrument_id] = HoldingPosition(
-                instrument_id=h.instrument_id,
-                symbol=h.symbol,
-                total_shares=h.total_shares,
-                reserved_sell_shares=0,
-                average_cost_tnd=quantize_tnd(h.average_cost_tnd),
-                cost_basis_tnd=cost_basis,
-                realized_pnl_tnd=quantize_tnd(h.realized_pnl_tnd),
-                total_fees_paid_tnd=quantize_tnd(h.total_fees_paid_tnd),
-            )
-        self.holdings = new_holdings
-
-        # Close any previously open local orders that are not in snapshot.pending_orders
-        acct_pend_by_id = {p.order_id: p for p in snapshot.pending_orders}
-        for oid, existing_order in list(self.orders.items()):
-            if existing_order.status in OPEN_ORDER_STATUSES and oid not in acct_pend_by_id:
-                self.orders[oid] = ManualOrderRecord(
-                    order_id=existing_order.order_id,
-                    recommendation_id=existing_order.recommendation_id,
-                    instrument_id=existing_order.instrument_id,
-                    symbol=existing_order.symbol,
-                    side=existing_order.side,
-                    requested_shares=existing_order.requested_shares,
-                    filled_shares=existing_order.filled_shares,
-                    remaining_shares=0,
-                    limit_price_tnd=existing_order.limit_price_tnd,
-                    reserved_cash_tnd=Decimal("0.000"),
-                    reserved_shares=0,
-                    status="EXECUTED" if existing_order.filled_shares > 0 else "CANCELLED",
-                    submitted_at=existing_order.submitted_at,
-                    updated_at=applied_at.isoformat(),
-                    notes=f"{existing_order.notes} | Closed during account reconciliation".strip(
-                        " |"
-                    ),
-                    fills=list(existing_order.fills),
+        if sync_holdings_and_cash:
+            # Sync holdings from competition snapshot while preserving realized PnL and fees
+            new_holdings: dict[str, HoldingPosition] = {}
+            for h in snapshot.holdings:
+                prev_h = prev_holdings.get(h.instrument_id)
+                cost_basis = quantize_tnd(
+                    Decimal(h.total_shares) * quantize_tnd(h.average_cost_tnd)
                 )
+                realized_val = (
+                    quantize_tnd(h.realized_pnl_tnd)
+                    if h.realized_pnl_tnd != Decimal("0.000")
+                    else (prev_h.realized_pnl_tnd if prev_h is not None else Decimal("0.000"))
+                )
+                fees_val = (
+                    quantize_tnd(h.total_fees_paid_tnd)
+                    if h.total_fees_paid_tnd != Decimal("0.000")
+                    else (prev_h.total_fees_paid_tnd if prev_h is not None else Decimal("0.000"))
+                )
+                new_holdings[h.instrument_id] = HoldingPosition(
+                    instrument_id=h.instrument_id,
+                    symbol=h.symbol,
+                    total_shares=h.total_shares,
+                    reserved_sell_shares=0,
+                    average_cost_tnd=quantize_tnd(h.average_cost_tnd),
+                    cost_basis_tnd=cost_basis,
+                    realized_pnl_tnd=realized_val,
+                    total_fees_paid_tnd=fees_val,
+                )
+            for inst_id, prev_h in prev_holdings.items():
+                if inst_id not in new_holdings and (
+                    prev_h.realized_pnl_tnd != Decimal("0.000")
+                    or prev_h.total_fees_paid_tnd != Decimal("0.000")
+                ):
+                    new_holdings[inst_id] = HoldingPosition(
+                        instrument_id=prev_h.instrument_id,
+                        symbol=prev_h.symbol,
+                        total_shares=0,
+                        reserved_sell_shares=0,
+                        average_cost_tnd=prev_h.average_cost_tnd,
+                        cost_basis_tnd=Decimal("0.000"),
+                        realized_pnl_tnd=prev_h.realized_pnl_tnd,
+                        total_fees_paid_tnd=prev_h.total_fees_paid_tnd,
+                    )
+            self.holdings = new_holdings
 
-        # Group deduplicated transactions by order_id and ensure orders + fills exist
+        acct_pend_by_id = {p.order_id: p for p in snapshot.pending_orders}
+        if snapshot.pending_orders_verified:
+            # Close previously open local orders missing from snapshot.pending_orders ONLY when movements page was verified
+            for oid, existing_order in list(self.orders.items()):
+                if existing_order.status in OPEN_ORDER_STATUSES and oid not in acct_pend_by_id:
+                    self.orders[oid] = ManualOrderRecord(
+                        order_id=existing_order.order_id,
+                        recommendation_id=existing_order.recommendation_id,
+                        instrument_id=existing_order.instrument_id,
+                        symbol=existing_order.symbol,
+                        side=existing_order.side,
+                        requested_shares=existing_order.requested_shares,
+                        filled_shares=existing_order.filled_shares,
+                        remaining_shares=0,
+                        limit_price_tnd=existing_order.limit_price_tnd,
+                        reserved_cash_tnd=Decimal("0.000"),
+                        reserved_shares=0,
+                        status="EXECUTED" if existing_order.filled_shares > 0 else "CANCELLED",
+                        submitted_at=existing_order.submitted_at,
+                        updated_at=applied_at.isoformat(),
+                        notes=f"{existing_order.notes} | Closed during account reconciliation".strip(
+                            " |"
+                        ),
+                        fills=list(existing_order.fills),
+                    )
+
+        # Group deduplicated transactions by order_id and merge fills incrementally with realized PnL
         txs_by_order: dict[str, list[AccountTransactionRecord]] = {}
         for tx in dedup_txs:
             txs_by_order.setdefault(tx.order_id, []).append(tx)
 
         for oid, tx_list in txs_by_order.items():
-            fills: list[OrderExecutionFill] = []
-            total_filled = 0
+            existing_rec = self.orders.get(oid)
+            merged_fills: list[OrderExecutionFill] = (
+                list(existing_rec.fills) if existing_rec is not None else []
+            )
+            prior_fill_ids = {f.fill_id for f in merged_fills}
+            prior_sigs = {
+                (f.executed_at, f.filled_shares, quantize_tnd(f.execution_price_tnd))
+                for f in merged_fills
+            }
             for tx in tx_list:
-                gross = quantize_tnd(
-                    Decimal(tx.filled_shares) * quantize_tnd(tx.execution_price_tnd)
-                )
+                tx_px = quantize_tnd(tx.execution_price_tnd)
+                tx_sig = (tx.executed_at, tx.filled_shares, tx_px)
+                if tx.transaction_id in prior_fill_ids or tx_sig in prior_sigs:
+                    continue
+                prior_fill_ids.add(tx.transaction_id)
+                prior_sigs.add(tx_sig)
+                gross = quantize_tnd(Decimal(tx.filled_shares) * tx_px)
                 fee = quantize_tnd(tx.fee_tnd)
                 net_impact = (
                     -quantize_tnd(gross + fee) if tx.side == "BUY" else quantize_tnd(gross - fee)
                 )
-                fills.append(
+                realized_delta = Decimal("0.000")
+                cur_h = self.holdings.get(tx.instrument_id) or prev_holdings.get(tx.instrument_id)
+                if tx.side == "SELL" and cur_h is not None and cur_h.average_cost_tnd > Decimal("0"):
+                    realized_delta = quantize_tnd(
+                        gross - fee - (Decimal(tx.filled_shares) * cur_h.average_cost_tnd)
+                    )
+                merged_fills.append(
                     OrderExecutionFill(
                         fill_id=tx.transaction_id,
                         order_id=oid,
                         executed_at=tx.executed_at,
                         filled_shares=tx.filled_shares,
-                        execution_price_tnd=quantize_tnd(tx.execution_price_tnd),
+                        execution_price_tnd=tx_px,
                         gross_amount_tnd=gross,
                         fee_tnd=fee,
                         net_cash_impact_tnd=net_impact,
-                        realized_pnl_delta_tnd=Decimal("0.000"),
+                        realized_pnl_delta_tnd=realized_delta,
                     )
                 )
-                total_filled += tx.filled_shares
+                target_h = self.holdings.get(tx.instrument_id)
+                if target_h is None and cur_h is not None:
+                    target_h = HoldingPosition(
+                        instrument_id=cur_h.instrument_id,
+                        symbol=cur_h.symbol,
+                        total_shares=0,
+                        reserved_sell_shares=0,
+                        average_cost_tnd=cur_h.average_cost_tnd,
+                        cost_basis_tnd=Decimal("0.000"),
+                        realized_pnl_tnd=cur_h.realized_pnl_tnd,
+                        total_fees_paid_tnd=cur_h.total_fees_paid_tnd,
+                    )
+                if target_h is not None:
+                    self.holdings[tx.instrument_id] = HoldingPosition(
+                        instrument_id=target_h.instrument_id,
+                        symbol=target_h.symbol,
+                        total_shares=target_h.total_shares,
+                        reserved_sell_shares=target_h.reserved_sell_shares,
+                        average_cost_tnd=target_h.average_cost_tnd,
+                        cost_basis_tnd=target_h.cost_basis_tnd,
+                        realized_pnl_tnd=quantize_tnd(
+                            target_h.realized_pnl_tnd + realized_delta
+                        ),
+                        total_fees_paid_tnd=quantize_tnd(target_h.total_fees_paid_tnd + fee),
+                    )
 
+            merged_fills.sort(key=lambda f: (f.executed_at, f.fill_id))
+            total_filled = sum(f.filled_shares for f in merged_fills)
             first_tx = tx_list[0]
             pend_match = acct_pend_by_id.get(oid)
             if pend_match is not None:
-                req_sh = pend_match.requested_shares
+                req_sh = max(total_filled + pend_match.remaining_shares, pend_match.requested_shares)
                 rem_sh = pend_match.remaining_shares
                 lim_px = quantize_tnd(pend_match.limit_price_tnd)
-                ord_status = pend_match.status
+                ord_status = "PARTIALLY_FILLED" if total_filled > 0 and rem_sh > 0 else pend_match.status
                 rem_gross = quantize_tnd(Decimal(rem_sh) * lim_px)
                 rem_fee = compute_commission(rem_gross, self.fee_rate)
                 res_cash = (
@@ -2631,14 +2820,17 @@ class PortfolioLedger:
                 )
                 res_sh = rem_sh if pend_match.side == "SELL" else 0
             else:
-                req_sh = total_filled
+                req_sh = (
+                    max(existing_rec.requested_shares, total_filled)
+                    if existing_rec is not None
+                    else total_filled
+                )
                 rem_sh = 0
                 lim_px = quantize_tnd(first_tx.execution_price_tnd)
                 ord_status = "EXECUTED"
                 res_cash = Decimal("0.000")
                 res_sh = 0
 
-            existing_rec = self.orders.get(oid)
             self.orders[oid] = ManualOrderRecord(
                 order_id=oid,
                 recommendation_id=existing_rec.recommendation_id if existing_rec else None,
@@ -2659,7 +2851,7 @@ class PortfolioLedger:
                     if existing_rec
                     else "Imported via competition account reconciliation"
                 ),
-                fills=fills,
+                fills=merged_fills,
             )
 
         # Sync any remaining pending orders that had no executed transactions yet
@@ -2742,9 +2934,7 @@ class PortfolioLedger:
         ensure_no_symlink_ancestors(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         text = json.dumps(self.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n"
-        if path.exists():
-            path.unlink()
-        atomic_write_text(path, text, allow_identical=True)
+        atomic_write_text(path, text, allow_identical=True, allow_overwrite=True)
 
     @classmethod
     def load(cls, path: Path) -> PortfolioLedger:

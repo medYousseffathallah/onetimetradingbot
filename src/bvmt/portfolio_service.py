@@ -25,13 +25,13 @@ Canonical Data-Source Selection Rules:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC
 from decimal import Decimal
 from pathlib import Path
 
 from bvmt.browser import (
     CompetitionPortfolioDOMSnapshot,
-    load_latest_browser_snapshot,
 )
 from bvmt.dashboard import (
     DEFAULT_ALERTS_PATH,
@@ -50,13 +50,21 @@ from bvmt.dashboard import (
     build_dashboard_state,
     discover_available_bar_datasets,
     evaluate_account_sync_freshness,
+    is_histo_only_dom_snapshot,
+    load_rejected_snapshot_keys,
+    mark_snapshot_rejected,
     select_default_dataset_index,
+    snapshot_rejection_keys,
 )
 from bvmt.ledger import (
     CompetitionScreenshotSnapshot,
     ReconciliationReport,
     build_snapshot_from_dom,
 )
+
+
+class SnapshotConflictError(ValueError):
+    """Raised when confirming a snapshot whose ID no longer matches the pending snapshot."""
 
 
 @dataclass(frozen=True)
@@ -184,7 +192,7 @@ class PortfolioStateService:
         )
 
     def list_browser_snapshots(self) -> list[tuple[Path, CompetitionPortfolioDOMSnapshot]]:
-        """Return all saved browser DOM snapshots sorted newest-first."""
+        """Return all valid saved browser DOM snapshots sorted newest-first by retrieved_at."""
         if not self.snapshots_dir.is_dir():
             return []
         files = sorted(self.snapshots_dir.glob("sync_*.json"), reverse=True)
@@ -195,7 +203,28 @@ class PortfolioStateService:
                 out.append((path, CompetitionPortfolioDOMSnapshot.from_dict(raw)))
             except Exception:
                 continue
+        out.sort(key=lambda item: item[1].retrieved_at.astimezone(UTC), reverse=True)
         return out
+
+    def _visible_browser_snapshots(self) -> list[tuple[Path, CompetitionPortfolioDOMSnapshot]]:
+        rejected = load_rejected_snapshot_keys(self.snapshots_dir)
+        return [
+            (p, s)
+            for p, s in self.list_browser_snapshots()
+            if not (snapshot_rejection_keys(s) & rejected)
+        ]
+
+    def _resolve_target_snapshot(
+        self,
+        state: DashboardAppState,
+        dom_snap: CompetitionPortfolioDOMSnapshot | None = None,
+    ) -> CompetitionPortfolioDOMSnapshot | None:
+        if dom_snap is not None:
+            return dom_snap
+        if state.pending_browser_snapshot is not None:
+            return state.pending_browser_snapshot
+        visible = self._visible_browser_snapshots()
+        return visible[0][1] if visible else None
 
     def preview_reconciliation(
         self,
@@ -203,17 +232,39 @@ class PortfolioStateService:
     ) -> tuple[CompetitionScreenshotSnapshot, ReconciliationReport] | None:
         """Preview reconciliation of a browser DOM snapshot against the current ledger without mutating disk."""
         state = self.load_state()
-        target_dom = (
-            dom_snap
-            or state.pending_browser_snapshot
-            or load_latest_browser_snapshot(self.snapshots_dir)
-        )
+        target_dom = self._resolve_target_snapshot(state, dom_snap)
         if target_dom is None:
             return None
         candidate_acct = build_snapshot_from_dom(target_dom)
         comp_acct = candidate_acct.to_competition_account_snapshot(
             as_of=target_dom.retrieved_at.isoformat()
         )
+        if is_histo_only_dom_snapshot(target_dom) and state.account_snapshot is not None:
+            prev = state.account_snapshot
+            prev_comp = prev.to_competition_account_snapshot(
+                as_of=target_dom.retrieved_at.isoformat()
+            )
+            comp_acct = replace(
+                comp_acct,
+                settled_cash_tnd=state.ledger.settled_cash_tnd,
+                available_cash_tnd=None,
+                holdings=list(prev_comp.holdings),
+                pending_orders_verified=True,
+                transactions_imported=True,
+            )
+            candidate_acct = replace(
+                candidate_acct,
+                implied_initial_cash_tnd=prev.implied_initial_cash_tnd,
+                available_cash_tnd=prev.available_cash_tnd,
+                portfolio_total_tnd=prev.portfolio_total_tnd,
+                competition_rank=prev.competition_rank,
+                competition_participants=prev.competition_participants,
+                displayed_overall_performance_pct=prev.displayed_overall_performance_pct,
+                displayed_total_pnl_tnd=prev.displayed_total_pnl_tnd,
+                holdings=list(prev.holdings),
+                transactions_imported=True,
+                pending_orders_verified=True,
+            )
         recon = state.ledger.reconcile_with_snapshot(
             comp_acct,
             evaluated_at=target_dom.retrieved_at,
@@ -225,6 +276,7 @@ class PortfolioStateService:
         *,
         confirmed_by_user: bool,
         dom_snap: CompetitionPortfolioDOMSnapshot | None = None,
+        expected_snapshot_id: str | None = None,
     ) -> tuple[DashboardAppState, ReconciliationReport]:
         """Confirm and persist a browser DOM snapshot to the active real competition ledger."""
         if confirmed_by_user is not True:
@@ -232,19 +284,48 @@ class PortfolioStateService:
                 "Explicit user confirmation (confirmed_by_user=True) is required before applying browser sync"
             )
         state = self.load_state()
-        target_dom = (
-            dom_snap
-            or state.pending_browser_snapshot
-            or load_latest_browser_snapshot(self.snapshots_dir)
-        )
+        target_dom = self._resolve_target_snapshot(state, dom_snap)
         if target_dom is None:
             raise FileNotFoundError("No browser snapshot available to confirm.")
+        actual_id = (
+            target_dom.snapshot_id
+            or f"browser_sync_{target_dom.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+        )
+        if expected_snapshot_id is not None and expected_snapshot_id not in {
+            actual_id,
+            target_dom.retrieved_at.isoformat(),
+        }:
+            raise SnapshotConflictError(
+                f"Pending snapshot changed (expected '{expected_snapshot_id}', current is '{actual_id}'). "
+                "Refresh preview before confirming."
+            )
         recon = apply_confirmed_browser_sync_to_state(
             state,
             target_dom,
             confirmed_by_user=True,
         )
         return state, recon
+
+    def reject_snapshot(
+        self,
+        *,
+        snapshot_id: str | None = None,
+        reason: str | None = None,
+    ) -> dict[str, object]:
+        """Reject and dismiss a staged browser snapshot persistently across restarts."""
+        state = self.load_state()
+        visible = [s for _, s in self._visible_browser_snapshots()]
+        target_dom: CompetitionPortfolioDOMSnapshot | None = None
+        if snapshot_id is None:
+            target_dom = state.pending_browser_snapshot or (visible[0] if visible else None)
+        else:
+            for s in visible:
+                if snapshot_id in snapshot_rejection_keys(s):
+                    target_dom = s
+                    break
+        if target_dom is None:
+            raise FileNotFoundError("No matching pending browser snapshot found to reject.")
+        return mark_snapshot_rejected(self.snapshots_dir, target_dom, reason=reason)
 
     def get_freshness_status(self, state: DashboardAppState | None = None) -> dict[str, object]:
         active_state = state or self.load_state()

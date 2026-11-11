@@ -1,6 +1,26 @@
 # Working state
 
 ## Current checkpoint
+**Wednesday, November 11, 2026 — Phase 1 Synchronization Reliability & Transaction-History Reconciliation (`gemini/dashboard`)**.
+- **Phase 1 Synchronization Audit (`docs/SYNC_RELIABILITY_AUDIT.md`) & Fixes**:
+  - **Chrome Extension (`extension/manifest.json`, `extension/background.js`, `extension/content.js`, `extension/popup.js`)**: Added MV3 background fetch relay (`BVMT_SYNC_UPLOAD`) surviving popup closes; upgraded schema `2026.11-v2`; fixed `colMap.mktVal` (`Nom de valeur` collision), `<th>` header skip, 12-cell `tbody.alri` extraction (`displayed_identifier` preserved, qty not confused with ID), strict French thousands/decimal parsing, removed silent `"50000.000"` and `|| 0` fallbacks, added `display_histo.aspx` transaction & pending order extraction, and blocked Transmit on `res.success === false` or non-empty `validation_errors`.
+  - **Localhost API & CORS (`src/bvmt/api.py`)**: Enabled `chrome-extension://*` regex CORS + `X-BVMT-Pairing-Token` header; wired `pairing_token.txt` persistence and `sync_jobs.json` job registry persistence; caught `decimal.InvalidOperation` as HTTP `422`; fixed `BrowserCollectorError` stale-snapshot 200 fallback; added `POST /api/sync/manual/transactions`, `POST /api/sync/reject`, optional `expected_snapshot_id` `409 Conflict` TOCTOU protection on `/api/sync/confirm`, and `display_histo.aspx` ledger-balance anchoring in `/api/sync/extension`; deduplicated `confirmed_history` and filtered rejected snapshots in `GET /api/snapshots`.
+  - **Sync Service, Manual Import, Browser Collector, Playwright Worker & Ledger (`src/bvmt/{sync_service,manual_import,browser,playwright_worker,ledger,dashboard,portfolio_service}.py`)**:
+    - Consolidated locale-strict French numeric & date parsing; preserved break-even zero gains (`0`), `TOTAL TUNISIE`, `SOTUVER` (`Achat validé`), `VENTE PARTIELLE`, and `BH ASSURANCE` (`TN0006550016`) via `resolve_canonical_instrument`.
+    - Removed silent `"50000.000"` paste/CSV fallback; surfaced explicit row errors instead of swallowing exceptions.
+    - Hardened `CanonicalSyncService` content-hash deduplication across all staged snapshots + confirmed state without writing duplicate files.
+    - Added microsecond+hash collision-safe snapshot filenames, corrupt newest file resilience (`NotificationCenter` warning alert), Chrome -> Edge (`msedge`) -> Chromium Playwright launch fallback, PID/file-handle safe lock cleanup (`clean_stale_profile_lock`), and Windows process-tree termination (`taskkill /T /F`).
+    - Added atomic ledger `save()` without pre-`os.replace` unlink, incremental partial-fill merge (`fill_id` + signature), `SELL` `realized_pnl_tnd` / `total_fees_paid_tnd` tracking, monotonic `transactions_imported` / `pending_orders_verified` preservation across `displayp.aspx` syncs, and persistent snapshot rejections (`snapshot_status.json`).
+- **Verification**:
+  - `.venv\Scripts\python.exe -m pytest -q`: **411 passed** (including all 23 Phase 1 regression tests in `tests/test_phase1_sync_regression.py` covering `EXT-01..06`, `API-01..03`, `SVC-01..03`, `MAN-01..03`, `BRW-01..05`, `LED-01..05`, with Node.js execution of `extension/content.js`, `extension/background.js`, and `extension/popup.js`).
+  - `ruff check src tests scripts`: All checks passed.
+  - `ruff format --check` on all 10 modified/created Python files: 10 files formatted (unmodified `tests/test_session_accounting.py` retains pre-existing upstream formatting drift out of scope).
+  - `mypy src\bvmt`: Success: no issues found in 32 source files.
+  - `scripts\validate_skills.py`: Validated 10 local skill entrypoints and metadata files.
+- **Limitation / Next Action**:
+  - Live interactive Playwright login & extraction against `tunisbourse-challenge.com` (`displayp.aspx` / `display_histo.aspx`) remains user-session dependent (local Chrome/Edge fallback verified via mocks). Ready for Codex review/integration on `main`.
+
+## Previous checkpoint (2026-11-10)
 **Tuesday, November 10, 2026 — Pre-Market Operational Readiness & Trade Planner Hotfix** verified on `main` (commit `36ebc34`).
 - **P0 Hotfix (`frontend/src/app/planner/page.tsx`, `src/bvmt/multi_horizon.py`)**: Resolved runtime crash on `/planner` caused by `day_trading_notice` schema key mismatch (`reasons` vs `primary_reasons`). Backend now serves both keys and all notice metadata; frontend hardened with defensive fallbacks.
 - **Service Status**:

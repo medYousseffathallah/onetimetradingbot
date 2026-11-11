@@ -8,6 +8,7 @@ Never accesses bysell.aspx or submits orders.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -20,13 +21,21 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from bvmt.challenge_universe import resolve_challenge_record
+from bvmt.snapshots import atomic_write_text
+
 DEFAULT_CHALLENGE_URL = "https://www.tunisbourse-challenge.com/displayp.aspx"
 DEFAULT_MOVEMENTS_URL = "https://www.tunisbourse-challenge.com/display_histo.aspx"
 DEFAULT_LOGIN_URL = "https://www.tunisbourse-challenge.com/"
 DEFAULT_ROUNDING_TOLERANCE_TND = Decimal("0.05")
 STANDARD_FEE_RATE = Decimal("0.005")
 
-ALLOWED_CHALLENGE_HOSTS = {"www.tunisbourse-challenge.com", "tunisbourse-challenge.com"}
+ALLOWED_CHALLENGE_HOSTS = {
+    "www.tunisbourse-challenge.com",
+    "tunisbourse-challenge.com",
+    "www.tunisbourse.com.tn",
+    "tunisbourse.com.tn",
+}
 FORBIDDEN_TRADING_PATHS = ("bysell.aspx", "acheter", "vendre")
 
 
@@ -65,8 +74,61 @@ def validate_readonly_challenge_url(url: str) -> str:
     return url.strip()
 
 
+_KNOWN_BVMT_ALIASES: dict[str, tuple[str, str, str | None]] = {
+    "BH ASSURANCE": ("BH_ASSURANCE", "BH ASSURANCE", "TN0006550016"),
+    "BH_ASSURANCE": ("BH_ASSURANCE", "BH ASSURANCE", "TN0006550016"),
+    "ASSURANCES SALIM": ("BH_ASSURANCE", "BH ASSURANCE", "TN0006550016"),
+    "BH LEASING": ("BH_LEASING", "BH LEASING", "TN0007290017"),
+    "BH_LEASING": ("BH_LEASING", "BH LEASING", "TN0007290017"),
+    "TOTAL TUNISIE": ("TOTAL_TUNISIE", "TOTAL TUNISIE", None),
+    "TOTAL_TUNISIE": ("TOTAL_TUNISIE", "TOTAL TUNISIE", None),
+    "TOTALENERGIES MARKETING TUNISIE": ("TOTAL_TUNISIE", "TOTAL TUNISIE", None),
+}
+
+
+def _slug_instrument_token(raw: str) -> str:
+    return re.sub(r"[^A-Z0-9._-]+", "_", " ".join(raw.strip().upper().split())).strip("_")
+
+
+def resolve_canonical_instrument(
+    symbol: str,
+    *,
+    displayed_symbol: str | None = None,
+    isin: str | None = None,
+) -> tuple[str, str, str | None]:
+    """Resolve raw display/challenge names into (canonical_instrument_id, canonical_symbol, verified_isin).
+
+    Explicit non-challenge names like 'BH ASSURANCE' are resolved before falling back
+    to short tickers like 'BH' so distinct issuers never inherit BH BANK's ISIN.
+    """
+    primary_clean = " ".join(symbol.strip().upper().split())
+    if primary_clean in _KNOWN_BVMT_ALIASES:
+        return _KNOWN_BVMT_ALIASES[primary_clean]
+    primary_slug = _slug_instrument_token(primary_clean)
+    if primary_slug in _KNOWN_BVMT_ALIASES:
+        return _KNOWN_BVMT_ALIASES[primary_slug]
+
+    candidates = [symbol, primary_slug, isin, displayed_symbol]
+    for candidate in candidates:
+        if not candidate or not str(candidate).strip():
+            continue
+        text = str(candidate).strip()
+        upper_clean = " ".join(text.upper().split())
+        if upper_clean in _KNOWN_BVMT_ALIASES:
+            return _KNOWN_BVMT_ALIASES[upper_clean]
+        rec = resolve_challenge_record(text)
+        if rec is None:
+            rec = resolve_challenge_record(_slug_instrument_token(text))
+        if rec is not None:
+            return rec.canonical_instrument_id, rec.canonical_bvmt_symbol, rec.verified_isin
+
+    fallback_id = primary_slug or "UNKNOWN"
+    return fallback_id, (symbol.strip() or fallback_id), isin
+
+
 def _normalize_instrument_id(symbol: str) -> str:
-    return re.sub(r"[^A-Z0-9._-]+", "_", symbol.strip().upper()).strip("_")
+    inst_id, _, _ = resolve_canonical_instrument(symbol)
+    return inst_id
 
 
 @dataclass(frozen=True)
@@ -184,6 +246,9 @@ class CompetitionPortfolioDOMSnapshot:
     movements_source_url: str | None = None
     transactions: tuple[BrowserTransactionItem, ...] = ()
     pending_orders: tuple[BrowserPendingOrderItem, ...] = ()
+    snapshot_id: str | None = None
+    source_schema_version: str | None = None
+    movements_parse_warnings: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -221,6 +286,9 @@ class CompetitionPortfolioDOMSnapshot:
             "movements_source_url": self.movements_source_url,
             "transactions": [t.to_dict() for t in self.transactions],
             "pending_orders": [p.to_dict() for p in self.pending_orders],
+            "snapshot_id": self.snapshot_id,
+            "source_schema_version": self.source_schema_version,
+            "movements_parse_warnings": list(self.movements_parse_warnings),
         }
 
     @classmethod
@@ -263,6 +331,14 @@ class CompetitionPortfolioDOMSnapshot:
         rank = data.get("competition_rank")
         participants = data.get("total_participants")
         mov_url = data.get("movements_source_url")
+        raw_snap_id = data.get("snapshot_id")
+        raw_schema = data.get("source_schema_version")
+        raw_warnings = data.get("movements_parse_warnings", [])
+        mov_warnings = (
+            tuple(str(w) for w in raw_warnings if str(w).strip())
+            if isinstance(raw_warnings, list)
+            else ()
+        )
         return cls(
             source_url=str(data["source_url"]),
             retrieved_at=datetime.fromisoformat(str(data["retrieved_at"])),
@@ -280,20 +356,62 @@ class CompetitionPortfolioDOMSnapshot:
             movements_source_url=str(mov_url) if mov_url is not None else None,
             transactions=transactions,
             pending_orders=pending_orders,
+            snapshot_id=str(raw_snap_id) if raw_snap_id is not None else None,
+            source_schema_version=str(raw_schema) if raw_schema is not None else None,
+            movements_parse_warnings=mov_warnings,
         )
 
 
 def parse_french_number(raw: str) -> Decimal:
-    """Parse French numbers with comma decimals, space thousand separators, and currency/percent suffixes."""
-    cleaned = raw.strip()
-    for token in ("DT", "dt", "TND", "tnd", "%", "+", "\xa0", "\u202f"):
-        cleaned = cleaned.replace(token, "")
-    # Remove interior spaces used as thousand separators, then normalize comma to period
-    cleaned = cleaned.replace(" ", "").replace(",", ".").strip()
+    """Parse locale-aware numbers (NBSP/narrow-NBSP spaces, dot/comma thousands, DT/TND/%) strictly."""
+    if not isinstance(raw, str):
+        raise ValueError(f"Expected numeric string, got {type(raw).__name__}")
+    text = raw.strip()
+    if not text or text.lower() in {"...", "…", "—", "–", "-", "n/a", "na", "null", "none"}:
+        raise ValueError(f"Cannot parse placeholder or empty numeric value from '{raw}'")
+    cleaned = text.replace("\xa0", "").replace("\u202f", "")
+    cleaned = re.sub(r"(?i)\b(?:dt|tnd)\b", "", cleaned)
+    cleaned = cleaned.replace("%", "").replace("+", "").replace(" ", "").strip()
+    if not cleaned:
+        raise ValueError(f"Cannot parse empty numeric value from '{raw}'")
+
+    if "." in cleaned and "," in cleaned:
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            # French format: 1.234,567 -> 1234.567
+            int_part, frac_part = cleaned.rsplit(",", 1)
+            if "," in int_part:
+                raise ValueError(f"Cannot parse malformed French numeric value from '{raw}'")
+            cleaned = f"{int_part.replace('.', '')}.{frac_part}"
+        else:
+            # English format: 1,234.567 -> 1234.567
+            int_part, frac_part = cleaned.rsplit(".", 1)
+            cleaned = f"{int_part.replace(',', '')}.{frac_part}"
+    elif "," in cleaned:
+        if cleaned.count(",") > 1:
+            parts = cleaned.split(",")
+            if all(len(p) == 3 and p.isdigit() for p in parts[1:]):
+                cleaned = "".join(parts)
+            else:
+                raise ValueError(f"Cannot parse ambiguous comma-separated number from '{raw}'")
+        else:
+            cleaned = cleaned.replace(",", ".")
+    elif "." in cleaned and cleaned.count(".") > 1:
+        parts = cleaned.lstrip("-").split(".")
+        if all(len(p) == 3 and p.isdigit() for p in parts[1:]):
+            sign = "-" if cleaned.startswith("-") else ""
+            cleaned = sign + "".join(parts)
+        else:
+            raise ValueError(f"Cannot parse ambiguous dot-separated number from '{raw}'")
+
+    if not re.fullmatch(r"-?\d+(?:\.\d+)?", cleaned):
+        raise ValueError(f"Cannot parse numeric value from '{raw}'")
     try:
-        return Decimal(cleaned)
+        value = Decimal(cleaned)
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"Cannot parse numeric value from '{raw}': {exc}") from exc
+    if not value.is_finite():
+        raise ValueError(f"Non-finite numeric value from '{raw}'")
+    return value
 
 
 @dataclass
@@ -485,16 +603,30 @@ def _parse_holding_row(row: _DOMRow) -> BrowserHoldingItem:
     )
 
 
-def parse_competition_movements_html(
+def _classify_movement_side(side_raw: str) -> str | None:
+    """Strictly classify movement side without substring false positives like 'SOTUVER' or 'Achat validé'."""
+    cleaned = side_raw.strip().lower()
+    if not cleaned:
+        return None
+    if re.search(r"\b(achat|acheter|buy|a)\b", cleaned):
+        if re.search(r"\b(vente|vendre|sell|v)\b", cleaned):
+            return None
+        return "BUY"
+    if re.search(r"\b(vente|vendre|sell|v)\b", cleaned):
+        return "SELL"
+    return None
+
+
+def parse_competition_movements_with_warnings(
     html_content: str,
     *,
     retrieved_at: datetime | None = None,
-) -> tuple[tuple[BrowserTransactionItem, ...], tuple[BrowserPendingOrderItem, ...]]:
-    """Parse read-only display_histo.aspx ('Mouvements') HTML into executed transactions and pending orders.
-
-    Supports French movement labels ('Achat'/'Vente', 'Exécuté'/'En cours'/'En attente')
-    as well as English equivalents ('BUY'/'SELL', 'EXECUTED'/'PENDING').
-    """
+) -> tuple[
+    tuple[BrowserTransactionItem, ...],
+    tuple[BrowserPendingOrderItem, ...],
+    tuple[str, ...],
+]:
+    """Parse display_histo.aspx HTML into transactions, pending orders, and explicit parser warnings."""
     timestamp = retrieved_at or datetime.now(UTC)
     lower_html = html_content.lower()
     if "connectez-vous" in lower_html or (
@@ -509,8 +641,15 @@ def parse_competition_movements_html(
 
     transactions: list[BrowserTransactionItem] = []
     pending_orders: list[BrowserPendingOrderItem] = []
+    warnings: list[str] = []
 
     seq = 0
+    matched_any_header = False
+    saw_candidate_rows = False
+    saw_empty_notice = any(
+        phrase in lower_html for phrase in ("aucun mouvement", "aucun ordre", "aucune opération")
+    )
+
     for table in parser.tables:
         header_map: dict[str, int] = {}
         for row in table:
@@ -519,35 +658,55 @@ def parse_competition_movements_html(
             row_lower = [c.strip().lower() for c in row]
             joined = " ".join(row_lower)
 
-            # Detect header row
-            if any(k in joined for k in ("valeur", "titre", "instrument", "symbole")) and any(
-                k in joined for k in ("quantit", "qté", "qte", "shares")
+            # Detect header row (including Libellé / Nombre variants)
+            if any(
+                k in joined for k in ("valeur", "titre", "instrument", "symbole", "libell")
+            ) and any(
+                k in joined for k in ("quantit", "qté", "qte", "shares", "nombre", "volume")
             ):
+                matched_any_header = True
                 header_map = {}
                 for idx, col in enumerate(row_lower):
-                    if any(k in col for k in ("date", "séance", "seance", "heure")):
+                    if any(k in col for k in ("date", "séance", "seance", "heure", "horodat")):
                         header_map.setdefault("date", idx)
-                    elif any(k in col for k in ("valeur", "titre", "nom", "instrument", "symbole")):
+                    elif any(
+                        k in col
+                        for k in ("valeur", "titre", "nom", "instrument", "symbole", "libell")
+                    ):
                         header_map.setdefault("symbol", idx)
                     elif any(
                         k in col for k in ("sens", "opérat", "operat", "type", "side", "nature")
                     ):
                         header_map.setdefault("side", idx)
-                    elif any(k in col for k in ("quantit", "qté", "qte", "shares")):
+                    elif any(
+                        k in col
+                        for k in ("quantit", "qté", "qte", "shares", "nombre", "volume")
+                    ):
                         header_map.setdefault("quantity", idx)
                     elif any(k in col for k in ("cours", "prix", "limite", "price")):
                         header_map.setdefault("price", idx)
                     elif any(k in col for k in ("frais", "commission", "fee")):
                         header_map.setdefault("fee", idx)
-                    elif any(k in col for k in ("statut", "état", "etat", "status", "situation")):
+                    elif any(
+                        k in col for k in ("statut", "état", "etat", "status", "situation")
+                    ):
                         header_map.setdefault("status", idx)
                     elif any(k in col for k in ("réf", "ref", "ordre", "id", "n°", "num")):
                         header_map.setdefault("id", idx)
                 continue
 
+            if len(row) >= 3 and not any(
+                k in joined for k in ("aucun mouvement", "aucun ordre", "aucune opération")
+            ):
+                if any(any(ch.isdigit() for ch in cell) for cell in row):
+                    saw_candidate_rows = True
+
             if not header_map or len(row) < 4:
                 continue
-            if any(k in joined for k in ("aucun mouvement", "aucun ordre", "totaux", "liquidit")):
+            if any(
+                k in joined
+                for k in ("aucun mouvement", "aucun ordre", "aucune opération", "totaux", "liquidit")
+            ):
                 continue
 
             try:
@@ -555,28 +714,33 @@ def parse_competition_movements_html(
                 qty_idx = header_map.get("quantity", 2)
                 px_idx = header_map.get("price", 3)
                 if max(sym_idx, qty_idx, px_idx) >= len(row):
+                    warnings.append("Skipped movements row with missing required columns.")
                     continue
 
                 symbol = row[sym_idx].strip()
-                if not symbol or symbol.lower() in {"valeur", "nom de valeur", "titre"}:
+                if not symbol or symbol.lower() in {"valeur", "nom de valeur", "titre", "libellé"}:
                     continue
 
-                qty_raw = row[qty_idx].replace(" ", "").strip()
+                qty_raw = (
+                    row[qty_idx].replace("\xa0", "").replace("\u202f", "").replace(" ", "").strip()
+                )
                 quantity = int(qty_raw)
                 if quantity <= 0:
                     continue
                 price = parse_french_number(row[px_idx])
 
-                # Determine side (BUY / SELL)
+                # Determine side strictly from the side column (never raw symbol text)
                 side_raw = (
-                    row[header_map["side"]].strip().lower()
+                    row[header_map["side"]].strip()
                     if "side" in header_map and header_map["side"] < len(row)
-                    else joined
+                    else ""
                 )
-                if any(k in side_raw for k in ("vente", "vendre", "sell", "v")):
-                    side = "SELL"
-                else:
-                    side = "BUY"
+                side = _classify_movement_side(side_raw)
+                if side is None:
+                    warnings.append(
+                        f"Ambiguous or missing movement side '{side_raw}' for '{symbol}'."
+                    )
+                    continue
 
                 # Determine status (EXECUTED vs PENDING vs CANCELLED)
                 status_raw = (
@@ -587,7 +751,6 @@ def parse_competition_movements_html(
                 if any(k in status_raw for k in ("annul", "cancel", "rejet", "expir")):
                     continue
 
-                # Determine date/timestamp
                 date_raw = (
                     row[header_map["date"]].strip()
                     if "date" in header_map and header_map["date"] < len(row)
@@ -603,6 +766,8 @@ def parse_competition_movements_html(
                     and row[header_map["id"]].strip()
                     else f"MOV-{seq:04d}"
                 )
+                tx_id = raw_id if raw_id.upper().startswith("TX-") else f"TX-{raw_id}"
+                ord_id = raw_id if raw_id.upper().startswith("ORD-") else f"ORD-{raw_id}"
                 inst_id = _normalize_instrument_id(symbol)
 
                 if any(
@@ -611,7 +776,7 @@ def parse_competition_movements_html(
                 ):
                     pending_orders.append(
                         BrowserPendingOrderItem(
-                            order_id=f"ORD-{raw_id}",
+                            order_id=ord_id,
                             symbol=symbol,
                             instrument_id=inst_id,
                             side=side,
@@ -635,8 +800,8 @@ def parse_competition_movements_html(
                         fee = (gross * STANDARD_FEE_RATE).quantize(Decimal("0.001"))
                     transactions.append(
                         BrowserTransactionItem(
-                            transaction_id=f"TX-{raw_id}",
-                            order_id=f"ORD-{raw_id}",
+                            transaction_id=tx_id,
+                            order_id=ord_id,
                             symbol=symbol,
                             instrument_id=inst_id,
                             side=side,
@@ -646,27 +811,71 @@ def parse_competition_movements_html(
                             executed_at=iso_ts,
                         )
                     )
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as exc:
+                warnings.append(f"Unparseable movements row skipped: {exc}")
                 continue
 
-    return tuple(transactions), tuple(pending_orders)
+    if (
+        saw_candidate_rows
+        and not transactions
+        and not pending_orders
+        and not saw_empty_notice
+        and (not matched_any_header or warnings)
+    ):
+        if not warnings:
+            warnings.append(
+                "display_histo.aspx table headers did not match any known layout and yielded 0 rows."
+            )
+
+    return tuple(transactions), tuple(pending_orders), tuple(warnings)
+
+
+def parse_competition_movements_html(
+    html_content: str,
+    *,
+    retrieved_at: datetime | None = None,
+) -> tuple[tuple[BrowserTransactionItem, ...], tuple[BrowserPendingOrderItem, ...]]:
+    """Parse read-only display_histo.aspx ('Mouvements') HTML into executed transactions and pending orders."""
+    txs, pends, _ = parse_competition_movements_with_warnings(
+        html_content, retrieved_at=retrieved_at
+    )
+    return txs, pends
 
 
 def _parse_movement_timestamp(raw: str, *, fallback: datetime) -> str:
     cleaned = raw.strip()
     if not cleaned:
         return fallback.isoformat()
+    try:
+        iso_candidate = cleaned.replace("Z", "+00:00")
+        parsed_iso = datetime.fromisoformat(iso_candidate)
+        if parsed_iso.tzinfo is None:
+            return parsed_iso.isoformat() + "+01:00"
+        return parsed_iso.isoformat()
+    except ValueError:
+        pass
     # Match DD/MM/YYYY or DD-MM-YYYY
-    m_dmy = re.search(r"(\d{2})[/\-](\d{2})[/\-](\d{4})(?:\s+(\d{2}):(\d{2}))?", cleaned)
+    m_dmy = re.search(
+        r"(\d{2})[/\-](\d{2})[/\-](\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?",
+        cleaned,
+    )
     if m_dmy:
-        day, month, year, hh, mm = m_dmy.groups()
+        day, month, year, hh, mm, ss = m_dmy.groups()
         hour = hh or "10"
         minute = mm or "00"
-        return f"{year}-{month}-{day}T{hour}:{minute}:00+01:00"
-    # Match YYYY-MM-DD
-    m_ymd = re.search(r"(\d{4})-(\d{2})-(\d{2})", cleaned)
+        sec = ss or "00"
+        return f"{year}-{month}-{day}T{hour}:{minute}:{sec}+01:00"
+    # Match YYYY-MM-DD HH:MM[:SS]
+    m_ymd = re.search(
+        r"(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?",
+        cleaned,
+    )
     if m_ymd:
-        return f"{m_ymd.group(0)}T10:00:00+01:00"
+        year, month, day, hh, mm, ss = m_ymd.groups()
+        hour = hh or "10"
+        minute = mm or "00"
+        sec = ss or "00"
+        return f"{year}-{month}-{day}T{hour}:{minute}:{sec}+01:00"
     return fallback.isoformat()
 
 
@@ -705,7 +914,7 @@ def parse_competition_portfolio_html(
 
     # 2. Extract Portfolio Total
     total_match = re.search(
-        r"Votre\s+portefeuille\s*:\s*([0-9\s,\.]+)\s*(?:DT|dt)?",
+        r"Votre\s+portefeuille\s*:\s*(-?[0-9\s\xa0\u202f,\.]+)\s*(?:DT|dt|TND|tnd)?",
         full_text,
         re.IGNORECASE,
     )
@@ -837,14 +1046,18 @@ def parse_competition_portfolio_html(
     movements_captured = False
     tx_items: tuple[BrowserTransactionItem, ...] = ()
     pend_items: tuple[BrowserPendingOrderItem, ...] = ()
+    mov_warnings: tuple[str, ...] = ()
     if movements_html and movements_html.strip():
         try:
-            tx_items, pend_items = parse_competition_movements_html(
+            tx_items, pend_items, mov_warnings = parse_competition_movements_with_warnings(
                 movements_html, retrieved_at=timestamp
             )
-            movements_captured = True
-        except AuthenticationExpiredError:
+            movements_captured = (
+                bool(tx_items or pend_items) or not mov_warnings
+            )
+        except AuthenticationExpiredError as exc:
             movements_captured = False
+            mov_warnings = (str(exc),)
 
     return CompetitionPortfolioDOMSnapshot(
         source_url=source_url,
@@ -863,6 +1076,7 @@ def parse_competition_portfolio_html(
         movements_source_url=movements_source_url if movements_captured else None,
         transactions=tx_items,
         pending_orders=pend_items,
+        movements_parse_warnings=mov_warnings,
     )
 
 
@@ -870,24 +1084,59 @@ def save_browser_snapshot(
     snapshot: CompetitionPortfolioDOMSnapshot,
     snapshots_dir: Path,
 ) -> Path:
-    """Save structured DOM snapshot locally outside Git."""
+    """Save structured DOM snapshot atomically without overwriting prior same-second captures."""
     snapshots_dir.mkdir(parents=True, exist_ok=True)
     stamp = snapshot.retrieved_at.strftime("%Y%m%d_%H%M%S")
-    out_path = snapshots_dir / f"sync_{stamp}.json"
-    out_path.write_text(json.dumps(snapshot.to_dict(), indent=2), encoding="utf-8")
-    return out_path
+    payload = json.dumps(snapshot.to_dict(), indent=2)
+    base_path = snapshots_dir / f"sync_{stamp}.json"
+    if not base_path.exists():
+        atomic_write_text(base_path, payload, allow_identical=True, allow_overwrite=False)
+        return base_path
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:6]
+    micros = snapshot.retrieved_at.strftime("%f")
+    candidate = snapshots_dir / f"sync_{stamp}_{micros}_{digest}.json"
+    seq = 1
+    while candidate.exists():
+        candidate = snapshots_dir / f"sync_{stamp}_{micros}_{digest}_{seq:02d}.json"
+        seq += 1
+    atomic_write_text(candidate, payload, allow_identical=True, allow_overwrite=False)
+    return candidate
+
+
+def load_browser_snapshots_with_warnings(
+    snapshots_dir: Path,
+) -> tuple[list[tuple[Path, CompetitionPortfolioDOMSnapshot]], list[str]]:
+    """Load all valid DOM snapshots sorted newest-first by retrieved_at, skipping corrupt files safely."""
+    if not snapshots_dir.exists():
+        return [], []
+    parsed: list[tuple[Path, CompetitionPortfolioDOMSnapshot]] = []
+    warnings: list[str] = []
+    for path in sorted(snapshots_dir.glob("sync_*.json")):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raise ValueError("snapshot JSON root must be an object")
+            parsed.append((path, CompetitionPortfolioDOMSnapshot.from_dict(raw)))
+        except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
+            warnings.append(f"Skipped corrupt snapshot file '{path.name}': {exc}")
+    parsed.sort(
+        key=lambda item: (
+            item[1].retrieved_at.astimezone(UTC)
+            if item[1].retrieved_at.tzinfo is not None
+            else item[1].retrieved_at.replace(tzinfo=UTC),
+            item[0].name,
+        ),
+        reverse=True,
+    )
+    return parsed, warnings
 
 
 def load_latest_browser_snapshot(snapshots_dir: Path) -> CompetitionPortfolioDOMSnapshot | None:
-    """Load most recent local DOM snapshot if available."""
-    if not snapshots_dir.exists():
+    """Load most recent valid local DOM snapshot if available."""
+    parsed, _ = load_browser_snapshots_with_warnings(snapshots_dir)
+    if not parsed:
         return None
-    files = sorted(snapshots_dir.glob("sync_*.json"))
-    if not files:
-        return None
-    latest_file = files[-1]
-    data = json.loads(latest_file.read_text(encoding="utf-8"))
-    return CompetitionPortfolioDOMSnapshot.from_dict(data)
+    return parsed[0][1]
 
 
 def run_interactive_browser_sync(
@@ -936,18 +1185,31 @@ def _run_interactive_browser_pages(
     user_data_dir.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        try:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=str(user_data_dir),
-                headless=False,
-                channel="chrome",
-                viewport={"width": 1280, "height": 840},
-            )
-        except Exception:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=str(user_data_dir),
-                headless=False,
-                viewport={"width": 1280, "height": 840},
+        launch_errors: list[str] = []
+        context = None
+        for channel_name in ("chrome", "msedge", None):
+            try:
+                if channel_name is not None:
+                    context = p.chromium.launch_persistent_context(
+                        user_data_dir=str(user_data_dir),
+                        headless=False,
+                        viewport={"width": 1280, "height": 840},
+                        channel=channel_name,
+                    )
+                else:
+                    context = p.chromium.launch_persistent_context(
+                        user_data_dir=str(user_data_dir),
+                        headless=False,
+                        viewport={"width": 1280, "height": 840},
+                    )
+                break
+            except Exception as exc:
+                label = channel_name or "chromium"
+                launch_errors.append(f"{label}: {exc}")
+        if context is None:
+            raise BrowserCollectorError(
+                "Unable to launch Chrome, Edge, or Chromium browser context: "
+                + "; ".join(launch_errors)
             )
         try:
             page = context.new_page() if not context.pages else context.pages[0]
@@ -1059,14 +1321,20 @@ def run_browser_sync_subprocess(
         "--timeout",
         str(timeout_seconds),
     ]
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(30, timeout_seconds + 30),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise BrowserCollectorError(
+            f"Browser collector subprocess timed out after {timeout_seconds + 30}s."
+        ) from exc
     if proc.returncode != 0:
         err_msg = (proc.stderr or proc.stdout or "Unknown browser sync subprocess error").strip()
         if "AuthenticationExpiredError:" in err_msg:

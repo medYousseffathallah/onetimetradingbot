@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 from html import unescape
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -33,11 +33,14 @@ from bvmt.browser import (
     AuthenticationExpiredError,
     BrowserCollectorError,
     CompetitionPortfolioDOMSnapshot,
-    load_latest_browser_snapshot,
     run_browser_sync_subprocess,
 )
 from bvmt.challenge_universe import get_challenge_universe
-from bvmt.dashboard import DashboardAppState
+from bvmt.dashboard import (
+    DashboardAppState,
+    load_rejected_snapshot_keys,
+    snapshot_rejection_keys,
+)
 from bvmt.data import inspect_market_dataset_provenance, read_bars_csv
 from bvmt.glossary import export_full_glossary, get_eligibility_explanation
 from bvmt.holding_period import evaluate_holding_periods
@@ -47,6 +50,7 @@ from bvmt.macro_events import get_all_macro_events, get_macro_narrative_context
 from bvmt.manual_import import (
     parse_manual_portfolio_csv,
     parse_manual_portfolio_paste,
+    parse_manual_transactions_csv,
 )
 from bvmt.multi_horizon import evaluate_multi_horizon_intelligence
 from bvmt.paper_trading import (
@@ -57,7 +61,7 @@ from bvmt.paper_trading import (
     record_forward_paper_signal,
 )
 from bvmt.playwright_worker import global_job_manager
-from bvmt.portfolio_service import PortfolioStateService
+from bvmt.portfolio_service import PortfolioStateService, SnapshotConflictError
 from bvmt.position_sizing import (
     PendingOrderReservation,
 )
@@ -65,6 +69,7 @@ from bvmt.session_accounting import generate_november_09_session_report
 from bvmt.sync_service import (
     CanonicalSyncService,
     NormalizedAccountObservation,
+    quantize_tnd,
 )
 from bvmt.trade_planner import build_manual_trade_plan
 
@@ -205,6 +210,7 @@ class SnapshotSummaryItem(WebsiteReportedSummary):
 
 
 class BrowserSnapshotSummaryItem(APIModel):
+    snapshot_id: str | None = None
     retrieved_at: datetime
     portfolio_total_tnd: Money
     available_cash_tnd: Money
@@ -494,6 +500,12 @@ class BrowserSyncTriggerResponse(APIModel):
 
 class ConfirmSnapshotRequest(APIModel):
     confirmed_by_user: StrictBool
+    expected_snapshot_id: str | None = None
+
+
+class RejectSnapshotRequest(APIModel):
+    snapshot_id: str | None = None
+    reason: str | None = None
 
 
 class ManualPasteSyncRequest(APIModel):
@@ -510,12 +522,17 @@ class ManualCsvSyncRequest(APIModel):
     rank_override: int | None = None
 
 
+class ManualTransactionsCsvSyncRequest(APIModel):
+    csv_content: str
+
+
 class ExtensionSyncRequest(APIModel):
     source: Literal["CHROME_EXTENSION"] = "CHROME_EXTENSION"
+    source_schema_version: str | None = None
     capture_timestamp: str
     snapshot_id: str
-    account_equity: str
-    available_cash: str
+    account_equity: str | None = None
+    available_cash: str | None = None
     holdings: list[dict[str, Any]] = Field(default_factory=list)
     pending_orders: list[dict[str, Any]] = Field(default_factory=list)
     transactions: list[dict[str, Any]] = Field(default_factory=list)
@@ -523,6 +540,9 @@ class ExtensionSyncRequest(APIModel):
     total_participants: int | None = None
     displayed_overall_performance_pct: str | None = None
     source_page_type: str = "displayp.aspx"
+    is_reconciled: bool | None = None
+    reconciliation_gap_tnd: str | None = None
+    validation_errors: list[str] = Field(default_factory=list)
     pairing_token: str | None = None
 
 
@@ -623,8 +643,17 @@ def _website(snapshot: CompetitionScreenshotSnapshot | None) -> WebsiteReportedS
 def _browser(
     snapshot: CompetitionPortfolioDOMSnapshot, confirmed: bool
 ) -> BrowserSnapshotSummaryItem:
+    snap_id = (
+        snapshot.snapshot_id
+        or f"browser_sync_{snapshot.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    )
     return BrowserSnapshotSummaryItem.model_validate(
-        {**asdict(snapshot), "holdings_count": len(snapshot.holdings), "is_confirmed": confirmed}
+        {
+            **asdict(snapshot),
+            "snapshot_id": snap_id,
+            "holdings_count": len(snapshot.holdings),
+            "is_confirmed": confirmed,
+        }
     )
 
 
@@ -787,9 +816,11 @@ def create_app(
 ) -> FastAPI:
     """Create an offline-default app; supplied services keep all custom path overrides."""
     base = service if service is not None else PortfolioStateService()
+    global_job_manager.configure_persistence(base.snapshots_dir.parent / "sync_jobs.json")
     canonical_sync = CanonicalSyncService(
         portfolio_service=base,
         snapshots_dir=base.snapshots_dir,
+        pairing_token_path=base.snapshots_dir.parent / "pairing_token.txt",
     )
     application = FastAPI(title="BVMT local research API", version=__version__)
     application.state.portfolio_service = base
@@ -862,8 +893,9 @@ def create_app(
     application.add_middleware(
         CORSMiddleware,
         allow_origins=LOCAL_ORIGINS,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_origin_regex=r"^chrome-extension://[a-z]{32}$",
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "X-BVMT-Pairing-Token"],
         allow_credentials=False,
     )
 
@@ -983,16 +1015,23 @@ def create_app(
     def snapshots(mode: PortfolioMode = "REAL_COMPETITION") -> SnapshotsResponse:
         active = for_mode(mode)
         state = active.load_state()
-        confirmed = {s.capture_timestamp for s in state.ledger.snapshot_history}
+        deduped_history: list[SnapshotSummaryItem] = []
+        seen_confirmed_keys: set[tuple[str, str]] = set()
+        for snap in state.ledger.snapshot_history:
+            key = (snap.snapshot_id, snap.capture_timestamp or "")
+            if key in seen_confirmed_keys:
+                continue
+            seen_confirmed_keys.add(key)
+            deduped_history.append(SnapshotSummaryItem.model_validate(_website(snap).model_dump()))
+        confirmed = {s.capture_timestamp for s in state.ledger.snapshot_history if s.capture_timestamp}
+        rejected_keys = load_rejected_snapshot_keys(active.snapshots_dir)
         return SnapshotsResponse(
-            confirmed_history=[
-                SnapshotSummaryItem.model_validate(_website(s).model_dump())
-                for s in state.ledger.snapshot_history
-            ],
+            confirmed_history=deduped_history,
             unconfirmed_browser_snapshots=[
                 _browser(s, False)
                 for _, s in active.list_browser_snapshots()
                 if s.retrieved_at.isoformat() not in confirmed
+                and not (snapshot_rejection_keys(s) & rejected_keys)
             ],
             pending_confirmation=_browser(state.pending_browser_snapshot, False)
             if state.pending_browser_snapshot
@@ -1350,6 +1389,7 @@ def create_app(
     def browser_sync(body: BrowserSyncRequest) -> BrowserSyncTriggerResponse:
         if base.portfolio_mode != "REAL_COMPETITION":
             raise HTTPException(400, "Browser synchronization requires REAL_COMPETITION mode.")
+        before_names = {p.name for p, _ in base.list_browser_snapshots()}
         try:
             captured, _ = run_browser_sync_subprocess(
                 user_data_dir=base.snapshots_dir.parent / "browser_profile",
@@ -1361,11 +1401,19 @@ def create_app(
                 400, "Browser authentication expired. Log in manually and retry."
             ) from exc
         except BrowserCollectorError as exc:
-            # Check if a fresh snapshot was actually captured despite a subsequent collision
-            latest = load_latest_browser_snapshot(base.snapshots_dir)
-            if latest is not None:
+            # Check ONLY whether a brand-new unconfirmed snapshot file was persisted during this run
+            new_snaps = [
+                (p, s) for p, s in base.list_browser_snapshots() if p.name not in before_names
+            ]
+            if new_snaps:
+                latest = new_snaps[0][1]
                 state = base.load_state()
-                if latest.retrieved_at not in state.ledger.snapshot_history:
+                confirmed_timestamps = {
+                    s.capture_timestamp for s in state.ledger.snapshot_history if s.capture_timestamp
+                }
+                if state.account_snapshot and state.account_snapshot.capture_timestamp:
+                    confirmed_timestamps.add(state.account_snapshot.capture_timestamp)
+                if latest.retrieved_at.isoformat() not in confirmed_timestamps:
                     return BrowserSyncTriggerResponse(
                         captured_snapshot=_browser(latest, False),
                         reconciliation_preview=_preview(base, latest),
@@ -1403,9 +1451,32 @@ def create_app(
                 "Unauthorized pairing token. Please configure the pairing token in the BVMT Companion extension.",
             )
 
+        if body.validation_errors:
+            raise HTTPException(
+                422,
+                detail=f"Extension DOM extraction reported validation errors: {'; '.join(body.validation_errors)}",
+            )
+
+        obs_dict = body.model_dump()
+        if body.source_page_type == "display_histo.aspx":
+            if body.account_equity is None or body.available_cash is None:
+                cur_state = base.load_state()
+                if cur_state.account_snapshot is not None:
+                    obs_dict["account_equity"] = str(cur_state.account_snapshot.portfolio_total_tnd)
+                    obs_dict["available_cash"] = str(cur_state.account_snapshot.available_cash_tnd)
+                else:
+                    val = cur_state.ledger.valuate(cur_state.price_map)
+                    obs_dict["account_equity"] = str(val.total_equity_tnd)
+                    obs_dict["available_cash"] = str(val.available_cash_tnd)
+        elif body.account_equity is None or body.available_cash is None:
+            raise HTTPException(
+                422,
+                detail="Extension payload missing required account_equity or available_cash balances.",
+            )
+
         try:
-            obs = NormalizedAccountObservation.from_dict(body.model_dump())
-        except (ValueError, KeyError) as exc:
+            obs = NormalizedAccountObservation.from_dict(obs_dict)
+        except (ValueError, KeyError, InvalidOperation) as exc:
             raise HTTPException(422, f"Failed to parse extension payload: {exc}") from exc
 
         result = canonical_sync.ingest_observation(obs)
@@ -1433,17 +1504,16 @@ def create_app(
         if base.portfolio_mode != "REAL_COMPETITION":
             raise HTTPException(400, "Manual paste synchronization requires REAL_COMPETITION mode.")
 
-        cash_ov = Decimal(body.cash_override) if body.cash_override is not None else None
-        eq_ov = Decimal(body.equity_override) if body.equity_override is not None else None
-
         try:
+            cash_ov = quantize_tnd(body.cash_override) if body.cash_override is not None else None
+            eq_ov = quantize_tnd(body.equity_override) if body.equity_override is not None else None
             obs = parse_manual_portfolio_paste(
                 body.raw_text,
                 cash_override=cash_ov,
                 equity_override=eq_ov,
                 rank_override=body.rank_override,
             )
-        except ValueError as exc:
+        except (ValueError, InvalidOperation) as exc:
             raise HTTPException(422, f"Failed to parse pasted table: {exc}") from exc
 
         result = canonical_sync.ingest_observation(obs)
@@ -1471,17 +1541,16 @@ def create_app(
         if base.portfolio_mode != "REAL_COMPETITION":
             raise HTTPException(400, "Manual CSV synchronization requires REAL_COMPETITION mode.")
 
-        cash_ov = Decimal(body.cash_override) if body.cash_override is not None else None
-        eq_ov = Decimal(body.equity_override) if body.equity_override is not None else None
-
         try:
+            cash_ov = quantize_tnd(body.cash_override) if body.cash_override is not None else None
+            eq_ov = quantize_tnd(body.equity_override) if body.equity_override is not None else None
             obs = parse_manual_portfolio_csv(
                 body.csv_content,
                 cash=cash_ov,
                 equity=eq_ov,
                 rank=body.rank_override,
             )
-        except ValueError as exc:
+        except (ValueError, InvalidOperation) as exc:
             raise HTTPException(422, f"Failed to parse CSV holdings: {exc}") from exc
 
         result = canonical_sync.ingest_observation(obs)
@@ -1489,6 +1558,58 @@ def create_app(
             raise HTTPException(
                 422,
                 detail=f"Manual CSV validation failed: {'; '.join(result.error_messages)}",
+            )
+
+        dom_snap = obs.to_dom_snapshot()
+        return SyncIngestionResponse(
+            success=True,
+            validation_status=result.validation_status,
+            snapshot_id=result.snapshot_id,
+            reconciliation_gap_tnd=result.reconciliation_gap_tnd,
+            is_duplicate=result.is_duplicate,
+            error_messages=result.error_messages,
+            warning_messages=result.warning_messages,
+            captured_snapshot=_browser(dom_snap, False),
+            reconciliation_preview=_preview(base, dom_snap),
+        )
+
+    @application.post("/api/sync/manual/transactions")
+    def manual_transactions_sync(body: ManualTransactionsCsvSyncRequest) -> SyncIngestionResponse:
+        if base.portfolio_mode != "REAL_COMPETITION":
+            raise HTTPException(
+                400, "Manual transactions CSV synchronization requires REAL_COMPETITION mode."
+            )
+
+        try:
+            txs = parse_manual_transactions_csv(body.csv_content)
+        except (ValueError, InvalidOperation) as exc:
+            raise HTTPException(422, f"Failed to parse CSV transactions: {exc}") from exc
+
+        cur_state = base.load_state()
+        if cur_state.account_snapshot is not None:
+            eq_val = cur_state.account_snapshot.portfolio_total_tnd
+            cash_val = cur_state.account_snapshot.available_cash_tnd
+        else:
+            val = cur_state.ledger.valuate(cur_state.price_map)
+            eq_val = val.total_equity_tnd
+            cash_val = val.available_cash_tnd
+
+        now_utc = datetime.now(UTC)
+        obs = NormalizedAccountObservation(
+            source="CSV_IMPORT",
+            capture_timestamp=now_utc.isoformat(),
+            snapshot_id=f"manual_tx_{now_utc.strftime('%Y%m%d_%H%M%S_%f')}",
+            account_equity=eq_val,
+            available_cash=cash_val,
+            holdings=[],
+            transactions=list(txs),
+            source_page_type="display_histo.aspx",
+        )
+        result = canonical_sync.ingest_observation(obs, allow_duplicate=False)
+        if not result.success:
+            raise HTTPException(
+                422,
+                detail=f"Manual transactions validation failed: {'; '.join(result.error_messages)}",
             )
 
         dom_snap = obs.to_dom_snapshot()
@@ -1558,14 +1679,30 @@ def create_app(
         if base.portfolio_mode != "REAL_COMPETITION":
             raise HTTPException(400, "Snapshot confirmation requires REAL_COMPETITION mode.")
         try:
-            state, report = base.confirm_snapshot(confirmed_by_user=True)
+            state, report = base.confirm_snapshot(
+                confirmed_by_user=True,
+                expected_snapshot_id=body.expected_snapshot_id,
+            )
+        except SnapshotConflictError as exc:
+            raise HTTPException(409, str(exc)) from exc
         except FileNotFoundError as exc:
             raise HTTPException(400, "No browser snapshot available to confirm.") from exc
         except ValueError as exc:
-            raise HTTPException(422, "Snapshot reconciliation failed validation.") from exc
+            raise HTTPException(422, f"Snapshot reconciliation failed validation: {exc}") from exc
         return ConfirmSnapshotResponse(
             overview=_overview(base, state), reconciliation_summary=_reconciliation(report)
         )
+
+    @application.post("/api/sync/reject")
+    def sync_reject(body: RejectSnapshotRequest | None = None) -> dict[str, Any]:
+        if base.portfolio_mode != "REAL_COMPETITION":
+            raise HTTPException(400, "Snapshot rejection requires REAL_COMPETITION mode.")
+        req = body or RejectSnapshotRequest()
+        try:
+            info = base.reject_snapshot(snapshot_id=req.snapshot_id, reason=req.reason)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return {"rejected": True, **info}
 
     @application.get("/api/session/summary")
     def session_summary() -> dict[str, Any]:
