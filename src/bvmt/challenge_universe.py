@@ -51,7 +51,7 @@ class ChallengeInstrumentRecord:
     registry_version: str = CHALLENGE_UNIVERSE_VERSION
     market_mode: Literal["Continu", "Fixing"] = "Continu"
     trading_activity_status: TradingActivityStatus = "active_quote"
-    quote_freshness: str = "FRESH"
+    quote_freshness: str = "UNKNOWN"
     exclusion_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -505,10 +505,15 @@ def classify_security_challenge_status(
 ) -> dict[str, Any]:
     """Classify a security with explicit separate statuses for membership, trading activity, and order eligibility."""
     rec = resolve_challenge_record(instrument_id)
-    if rec is None and isin:
-        rec = resolve_challenge_record(isin)
-    if rec is None and symbol:
-        rec = resolve_challenge_record(symbol)
+    # Every supplied identifier must agree; an alternate symbol cannot promote
+    # an unknown or excluded instrument into the competition universe.
+    if rec is not None:
+        for identifier in (isin, symbol):
+            if identifier:
+                alternate = resolve_challenge_record(identifier)
+                if alternate is None or alternate.verified_isin != rec.verified_isin:
+                    rec = None
+                    break
 
     if rec is not None:
         return {
@@ -534,7 +539,7 @@ def classify_security_challenge_status(
         "order_entry_eligibility": "NOT_IN_UNIVERSE",
         "market_mode": "Unknown",
         "trading_activity_status": "unknown",
-        "quote_freshness": "FRESH",
+        "quote_freshness": "UNKNOWN",
         "exclusion_reason": (
             f"Security '{symbol or instrument_id}' does not appear in the observed 42-instrument "
             f"Tunis Bourse Challenge quotation list. Nonmembers are blocked from manual competition "

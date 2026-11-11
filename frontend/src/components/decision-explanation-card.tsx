@@ -202,7 +202,9 @@ function buildFallbackExplanation(
     const missingData: string[] = [
       "Local issuer financial statements (CMF disclosures) are unavailable locally unless indexed in Stock Research.",
     ];
-    if (plan.quote_age_sessions > 0) {
+    if (plan.quote_age_sessions === null) {
+      missingData.push("Quote age is unavailable; verify the reference quote before planning.");
+    } else if (plan.quote_age_sessions > 0) {
       missingData.push(
         `Quote age is ${plan.quote_age_sessions} session(s) old (${plan.data_timestamp}).`
       );

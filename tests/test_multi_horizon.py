@@ -108,7 +108,8 @@ def test_multi_horizon_intelligence_17_attributes_and_portfolio_review():
     assert sta_swing.horizon == "SWING_5_20S"
     assert len(sta_swing.supporting_factors) >= 2
     assert "stop_loss_price_tnd" in sta_swing.exit_triggers
-    assert sta_swing.evidence_status == "OFFICIAL_BVMT_CONFIRMED"
+    assert sta_swing.evidence_status == "UNVERIFIED"
+    assert sta_swing.source_provenance == "caller-supplied-ranking-evidence"
 
     # Verify non-challenge exclusion (MONOPRIX)
     mnp_swing = next((c for c in report.swing_candidates if c.symbol == "MONOPRIX"), None)

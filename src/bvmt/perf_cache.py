@@ -42,22 +42,9 @@ def file_fingerprint(path: Path | None) -> tuple[str, int, int, str] | None:
     except OSError:
         return None
     resolved = str(path.resolve())
-    if st.st_size <= _SMALL_FILE_HASH_THRESHOLD_BYTES:
-        sha = hashlib.sha256(path.read_bytes()).hexdigest()
-        return (resolved, st.st_size, st.st_mtime_ns, sha)
-
-    stat_key = (resolved, st.st_size, st.st_mtime_ns)
-    with _CACHE_LOCK:
-        cached_sha = _LARGE_FILE_SHA_CACHE.get(stat_key)
-        if cached_sha is not None:
-            _LARGE_FILE_SHA_CACHE.move_to_end(stat_key)
-            return (resolved, st.st_size, st.st_mtime_ns, cached_sha)
-
+    # Metadata is not content identity: same-size rewrites with restored mtime
+    # must invalidate validated CSVs and every downstream research cache.
     sha = sha256_bytes_hex(path)
-    with _CACHE_LOCK:
-        _LARGE_FILE_SHA_CACHE[stat_key] = sha
-        while len(_LARGE_FILE_SHA_CACHE) > 64:
-            _LARGE_FILE_SHA_CACHE.popitem(last=False)
     return (resolved, st.st_size, st.st_mtime_ns, sha)
 
 
@@ -83,8 +70,7 @@ def processed_datasets_fingerprint(processed_root: Path) -> tuple[object, ...]:
         csv_path = sub / "daily_bars.canonical.csv"
         if csv_path.is_file():
             try:
-                st = csv_path.stat()
-                entries.append((str(csv_path.resolve()), st.st_size, st.st_mtime_ns))
+                entries.append(file_fingerprint(csv_path))
             except OSError:
                 continue
     return tuple(entries)

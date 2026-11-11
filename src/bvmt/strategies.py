@@ -31,9 +31,11 @@ from bvmt.calendar import (
 )
 from bvmt.data import DailyBar, audit_official_ndjson_archive, read_bars_csv, validate_bars
 from bvmt.execution import BacktestConfig, MarketOrder, estimate_next_bar_fill
+from bvmt.research_identity import canonicalize_research_identity
+from bvmt.research_scoring import bounded_momentum_score, bounded_risk_ratio
 
 D = Decimal
-VERSION = "1.0.0"
+VERSION = "2.0.0-correctness"
 STRATEGY_IDS = (
     "A_CASH_ONLY",
     "B_EQUAL_WEIGHT_ELIGIBLE",
@@ -52,8 +54,8 @@ FORMULAS = (
     "Top K descending mom_20 = close / close[-20] - 1",
     "Top K descending mom_60 = close / close[-60] - 1",
     "Top K rs_20 = mom_20 - eligible mean(mom_20), requiring rs_20 > 0",
-    "Top K 0.5*mom_20/vol_20 + 0.5*mom_60/vol_20; frequency >= .60, median turnover >= 5000, mom_20 >= .015",
-    "G score - downside_60/vol_20 - drawdown_60/vol_20 + consistency_60 + frequency_20*log1p(turnover_20/5000)",
+    "Top K mean bounded_risk_ratio(mom_20,vol_20), bounded_risk_ratio(mom_60,vol_20); frequency >= .60, turnover >= 5000, mom_20 >= .015",
+    "G minus bounded downside and drawdown ratios + consistency + frequency*log1p(turnover/5000)",
     "H; if bench_20 < 0, half sleeves, rs_20 >= .02 and drawdown_60 <= .10; event overlay disabled",
 )
 LIMITATIONS = [
@@ -290,6 +292,8 @@ def _metrics(
         ]
         steps = [b / a - 1 for a, b in zip(traded, traded[1:], strict=False)]
         short_steps = [b / a - 1 for a, b in zip(short, short[1:], strict=False)]
+        if len(short_steps) < 2:
+            continue
         peak = traded[0]
         dd = 0.0
         for price in traded:
@@ -300,7 +304,7 @@ def _metrics(
                 key,
                 float(valid[-1].close / valid[-21].close - 1),
                 float(valid[-1].close / valid[0].close - 1),
-                max(1e-6, stdev(short_steps) if len(short_steps) > 1 else 0),
+                stdev(short_steps) if len(short_steps) > 1 else 0,
                 sum(b.status == "traded" and b.volume_shares > 0 for b in valid[-20:]) / 20,
                 float(median(b.turnover_tnd for b in valid[-20:])),
                 math.sqrt(sum(min(r, 0) ** 2 for r in steps) / len(steps)),
@@ -335,11 +339,11 @@ def _targets(
         elif strategy in STRATEGY_IDS[6:]:
             if m.frequency < 0.60 or m.turnover < 5000 or m.mom20 < 0.015:
                 continue
-            score = 0.5 * (m.mom20 / m.vol20) + 0.5 * (m.mom60 / m.vol20)
+            score = bounded_momentum_score(m.mom20, m.mom60, m.vol20)
             if strategy in STRATEGY_IDS[7:]:
                 score += (
-                    -m.downside / m.vol20
-                    - m.drawdown / m.vol20
+                    -bounded_risk_ratio(m.downside, m.vol20)
+                    - bounded_risk_ratio(m.drawdown, m.vol20)
                     + m.consistency
                     + m.frequency * math.log1p(m.turnover / 5000)
                 )
@@ -763,6 +767,8 @@ def evaluate_strategy_suite(
     """
     checked = validate_bars(bars)
     master = validate_instrument_master(instruments)
+    projection = canonicalize_research_identity(master, checked)
+    checked, master = list(projection.bars), list(projection.instruments)
     cal = validate_exchange_calendar(calendar)
     first, last = min(b.session_date for b in checked), max(b.session_date for b in checked)
     sessions = [s.session_date for s in cal if s.is_open and first <= s.session_date <= last]
@@ -919,7 +925,7 @@ def evaluate_strategy_suite(
                 "benchmark": "C_BUY_AND_HOLD_BENCHMARK; same warmup, fees, slippage, universe and capital",
                 "event_overlay": "disabled: no verified historical event input",
                 "warmup_in_average_utilization": True,
-                "signal_eligibility": "Dated eligible principal record; complete 61-session history with traded anchors, no suspensions and known publication no later than decision cutoff.",
+                "signal_eligibility": "Dated observed principal record; complete 61-session history with traded anchors and no suspensions. Known future publications excluded; missing availability is exploratory EOD replay, not verified PIT.",
                 "historical_availability_mode": "Exploratory archive-session reconstruction; unknown publication timestamps and retrospective ingestion prevent verified historical availability.",
             },
             failure_modes=LIMITATIONS.copy(),

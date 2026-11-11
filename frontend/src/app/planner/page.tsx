@@ -127,7 +127,7 @@ export default function TradePlannerPage() {
     if (matching) {
       handleSelectPlan(matching);
     } else {
-      setCustomLimitPrice(item.price_reference);
+      setCustomLimitPrice(item.price_reference ?? "");
       setCustomHorizon(item.horizon === "POSITION_20_60S" ? 40 : 20);
     }
   };

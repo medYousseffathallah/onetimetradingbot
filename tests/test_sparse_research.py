@@ -593,7 +593,9 @@ def test_official_bvmt_2026_icf_and_cohort_generalization_readonly() -> None:
     assert icf.liquidity_execution_feasibility.median_turnover_20s_tnd == Decimal("1364.090")
     assert icf.liquidity_execution_feasibility.trade_frequency_20s == 0.7
     assert icf.data_quality_freshness.missing_open_sessions_60s == 1
-    assert icf.event_disclosure_evidence.events_count >= 1
+    # No saved ICF disclosure was supplied. Static catalog assertions are not evidence.
+    assert icf.event_disclosure_evidence.events_count == 0
+    assert icf.event_disclosure_evidence.availability_status == "NO_VERIFIED_EVENTS"
     assert sp_rep.by_instrument["BH_ASSURANCE"].research_status == "INSUFFICIENT_EVIDENCE"
     assert (
         sp_rep.by_instrument[

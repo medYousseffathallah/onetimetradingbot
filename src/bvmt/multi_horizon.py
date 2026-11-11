@@ -20,9 +20,10 @@ Every decision conforms strictly to the 17-attribute explainable decision schema
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from bvmt.challenge_universe import (
     is_in_challenge_universe,
@@ -67,7 +68,7 @@ class HorizonDecisionItem:
     supporting_factors: list[str]
     contradicting_factors: list[str]
     risk_constraints: dict[str, Any]
-    price_reference: str
+    price_reference: str | None
     quantity_limit: int
     fee_estimate: dict[str, str]
     review_date: str
@@ -113,7 +114,7 @@ def build_day_trading_notice() -> dict[str, Any]:
     """Explicitly documents why day trading is UNAVAILABLE for actionable order execution."""
     reasons = [
         "Lack of real-time L2 order book and sub-minute tick feeds on Bourse de Tunis.",
-        "Official BVMT execution model operates with periodic match auctions (10:00, 14:15) and static 3% / 5% volatility collars.",
+        "Exchange execution and competition matching rules require official evidence review; no intraday execution feed is available.",
         "1.00% round-trip transaction fee drag destroys intraday edge (empirical simulation generated 8,414 TND fees = 16.8% capital drag on 194 sessions).",
         "Zero lookahead rule prohibits assuming same-close execution for signals derived from that close.",
     ]
@@ -131,6 +132,34 @@ def build_day_trading_notice() -> dict[str, Any]:
     }
 
 
+def _value(record: Any, key: str) -> Any:
+    """Read named evidence without treating a legitimate zero as missing."""
+    return record.get(key) if isinstance(record, dict) else getattr(record, key, None)
+
+
+def _first_known(record: Any, *keys: str) -> Any:
+    for key in keys:
+        value = _value(record, key)
+        if value is not None:
+            return value
+    return None
+
+
+def _decimal(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    result = Decimal(str(value))
+    return result if result.is_finite() else None
+
+
+def _return_percent(record: Any, pct_key: str, ratio_key: str) -> Decimal | None:
+    percent = _decimal(_value(record, pct_key))
+    if percent is not None:
+        return percent
+    ratio = _decimal(_value(record, ratio_key))
+    return ratio * Decimal("100") if ratio is not None else None
+
+
 def evaluate_multi_horizon_intelligence(
     portfolio_equity_tnd: Decimal,
     available_cash_tnd: Decimal,
@@ -138,11 +167,24 @@ def evaluate_multi_horizon_intelligence(
     market_rankings: list[Any],  # list of StockRankingItem
     as_of_session: str | None = None,
     pending_orders: list[PendingOrderReservation] | None = None,
+    decision_timestamp: datetime | None = None,
 ) -> MultiHorizonIntelligenceReport:
     """Generate multi-horizon trading intelligence conforming to the 17-attribute schema."""
-    session = as_of_session or "2026-11-06"
+    if decision_timestamp is None:
+        if as_of_session is None:
+            raise ValueError("An explicit decision_timestamp or as_of_session is required")
+        # Legacy date-only callers get a conservative start-of-day boundary. This
+        # is a declared availability convention, never an invented market close.
+        decision_timestamp = datetime.combine(
+            date.fromisoformat(as_of_session), time.min, tzinfo=ZoneInfo("Africa/Tunis")
+        )
+    if decision_timestamp.tzinfo is None or decision_timestamp.utcoffset() is None:
+        raise ValueError("decision_timestamp must be timezone-aware")
+    session = decision_timestamp.astimezone(ZoneInfo("Africa/Tunis")).date().isoformat()
+    if as_of_session is not None and session != as_of_session:
+        raise ValueError("decision_timestamp and as_of_session disagree on session")
     pending = pending_orders or []
-    cutoff_dt = datetime(2026, 11, 6, 23, 59, 59, tzinfo=UTC)
+    cutoff_dt = decision_timestamp
 
     # 1. Review Existing Portfolio Positions (e.g. DELICE HOLDING, BH BANK)
     active_position_reviews: list[HorizonDecisionItem] = []
@@ -171,7 +213,38 @@ def evaluate_multi_horizon_intelligence(
             if hasattr(pos, "latest_price_tnd")
             else (pos.get("latest_price_tnd") if isinstance(pos, dict) else None)
         )
-        latest_price = Decimal(str(latest_raw)) if latest_raw else cost
+        latest_price = _decimal(latest_raw)
+        if latest_price is None or latest_price <= 0 or cost <= 0:
+            active_position_reviews.append(
+                HorizonDecisionItem(
+                    decision_status="INSUFFICIENT_EVIDENCE",
+                    symbol=sym,
+                    instrument_id=sym,
+                    strategy_id="POSITION_PORTFOLIO_REVIEW",
+                    strategy_version="2.1.0_pit",
+                    horizon="POSITION_20_60S",
+                    horizon_label="Position Holding (Held Asset)",
+                    data_as_of=session,
+                    source_provenance="unverified-position-input",
+                    supporting_factors=[f"Recorded holding in {sym}: {qty} shares."],
+                    contradicting_factors=[
+                        "Observed quote or acquisition-cost evidence unavailable."
+                    ],
+                    risk_constraints={"current_weight_pct": None, "additional_shares_allowed": 0},
+                    price_reference=str(latest_price)
+                    if latest_price is not None and latest_price > 0
+                    else None,
+                    quantity_limit=0,
+                    fee_estimate={},
+                    review_date=session,
+                    exit_triggers={},
+                    evidence_status="UNVERIFIED",
+                    limitations=[
+                        "Missing quote cannot be replaced with acquisition cost; exposure and P&L are unknown."
+                    ],
+                )
+            )
+            continue
 
         gain_pct = ((latest_price - cost) / cost * Decimal("100")) if cost > 0 else Decimal("0")
         current_exp = quantize_tnd(Decimal(qty) * latest_price)
@@ -198,7 +271,7 @@ def evaluate_multi_horizon_intelligence(
 
         macro_events = get_instrument_macro_context(sym, cutoff=cutoff_dt)
         if macro_events:
-            supporting.append(f"Macro context: {macro_events[0].title}")
+            supporting.append(f"Unverified catalog context: {macro_events[0].title}")
 
         decision_status: DecisionStatus = (
             "REVIEW_POSITION"
@@ -228,13 +301,13 @@ def evaluate_multi_horizon_intelligence(
                 horizon="POSITION_20_60S",
                 horizon_label="Position Holding (Held Asset)",
                 data_as_of=session,
-                source_provenance="tunisbourse-challenge-live-snapshot",
+                source_provenance="caller-supplied-position-evidence",
                 supporting_factors=supporting,
                 contradicting_factors=contradicting,
                 risk_constraints={
                     "current_weight_pct": str(weight_pct),
                     "concentration_cap_pct": "10.00",
-                    "additional_shares_allowed": 0 if weight_pct >= Decimal("9.50") else 50,
+                    "additional_shares_allowed": 0,
                 },
                 price_reference=str(latest_price),
                 quantity_limit=qty,
@@ -247,13 +320,13 @@ def evaluate_multi_horizon_intelligence(
                     ),
                     "break_even_price_tnd": str(break_even_px),
                 },
-                review_date="2026-12-04",
+                review_date=session,
                 exit_triggers={
                     "stop_loss_price_tnd": str(stop_loss_px),
                     "profit_target_price_tnd": str(profit_target_px),
                     "review_horizon_sessions": 20,
                 },
-                evidence_status="OFFICIAL_BVMT_CONFIRMED",
+                evidence_status="UNVERIFIED",
                 limitations=["Frontier liquidity collar ±3.0% applies during continuous session"],
             )
         )
@@ -264,45 +337,25 @@ def evaluate_multi_horizon_intelligence(
     position_candidates: list[HorizonDecisionItem] = []
 
     for r in market_rankings:
-        inst_id = getattr(r, "instrument_id", None) or r.get("instrument_id")
-        sym = getattr(r, "symbol", None) or r.get("symbol")
-        close_raw = (
-            getattr(r, "close_tnd", None)
-            or getattr(r, "reference_price_tnd", None)
-            or (r.get("close_tnd") or r.get("reference_price_tnd") if isinstance(r, dict) else None)
-        )
+        inst_id = _value(r, "instrument_id")
+        sym = _value(r, "symbol")
+        if not inst_id or not sym:
+            continue
+        close_raw = _first_known(r, "close_tnd", "reference_price_tnd")
         if not close_raw or Decimal(str(close_raw)) <= Decimal("0"):
             continue
         price = Decimal(str(close_raw))
 
-        mom20_raw = (
-            getattr(r, "short_return_pct", None)
-            or getattr(r, "momentum_20s", None)
-            or (r.get("short_return_pct") or r.get("momentum_20s") if isinstance(r, dict) else None)
+        mom20 = _return_percent(r, "short_return_pct", "momentum_20s")
+        mom60 = _return_percent(r, "long_return_pct", "momentum_60s")
+        med_turnover = _decimal(_first_known(r, "median_turnover_tnd", "median_turnover_20s_tnd"))
+        # Turnover divided by the observed reference is only a volume proxy.
+        # Missing liquidity yields no capacity, never a fabricated turnover.
+        med_volume = (
+            int(med_turnover // price) if med_turnover is not None and med_turnover > 0 else 0
         )
-        mom20 = Decimal(str(mom20_raw)) if mom20_raw is not None else Decimal("0")
-        mom60_raw = (
-            getattr(r, "long_return_pct", None)
-            or getattr(r, "momentum_60s", None)
-            or (r.get("long_return_pct") or r.get("momentum_60s") if isinstance(r, dict) else None)
-        )
-        mom60 = Decimal(str(mom60_raw)) if mom60_raw is not None else Decimal("0")
-        med_turnover_raw = (
-            getattr(r, "median_turnover_tnd", None)
-            or getattr(r, "median_turnover_20s_tnd", None)
-            or (
-                r.get("median_turnover_tnd") or r.get("median_turnover_20s_tnd")
-                if isinstance(r, dict)
-                else None
-            )
-        )
-        med_turnover = (
-            Decimal(str(med_turnover_raw)) if med_turnover_raw is not None else Decimal("10000.000")
-        )
-        med_volume = int(med_turnover // price) if price > 0 else 0
-        r_rank = getattr(r, "rank", None) or (r.get("rank") if isinstance(r, dict) else None)
 
-        is_chal = is_in_challenge_universe(inst_id)
+        is_chal = is_in_challenge_universe(inst_id, symbol=sym)
         existing_pos = held_positions.get(sym) or held_positions.get(inst_id)
         if existing_pos:
             if hasattr(existing_pos, "total_shares"):
@@ -351,10 +404,14 @@ def evaluate_multi_horizon_intelligence(
         macro_ctx = get_instrument_macro_context(inst_id, cutoff=cutoff_dt)
 
         # Build Swing Candidate (Mode 2)
-        if mom20 > Decimal("1.50") or (r_rank is not None and int(r_rank) <= 5):
+        if mom20 is not None and mom20 > Decimal("1.50"):
             supporting_swing = [
                 f"20-session momentum is strong at {mom20:+.2f}%.",
-                f"Quotation group eligible for continuous execution with median turnover {med_turnover:.0f} TND.",
+                (
+                    f"Observed median turnover {med_turnover:.0f} TND."
+                    if med_turnover is not None
+                    else "Median turnover unavailable; liquidity capacity is unknown."
+                ),
                 f"Sized quantity: {sizing_res.suggested_shares} shares respects cash and 10% concentration cap.",
             ]
             contradicting_swing: list[str] = []
@@ -372,10 +429,12 @@ def evaluate_multi_horizon_intelligence(
                 )
 
             if macro_ctx:
-                supporting_swing.append(f"Macro disclosure: {macro_ctx[0].title}")
+                supporting_swing.append(f"Unverified catalog context: {macro_ctx[0].title}")
 
             status_swing: DecisionStatus = (
-                "MANUAL_ORDER_PLAN"
+                "INSUFFICIENT_EVIDENCE"
+                if med_turnover is None
+                else "MANUAL_ORDER_PLAN"
                 if (is_chal and sizing_res.is_actionable and sizing_res.suggested_shares > 0)
                 else ("RESEARCH_CANDIDATE" if is_chal else "STRATEGY_EXCLUDED")
             )
@@ -394,11 +453,11 @@ def evaluate_multi_horizon_intelligence(
                     symbol=sym,
                     instrument_id=inst_id,
                     strategy_id="SWING_MOMENTUM_20S",
-                    strategy_version="2.0.0",
+                    strategy_version="2.1.0_pit",
                     horizon="SWING_5_20S",
                     horizon_label="Swing Trading (5–20 Sessions)",
                     data_as_of=session,
-                    source_provenance="official-bvmt-eod-2026",
+                    source_provenance="caller-supplied-ranking-evidence",
                     supporting_factors=supporting_swing,
                     contradicting_factors=contradicting_swing,
                     risk_constraints={
@@ -414,14 +473,16 @@ def evaluate_multi_horizon_intelligence(
                         "estimated_sale_fee_tnd": str(sizing_res.estimated_sale_fee_tnd),
                         "break_even_price_tnd": str(break_even_swing),
                     },
-                    review_date="2026-11-27",
+                    review_date=session,
                     exit_triggers={
                         "stop_loss_price_tnd": str(stop_loss_swing),
                         "profit_target_price_tnd": str(profit_target_swing),
                         "time_stop_sessions": 20,
                     },
-                    evidence_status="OFFICIAL_BVMT_CONFIRMED",
+                    evidence_status="UNVERIFIED",
                     limitations=[
+                        "Liquidity capacity uses observed turnover/reference-price proxy, not order-book depth; missing liquidity blocks sizing.",
+                        "Macro catalog entries require source-document verification; cutoff filtering alone does not verify the claims.",
                         "Walk-forward return stability is sensitive to calendar entry timing (19 vs 20 session sensitivity).",
                         "High outlier dependency on single momentum leaders (e.g. STA, SOTETEL).",
                     ],
@@ -429,11 +490,13 @@ def evaluate_multi_horizon_intelligence(
             )
 
         # Build Position Candidate (Mode 3: 20–60+ Sessions)
-        if mom60 > Decimal("3.00") or (mom20 > Decimal("2.00") and mom60 > Decimal("0")):
+        if mom60 is not None and (
+            mom60 > Decimal("3.00")
+            or (mom20 is not None and mom20 > Decimal("2.00") and mom60 > Decimal("0"))
+        ):
             supporting_pos = [
                 f"Multi-month trend persistence: 60-session momentum is {mom60:+.2f}%.",
-                "High trading regularity across past 60 sessions with verified institutional interest.",
-                "Suitable for medium-term holding across quarterly earnings announcements.",
+                "Research scenario only; institutional participation and financial quality are unverified.",
             ]
             contradicting_pos: list[str] = []
             if not is_chal:
@@ -444,10 +507,14 @@ def evaluate_multi_horizon_intelligence(
                 )
 
             if macro_ctx:
-                supporting_pos.append(f"Macro & industry tailwind: {macro_ctx[0].summary[:120]}...")
+                supporting_pos.append(
+                    f"Unverified catalog context: {macro_ctx[0].summary[:120]}..."
+                )
 
             status_pos: DecisionStatus = (
-                "MANUAL_ORDER_PLAN"
+                "INSUFFICIENT_EVIDENCE"
+                if med_turnover is None
+                else "MANUAL_ORDER_PLAN"
                 if (is_chal and sizing_res.is_actionable and sizing_res.suggested_shares > 0)
                 else ("RESEARCH_CANDIDATE" if is_chal else "STRATEGY_EXCLUDED")
             )
@@ -468,11 +535,11 @@ def evaluate_multi_horizon_intelligence(
                     symbol=sym,
                     instrument_id=inst_id,
                     strategy_id="POSITION_TREND_60S",
-                    strategy_version="2.0.0",
+                    strategy_version="2.1.0_pit",
                     horizon="POSITION_20_60S",
                     horizon_label="Position Trading (20–60+ Sessions)",
                     data_as_of=session,
-                    source_provenance="official-bvmt-eod-2026",
+                    source_provenance="caller-supplied-ranking-evidence",
                     supporting_factors=supporting_pos,
                     contradicting_factors=contradicting_pos,
                     risk_constraints={
@@ -487,14 +554,16 @@ def evaluate_multi_horizon_intelligence(
                         "estimated_sale_fee_tnd": str(sizing_res.estimated_sale_fee_tnd),
                         "break_even_price_tnd": str(break_even_pos),
                     },
-                    review_date="2027-01-15",
+                    review_date=session,
                     exit_triggers={
                         "stop_loss_price_tnd": str(stop_loss_pos),
                         "profit_target_price_tnd": str(profit_target_pos),
                         "time_stop_sessions": 60,
                     },
-                    evidence_status="OFFICIAL_BVMT_CONFIRMED",
+                    evidence_status="UNVERIFIED",
                     limitations=[
+                        "Liquidity capacity uses observed turnover/reference-price proxy; missing liquidity blocks sizing.",
+                        "Macro catalog entries require source-document verification.",
                         "Longer horizon exposes portfolio to macroeconomic policy and currency shifts.",
                         "Position requires monitoring trailing earnings and revenue disclosures.",
                     ],
@@ -504,7 +573,7 @@ def evaluate_multi_horizon_intelligence(
     macro_events_all = get_verified_macro_intelligence(cutoff=cutoff_dt)
 
     return MultiHorizonIntelligenceReport(
-        as_of=datetime.now(UTC).isoformat(),
+        as_of=cutoff_dt.isoformat(),
         session_date=session,
         portfolio_equity_tnd=str(quantize_tnd(portfolio_equity_tnd)),
         available_cash_tnd=str(quantize_tnd(available_cash_tnd)),

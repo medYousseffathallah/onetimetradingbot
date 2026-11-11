@@ -732,11 +732,11 @@ export interface ManualTradePlan {
   plan_category: "RESEARCH_CANDIDATE" | "PAPER_TRADE_CANDIDATE" | "MANUAL_ORDER_PLAN";
   data_source: string;
   data_timestamp: string;
-  last_verified_price_tnd: string;
+  last_verified_price_tnd: string | null;
   current_quote_tnd: string | null;
   current_quote_timestamp: string | null;
   proposed_limit_price_tnd: string;
-  quote_age_sessions: number;
+  quote_age_sessions: number | null;
   suggested_max_shares: number;
   estimated_gross_order_value_tnd: string;
   estimated_purchase_fee_tnd: string;
@@ -971,7 +971,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export interface HorizonDecisionItem {
-  decision_status: "MANUAL_ORDER_PLAN" | "RESEARCH_CANDIDATE" | "MONITOR_POSITION" | "REVIEW_POSITION" | "STRATEGY_EXCLUDED";
+  decision_status: "MANUAL_ORDER_PLAN" | "RESEARCH_CANDIDATE" | "MONITOR_POSITION" | "REVIEW_POSITION" | "STRATEGY_EXCLUDED" | "INSUFFICIENT_EVIDENCE";
   symbol: string;
   instrument_id: string;
   strategy_id: string;
@@ -983,7 +983,7 @@ export interface HorizonDecisionItem {
   supporting_factors: string[];
   contradicting_factors: string[];
   risk_constraints: Record<string, any>;
-  price_reference: string;
+  price_reference: string | null;
   quantity_limit: number;
   fee_estimate: Record<string, string>;
   review_date: string;

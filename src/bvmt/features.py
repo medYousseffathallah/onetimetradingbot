@@ -17,7 +17,10 @@ from bvmt.calendar import (
     validate_exchange_calendar,
     validate_instrument_master,
 )
+from bvmt.challenge_universe import is_in_challenge_universe
 from bvmt.data import DailyBar, validate_bars
+from bvmt.research_identity import canonicalize_research_identity
+from bvmt.research_scoring import SCORING_VERSION, bounded_momentum_score
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,8 @@ class SessionBaselineReport:
     benchmark_return_20s: float
     candidates: list[SessionCandidate]
     exclusions: list[ExcludedInstrument]
+    scoring_version: str = SCORING_VERSION
+    universe: str = "FULL_BVMT"
 
 
 def rank_demo_momentum(
@@ -129,6 +134,7 @@ def rank_session_baseline(
     eligible_segment: str = "Continu_Principal",
     benchmark_return_override: float | None = None,
     allowed_segments: tuple[str, ...] = ("principal", "principal_continu", "principal_fixing"),
+    universe: str = "FULL_BVMT",
 ) -> SessionBaselineReport:
     """Rank point-in-time eligible instruments over verified open exchange sessions (T04).
 
@@ -148,9 +154,17 @@ def rank_session_baseline(
     if min_median_turnover_tnd < 0:
         raise ValueError("min_median_turnover_tnd must be nonnegative")
 
+    if universe not in {"FULL_BVMT", "TUNIS_BOURSE_CHALLENGE"}:
+        raise ValueError("Unknown research universe")
     inst_list = validate_instrument_master(instruments)
     cal_list = validate_exchange_calendar(calendar)
     bar_list = validate_bars(bars)
+    projection = canonicalize_research_identity(inst_list, bar_list)
+    inst_list, bar_list = list(projection.instruments), list(projection.bars)
+    if universe == "TUNIS_BOURSE_CHALLENGE":
+        inst_list = [
+            r for r in inst_list if is_in_challenge_universe(r.instrument_id, r.isin, r.symbol)
+        ]
 
     open_sessions = [
         s for s in cal_list if s.is_open and s.closes_at is not None and s.closes_at <= cutoff
@@ -171,7 +185,10 @@ def rank_session_baseline(
         ):
             pit_bars[(bar.instrument_id, bar.session_date)] = bar
 
-    suspended_keys = {(s.instrument_id, s.session_date) for s in suspensions}
+    alias_ids = {a.source_instrument_id: a.canonical_instrument_id for a in projection.aliases}
+    suspended_keys = {
+        (alias_ids.get(s.instrument_id, s.instrument_id), s.session_date) for s in suspensions
+    }
 
     by_inst: dict[str, list[InstrumentRecord]] = defaultdict(list)
     for rec in inst_list:
@@ -330,13 +347,23 @@ def rank_session_baseline(
         step_returns = [
             traded_closes[i] / traded_closes[i - 1] - 1.0 for i in range(1, len(traded_closes))
         ]
+        if len(step_returns) < 2:
+            exclusions.append(
+                ExcludedInstrument(
+                    inst_id,
+                    symbol,
+                    "insufficient_volatility_observations",
+                    "At least two observed returns are required to distinguish price stability from unavailable variance",
+                )
+            )
+            continue
         mean_r = sum(step_returns) / len(step_returns) if step_returns else 0.0
         var_r = (
             sum((r - mean_r) ** 2 for r in step_returns) / max(1, len(step_returns) - 1)
             if len(step_returns) > 1
             else 0.0
         )
-        vol_20 = max(1e-6, var_r**0.5)
+        vol_20 = var_r**0.5
 
         raw_metrics.append(
             {
@@ -366,7 +393,7 @@ def rank_session_baseline(
         m60 = float(str(item["mom_60"]))
         v20 = float(str(item["vol_20"]))
         rs20 = m20 - bench_20
-        composite = 0.5 * (m20 / v20) + 0.5 * (m60 / v20)
+        composite = bounded_momentum_score(m20, m60, v20)
         candidates.append(
             SessionCandidate(
                 instrument_id=str(item["instrument_id"]),
@@ -395,4 +422,5 @@ def rank_session_baseline(
         benchmark_return_20s=round(bench_20, 6),
         candidates=candidates,
         exclusions=exclusions,
+        universe=universe,
     )

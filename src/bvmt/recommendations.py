@@ -8,10 +8,11 @@ returns, and never submits orders automatically.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 
+from bvmt.challenge_universe import is_in_challenge_universe
 from bvmt.features import ExcludedInstrument, SessionBaselineReport, SessionCandidate
 from bvmt.ledger import (
     DEFAULT_FEE_RATE,
@@ -128,12 +129,42 @@ def generate_recommendations(
     target_buy_weight_ratio: Decimal = TARGET_BUY_WEIGHT_RATIO,
     reduce_trigger_weight_ratio: Decimal = REDUCE_TRIGGER_WEIGHT_RATIO,
     market_quotes: Mapping[str, Decimal] | None = None,
+    universe: str | None = None,
 ) -> RecommendationReport:
     """Combine session-aware rankings, verified event signals, and portfolio ledger into 5-state recommendations."""
     if generated_at.tzinfo is None or generated_at.utcoffset() is None:
         raise ValueError("generated_at must be timezone-aware")
     if top_buy_count < 1:
         raise ValueError("top_buy_count must be >= 1")
+    scope = universe or (
+        "TUNIS_BOURSE_CHALLENGE"
+        if ledger.portfolio_mode == "REAL_COMPETITION"
+        else baseline.universe
+    )
+    if scope not in {"FULL_BVMT", "TUNIS_BOURSE_CHALLENGE"}:
+        raise ValueError("Unknown research universe")
+    if scope == "TUNIS_BOURSE_CHALLENGE":
+        members = [
+            c
+            for c in baseline.candidates
+            if is_in_challenge_universe(c.instrument_id, symbol=c.symbol)
+        ]
+        baseline = replace(
+            baseline,
+            candidates=members,
+            universe=scope,
+            exclusions=baseline.exclusions
+            + [
+                ExcludedInstrument(
+                    c.instrument_id,
+                    c.symbol,
+                    "not_in_challenge_universe",
+                    "Excluded before ranking and budget allocation",
+                )
+                for c in baseline.candidates
+                if c not in members
+            ],
+        )
 
     # Build current price map from market quotes and baseline candidates
     price_map: dict[str, Decimal] = {}
@@ -154,7 +185,9 @@ def generate_recommendations(
     # Filter events to point-in-time verified events only
     events_by_inst: dict[str, list[VerifiedEventSignal]] = {}
     for ev in verified_events:
-        if ev.quote_verified:
+        if ev.quote_verified and datetime.fromisoformat(ev.published_at) <= datetime.fromisoformat(
+            baseline.decision_cutoff
+        ):
             events_by_inst.setdefault(ev.instrument_id, []).append(ev)
 
     valuation = ledger.valuate(price_map)
@@ -218,6 +251,10 @@ def generate_recommendations(
             blocked = [f"{e.reason}: {e.detail}" for e in excls] or [
                 "unranked_instrument: No valid point-in-time session baseline observation"
             ]
+            if data_is_synthetic and ledger.portfolio_mode == "REAL_COMPETITION":
+                blocked.append(
+                    "synthetic_data_on_real_portfolio: Research fixture cannot size real-account proposals"
+                )
             liq_warn = [
                 f"{e.reason}: {e.detail}"
                 for e in excls
@@ -246,7 +283,7 @@ def generate_recommendations(
                     reference_price_tnd=(
                         str(price_map[inst_id])
                         if inst_id in price_map and price_map[inst_id] > Decimal("0")
-                        else (str(pos.average_cost_tnd) if pos else None)
+                        else None
                     ),
                     current_shares=held_shares,
                     current_weight_pct=str(current_weight_pct),

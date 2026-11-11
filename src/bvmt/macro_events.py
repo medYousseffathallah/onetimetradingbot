@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from bvmt.challenge_universe import resolve_challenge_record
@@ -34,13 +34,13 @@ UncertaintyRating = Literal["LOW", "MODERATE", "HIGH"]
 
 @dataclass(frozen=True)
 class MacroEventItem:
-    """A verified, timestamped macroeconomic or corporate event."""
+    """A catalog assertion; verification requires a saved authoritative document."""
 
     event_id: str
     category: MacroCategory
     title: str
     summary: str
-    published_at: str  # ISO 8601 UTC
+    published_at: str | None  # ISO 8601 with timezone; unknown stays unavailable
     effective_date: str  # YYYY-MM-DD
     source_label: str
     source_url: str | None
@@ -51,6 +51,7 @@ class MacroEventItem:
     contradicting_evidence: str | None
     uncertainty_rating: UncertaintyRating
     is_point_in_time: bool = True
+    source_verification_status: str = "UNVERIFIED_CATALOG"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -217,9 +218,13 @@ def get_verified_macro_intelligence(
     Ensures complete absence of lookahead bias and resolves canonical symbol aliases
     (e.g., CC <-> CARTHAGE_CEMENT, STPAP <-> SOTIPAPIER, DH <-> DELICE_HOLDING).
     """
-    effective_cutoff = cutoff or datetime(2026, 11, 6, 23, 59, 59, tzinfo=UTC)
-    if effective_cutoff.tzinfo is None:
-        effective_cutoff = effective_cutoff.replace(tzinfo=UTC)
+    # A caller without a decision cutoff has not established historical availability.
+    # Never substitute a fixed date or the wall clock for that missing evidence.
+    if cutoff is None:
+        return []
+    effective_cutoff = cutoff
+    if effective_cutoff.tzinfo is None or effective_cutoff.utcoffset() is None:
+        raise ValueError("Macro decision cutoff must be timezone-aware")
 
     target_aliases = (
         resolve_instrument_aliases(instrument_id, extra_aliases=extra_aliases)
@@ -229,7 +234,14 @@ def get_verified_macro_intelligence(
 
     events: list[MacroEventItem] = []
     for ev in VERIFIED_MACRO_EVENTS:
-        pub_dt = datetime.fromisoformat(ev.published_at.replace("Z", "+00:00"))
+        if not ev.published_at or not ev.is_point_in_time:
+            continue
+        try:
+            pub_dt = datetime.fromisoformat(ev.published_at.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if pub_dt.tzinfo is None or pub_dt.utcoffset() is None:
+            continue
         if pub_dt > effective_cutoff:
             continue
         if category and ev.category != category:

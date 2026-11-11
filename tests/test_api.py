@@ -835,7 +835,11 @@ def test_trade_plans_endpoints(service: PortfolioStateService) -> None:
         assert calc_res.status_code == 200
         calc_data = calc_res.json()
         assert calc_data["symbol"] == "STA"
-        assert calc_data["suggested_max_shares"] > 0
+        # STA has no quote in this synthetic fixture, and the real account is
+        # unverified. A user-entered limit must never manufacture an order size.
+        assert calc_data["suggested_max_shares"] == 0
+        assert calc_data["is_actionable"] is False
+        assert "quote_evidence_unavailable" in calc_data["rejection_reasons"]
         assert "break_even_price_tnd" in calc_data
         assert "exit_conditions" in calc_data
 
@@ -872,13 +876,15 @@ def test_trading_intelligence_and_macro_endpoints(service: PortfolioStateService
         assert mi_res.status_code == 200
         mi_data = mi_res.json()
         assert "events" in mi_data
-        assert mi_data["count"] > 0
-        assert any(e["event_id"] == "BCT_RATE_STABLE_800" for e in mi_data["events"])
+        # Fixture decisions precede the catalog: future events must not appear.
+        assert mi_data["count"] == 0
+        assert mi_data["events"] == []
 
         # GET /api/macro-intelligence?symbol=DH
         mi_dh = client.get("/api/macro-intelligence?symbol=DH")
         assert mi_dh.status_code == 200
-        assert "Délice Holding" in mi_dh.json()["narrative"]
+        assert mi_dh.json()["events"] == []
+        assert "No specific macroeconomic" in mi_dh.json()["narrative"]
 
 
 def test_sync_pairing_token_and_companion_endpoints(service: PortfolioStateService) -> None:

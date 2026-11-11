@@ -317,7 +317,7 @@ def build_manual_trade_plan(
         composite_score=f"{composite_score:+.4f}" if composite_score is not None else None,
         plan_category=plan_category,
         data_source="Official BVMT Daily Bars (bvmt_official_2026)",
-        data_timestamp=f"{as_of.isoformat()} 16:00:00 Africa/Tunis",
+        data_timestamp=f"{as_of.isoformat()} (session date; quote time unavailable)",
         last_verified_price_tnd=limit_price_tnd,
         current_quote_tnd=None,
         current_quote_timestamp=None,

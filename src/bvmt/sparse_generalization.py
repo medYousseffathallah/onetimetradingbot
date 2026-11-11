@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from statistics import median
@@ -29,6 +29,7 @@ from bvmt.data import DailyBar, read_bars_csv, validate_bars
 from bvmt.execution import MarketOrder, estimate_next_bar_fill
 from bvmt.features import SessionBaselineReport, rank_session_baseline
 from bvmt.llm import DocumentChunk
+from bvmt.research_identity import canonicalize_research_identity
 from bvmt.sparse_research import (
     SPARSE_OPPORTUNITY_MODEL_VERSION,
     FundamentalSnapshotRecord,
@@ -119,6 +120,10 @@ class ModelBenchmarkMetrics:
     signal_stability_jaccard: float | None
     mean_quote_age_sessions: float | None
     mean_observation_coverage_ratio: float
+    evaluated_selected_count: int = 0
+    unevaluated_selected_count: int = 0
+    executable_observation_count: int = 0
+    executable_winner_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -139,6 +144,8 @@ class WalkForwardBenchmarkReport:
     cohort_comparison: dict[str, dict[str, ModelBenchmarkMetrics]]
     hb_recovered_bars_count: int
     notes: list[str]
+    evaluation_version: str = "executable_cohort_evaluation_v2"
+    universe: str = "FULL_BVMT"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -156,6 +163,8 @@ class WalkForwardBenchmarkReport:
             },
             "hb_recovered_bars_count": self.hb_recovered_bars_count,
             "notes": self.notes,
+            "evaluation_version": self.evaluation_version,
+            "universe": self.universe,
         }
 
 
@@ -173,16 +182,16 @@ def _compute_forward_outcomes(
     capital_slice_tnd: Decimal,
 ) -> tuple[bool, float | None, float | None]:
     """Compute realistic executable net return & mark-to-mark net move strictly on `(t, t+H]`."""
-    future_bars = [
-        bars_by_inst_date[(inst_id, d)]
-        for d in target_horizon_dates
-        if (inst_id, d) in bars_by_inst_date
-    ]
-    exit_bar: DailyBar | None = None
-    for b in reversed(future_bars):
-        if b.status == "traded" and b.close > 0:
-            exit_bar = b
-            break
+    if not target_horizon_dates:
+        return False, None, None
+    if (
+        list(target_horizon_dates) != sorted(set(target_horizon_dates))
+        or target_horizon_dates[0] <= decision_date
+    ):
+        raise ValueError("Forward horizon must contain distinct increasing later sessions")
+    exit_bar = bars_by_inst_date.get((inst_id, target_horizon_dates[-1]))
+    if exit_bar is None or exit_bar.status != "traded" or exit_bar.volume_shares <= 0:
+        return False, None, None
 
     slip_frac = config.slippage_bps / Decimal("10000")
     mark_to_mark_net: float | None = None
@@ -199,7 +208,10 @@ def _compute_forward_outcomes(
     if cap_shares <= 0:
         return False, None, mark_to_mark_net
 
-    desired = max(1, int(capital_slice_tnd // entry_bar.open))
+    assumed_buy_price = entry_bar.open * (Decimal(1) + slip_frac)
+    desired = int(capital_slice_tnd // (assumed_buy_price * (Decimal(1) + config.buy_fee_rate)))
+    if desired <= 0 or cap_shares < desired:
+        return False, None, mark_to_mark_net
     fill = estimate_next_bar_fill(
         MarketOrder(
             instrument_id=inst_id,
@@ -213,15 +225,25 @@ def _compute_forward_outcomes(
         slippage_bps=config.slippage_bps,
         commission_bps=config.buy_fee_rate * Decimal("10000"),
     )
-    if fill.quantity <= 0 or fill.price is None:
+    if fill.quantity != desired or fill.price is None:
         return False, None, mark_to_mark_net
 
     filled_notional = Decimal(fill.quantity) * fill.price
     if filled_notional < config.minimum_order_notional_tnd:
         return False, None, mark_to_mark_net
 
+    # Exit is precommitted at the exact horizon close, not chosen from the last
+    # tradable observation. Whole-slice liquidation must fit that session's cap.
+    exit_capacity = int(Decimal(exit_bar.volume_shares) * config.liquidity_participation_cap)
+    required_capacity = fill.quantity * (
+        2 if entry_bar.session_date == exit_bar.session_date else 1
+    )
+    exit_price = exit_bar.close * (Decimal(1) - slip_frac)
+    if exit_capacity < required_capacity or not exit_bar.low <= exit_price <= exit_bar.high:
+        return False, None, mark_to_mark_net
+
     buy_cost = fill.price * (Decimal(1) + config.buy_fee_rate)
-    sell_net = exit_bar.close * (Decimal(1) - slip_frac) * (Decimal(1) - config.sell_fee_rate)
+    sell_net = exit_price * (Decimal(1) - config.sell_fee_rate)
     exec_net = _round4(float(sell_net / buy_cost - Decimal(1)) * 100.0)
     return True, exec_net, mark_to_mark_net
 
@@ -270,11 +292,17 @@ def _aggregate_metrics(
 
     coverage_rate = _round4(covered_cnt / total)
 
+    executable = [
+        o for o in observations if o.executable_feasible and o.executable_net_return_pct is not None
+    ]
+    evaluated_selected = [
+        o for o in selected if o.executable_feasible and o.executable_net_return_pct is not None
+    ]
     winners = [
         o
-        for o in observations
-        if o.mark_to_mark_net_return_pct is not None
-        and o.mark_to_mark_net_return_pct >= winner_threshold_pct
+        for o in executable
+        if o.executable_net_return_pct is not None
+        and o.executable_net_return_pct >= winner_threshold_pct
     ]
     missed = [o for o in winners if o not in selected]
     missed_rate = _round4(len(missed) / len(winners)) if winners else None
@@ -287,25 +315,20 @@ def _aggregate_metrics(
         sparse_cnt = 0
         q_ages: list[int] = []
         for o in selected:
-            ret = (
-                o.executable_net_return_pct
-                if o.executable_net_return_pct is not None
-                else o.mark_to_mark_net_return_pct
-            )
             if o.executable_feasible and o.executable_net_return_pct is not None:
                 feas_cnt += 1
                 exec_rets.append(o.executable_net_return_pct)
-            if ret is not None and ret > 0.0:
-                win_cnt += 1
-            else:
-                fp_cnt += 1
+                if o.executable_net_return_pct > 0.0:
+                    win_cnt += 1
+                else:
+                    fp_cnt += 1
             if o.is_sparse_at_decision:
                 sparse_cnt += 1
             if o.quote_age_open_sessions is not None:
                 q_ages.append(o.quote_age_open_sessions)
 
-        fp_rate = _round4(fp_cnt / len(selected))
-        precision = _round4(win_cnt / len(selected))
+        fp_rate = _round4(fp_cnt / len(evaluated_selected)) if evaluated_selected else None
+        precision = _round4(win_cnt / len(evaluated_selected)) if evaluated_selected else None
         feas_rate = _round4(feas_cnt / len(selected))
         sparse_share = _round4(sparse_cnt / len(selected))
         mean_ret = _round4(sum(exec_rets) / len(exec_rets)) if exec_rets else None
@@ -331,9 +354,6 @@ def _aggregate_metrics(
     for o in selected:
         by_sess_sel[o.session_date].append(o)
 
-    eq = 1.0
-    peak = 1.0
-    max_dd = 0.0
     exposures: list[float] = []
     max_single = 0.0
     jaccards: list[float] = []
@@ -348,20 +368,13 @@ def _aggregate_metrics(
                 jaccards.append(len(prev_sel_set & cur_set) / union)
         prev_sel_set = cur_set
 
-        period_ret = 0.0
         period_exp = 0.0
         for o in s_sel:
             if o.executable_feasible and o.executable_net_return_pct is not None:
-                w = o.allocated_weight_pct / 100.0
                 period_exp += o.allocated_weight_pct
                 max_single = max(max_single, o.allocated_weight_pct)
-                period_ret += w * (o.executable_net_return_pct / 100.0)
         exposures.append(period_exp)
-        eq *= 1.0 + period_ret
-        peak = max(peak, eq)
-        max_dd = max(max_dd, (peak - eq) / peak * 100.0)
 
-    cum_ret = _round4((eq - 1.0) * 100.0)
     mean_cov = _round4(sum(o.observation_coverage_ratio for o in observations) / total)
     avg_exp = _round4(sum(exposures) / len(exposures)) if exposures else 0.0
     stability = _round4(sum(jaccards) / len(jaccards)) if jaccards else None
@@ -377,14 +390,18 @@ def _aggregate_metrics(
         mean_forward_net_return_pct=mean_ret,
         median_forward_net_return_pct=med_ret,
         liquidity_feasibility_rate=feas_rate,
-        portfolio_max_drawdown_pct=_round4(max_dd),
-        cumulative_portfolio_return_pct=cum_ret,
+        portfolio_max_drawdown_pct=None,
+        cumulative_portfolio_return_pct=None,
         avg_active_exposure_pct=avg_exp,
         max_single_weight_pct=_round4(max_single),
         sparse_candidate_share=sparse_share,
         signal_stability_jaccard=stability,
         mean_quote_age_sessions=mean_q_age,
         mean_observation_coverage_ratio=mean_cov,
+        evaluated_selected_count=len(evaluated_selected),
+        unevaluated_selected_count=len(selected) - len(evaluated_selected),
+        executable_observation_count=len(executable),
+        executable_winner_count=len(winners),
     )
 
 
@@ -411,7 +428,8 @@ def prepare_pit_calendar_and_bars(
             if b.published_at is None
             else b.published_at,
             ingested_at=datetime.fromisoformat(f"{b.session_date}T16:00:00+01:00")
-            if b.ingested_at > datetime.fromisoformat(f"{b.session_date}T16:00:00+01:00")
+            if b.published_at is None
+            and b.ingested_at > datetime.fromisoformat(f"{b.session_date}T16:00:00+01:00")
             else b.ingested_at,
         )
         for b in bars
@@ -433,15 +451,34 @@ def run_walk_forward_generalization_benchmark(
     forward_horizon_sessions: int = 10,
     step_sessions: int = 10,
     baseline_min_trade_freq: float = 0.60,
-    baseline_min_median_turnover_tnd: Decimal = Decimal("1000"),
+    baseline_min_median_turnover_tnd: Decimal | None = None,
     portfolio_equity_tnd: Decimal = Decimal("50000.000"),
+    universe: str = "FULL_BVMT",
 ) -> WalkForwardBenchmarkReport:
     """Execute strict PIT walk-forward comparison across all 6 diagnostic cohorts & 10 dimensions."""
     cfg = config or load_frozen_sparse_research_config()
+    if universe not in {"FULL_BVMT", "TUNIS_BOURSE_CHALLENGE"}:
+        raise ValueError("Unknown research universe")
+    if forward_horizon_sessions < 1 or step_sessions < 1 or warmup_sessions < 61:
+        raise ValueError("Require positive horizon/step and at least 61 warmup sessions")
+    threshold = cfg.liquidity_feasible_median_turnover_tnd
+    if (
+        baseline_min_median_turnover_tnd is not None
+        and baseline_min_median_turnover_tnd != threshold
+    ):
+        raise ValueError("Baseline and sparse median turnover thresholds must match")
     inst_list = validate_instrument_master(instruments)
+    source_master = inst_list
     cal_prep, bars_prep = prepare_pit_calendar_and_bars(
         validate_exchange_calendar(calendar), validate_bars(bars)
     )
+    projection = canonicalize_research_identity(inst_list, bars_prep)
+    inst_list, bars_prep = list(projection.instruments), list(projection.bars)
+    alias_ids = {a.source_instrument_id: a.canonical_instrument_id for a in projection.aliases}
+    if universe == "TUNIS_BOURSE_CHALLENGE":
+        inst_list = [r for r in inst_list if resolve_challenge_record(r.instrument_id) is not None]
+        ids = {r.instrument_id for r in inst_list}
+        bars_prep = [b for b in bars_prep if b.instrument_id in ids]
 
     open_sessions = sorted(
         (s for s in cal_prep if s.is_open and s.closes_at is not None),
@@ -453,6 +490,13 @@ def run_walk_forward_generalization_benchmark(
     hb_bars, hb_meta = extract_limit_reserved_bars_from_rejections(
         rejections_paths, allow_recovery=True
     )
+    hb_projection = canonicalize_research_identity(source_master, hb_bars)
+    hb_bars = list(hb_projection.bars)
+    if universe == "TUNIS_BOURSE_CHALLENGE":
+        hb_bars = [b for b in hb_bars if b.instrument_id in ids]
+    hb_meta = [
+        replace(m, instrument_id=alias_ids.get(m.instrument_id, m.instrument_id)) for m in hb_meta
+    ]
     merged_bars, hb_keys = merge_canonical_with_hb_recovery(bars_prep, hb_bars)
 
     raw_bar_map = {(b.instrument_id, b.session_date): b for b in bars_prep}
@@ -490,7 +534,8 @@ def run_walk_forward_generalization_benchmark(
     ]:
         sess = open_sessions[idx]
         d_t = sess.session_date
-        cutoff = datetime(d_t.year, d_t.month, d_t.day, 17, 0, tzinfo=UTC)
+        cutoff = sess.closes_at
+        assert cutoff is not None  # open_sessions excludes unknown closes after replay preparation
         fut_dates = [
             open_sessions[j].session_date
             for j in range(idx + 1, idx + 1 + forward_horizon_sessions)
@@ -506,7 +551,8 @@ def run_walk_forward_generalization_benchmark(
                 pit_slice,
                 cutoff,
                 min_trade_frequency=baseline_min_trade_freq,
-                min_median_turnover_tnd=baseline_min_median_turnover_tnd,
+                min_median_turnover_tnd=threshold,
+                universe=universe,
             )
         )
         base_pos_top_k = {
@@ -536,6 +582,7 @@ def run_walk_forward_generalization_benchmark(
             limit_reserved_meta=pit_meta,
             limit_reserved_recovery_applied=with_hb,
             hb_bar_keys=pit_hb_keys,
+            universe=universe,
         )
 
         # Anchor cohorts to canonical raw evaluation so all 3 models compare identical cohort N
@@ -681,9 +728,12 @@ def run_walk_forward_generalization_benchmark(
         }
 
     notes = [
-        f"Evaluated over {len(eval_dates)} strictly non-overlapping {forward_horizon_sessions}-session folds.",
-        "Execution applies next-open fills, +20 bps entry slippage, -20 bps exit slippage, 0.50%+0.50% fees, and 10% volume participation cap.",
-        "Zero lookahead or hindsight cohort feedback: cohorts classify ex-post outcomes of purely ex-ante PIT signals.",
+        f"Evaluated {len(eval_dates)} retrospective {forward_horizon_sessions}-session cohorts with {step_sessions}-session spacing; overlapping={step_sessions < forward_horizon_sessions}.",
+        "Execution requires next-open entry and precommitted exact horizon-close exit, whole-slice capacity at both ends and slippage prices inside observed bars; costs and participation come from the reported frozen config.",
+        "Precision, false-positive rate and mean return share the executable-known selected sample; missing or unfillable outcomes are excluded with explicit counts, not counted as losses. Missed opportunities use executable winners only.",
+        "Cumulative portfolio return and drawdown are unavailable: independent horizon outcomes cannot be compounded without a non-overlapping cash/share timeline and shared capacity accounting. Exposure is descriptive per-cohort allocation only.",
+        "Archive EOD replay assumes availability for absent timestamps; this does not certify historical publication or ingestion availability. Ex-post cohorts are diagnostic only; inspected outcomes are not an independent holdout.",
+        f"Universe={universe}; baseline and sparse median-turnover requirement={threshold} TND.",
     ]
     return WalkForwardBenchmarkReport(
         model_version=SPARSE_OPPORTUNITY_MODEL_VERSION,
@@ -697,6 +747,7 @@ def run_walk_forward_generalization_benchmark(
         cohort_comparison=cohort_comp,
         hb_recovered_bars_count=len(hb_bars),
         notes=notes,
+        universe=universe,
     )
 
 
@@ -707,6 +758,7 @@ def run_benchmark_from_data_dir(
     config_path: Path | None = None,
     forward_horizon_sessions: int = 10,
     step_sessions: int = 10,
+    universe: str = "FULL_BVMT",
 ) -> WalkForwardBenchmarkReport:
     """Convenience read-only loader for running the Phase 5 benchmark against an official data dir."""
     bars = read_bars_csv(processed_dir / "daily_bars.canonical.csv")
@@ -732,4 +784,5 @@ def run_benchmark_from_data_dir(
         sector_by_instrument=sector_map,
         forward_horizon_sessions=forward_horizon_sessions,
         step_sessions=step_sessions,
+        universe=universe,
     )

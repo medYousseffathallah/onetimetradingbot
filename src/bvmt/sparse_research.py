@@ -797,28 +797,36 @@ class PortfolioRiskContext:
     """Layer 7: Held exposure, 10% single-stock cap headroom, sector & slippage trap risk."""
 
     held_shares: int
-    held_value_tnd: Decimal
-    held_weight_pct: Decimal
+    held_value_tnd: Decimal | None
+    held_weight_pct: Decimal | None
     max_single_stock_cap_pct: Decimal
-    cap_headroom_tnd: Decimal
+    cap_headroom_tnd: Decimal | None
     cap_headroom_shares: int | None
     sector: str | None
-    sector_exposure_pct: Decimal
+    sector_exposure_pct: Decimal | None
     sector_concentration_warning: str | None
     execution_trap_risk: ExecutionTrapRisk
+    risk_evidence_warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "held_shares": self.held_shares,
-            "held_value_tnd": str(self.held_value_tnd),
-            "held_weight_pct": str(self.held_weight_pct),
+            "held_value_tnd": str(self.held_value_tnd) if self.held_value_tnd is not None else None,
+            "held_weight_pct": str(self.held_weight_pct)
+            if self.held_weight_pct is not None
+            else None,
             "max_single_stock_cap_pct": str(self.max_single_stock_cap_pct),
-            "cap_headroom_tnd": str(self.cap_headroom_tnd),
+            "cap_headroom_tnd": str(self.cap_headroom_tnd)
+            if self.cap_headroom_tnd is not None
+            else None,
             "cap_headroom_shares": self.cap_headroom_shares,
             "sector": self.sector,
-            "sector_exposure_pct": str(self.sector_exposure_pct),
+            "sector_exposure_pct": str(self.sector_exposure_pct)
+            if self.sector_exposure_pct is not None
+            else None,
             "sector_concentration_warning": self.sector_concentration_warning,
             "execution_trap_risk": self.execution_trap_risk,
+            "risk_evidence_warnings": list(self.risk_evidence_warnings),
         }
 
 
@@ -918,10 +926,12 @@ class SparseMarketResearchReport:
     selected_candidate_ids: list[str]
     assessments: list[SparseInstrumentResearchAssessment]
     by_instrument: dict[str, SparseInstrumentResearchAssessment] = field(default_factory=dict)
+    correctness_version: str = "m14_scope_identity_source_v2"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "as_of": self.as_of,
+            "correctness_version": self.correctness_version,
             "latest_open_session": self.latest_open_session,
             "model_version": self.model_version,
             "config_sha256": self.config_sha256,
@@ -1223,6 +1233,10 @@ def _compute_event_evidence(
     mix_cnt = 0
 
     for ev in macro_items:
+        if ev.source_verification_status != "VERIFIED_DOCUMENT":
+            # An asserted date and a homepage URL do not establish a catalyst.
+            # Keep the catalog inspectable through the macro endpoint, not scored.
+            continue
         ev_tokens = {token.upper() for token in (*ev.affected_instrument_ids, *ev.affected_symbols)}
         ev_tokens |= {_norm_token(token) for token in ev_tokens}
         matched_aliases_set.update(aliases & ev_tokens)
@@ -1524,7 +1538,7 @@ def _compute_portfolio_risk(
     pending_orders: Sequence[PendingOrderReservation],
     portfolio_equity_tnd: Decimal,
     sector: str | None,
-    sector_exposures_tnd: Mapping[str, Decimal],
+    sector_exposures_tnd: Mapping[str, Decimal | None],
     liquidity: LiquidityExecutionFeasibility,
     freshness: DataQualityFreshness,
     config: SparseResearchConfig,
@@ -1536,36 +1550,38 @@ def _compute_portfolio_risk(
             break
 
     held_shares = 0
-    avg_cost = Decimal("0.000")
     latest_px = liquidity.executable_reference_price_tnd or liquidity.last_verified_close_tnd
     if matched_pos is not None:
         if isinstance(matched_pos, Mapping):
             held_shares = int(matched_pos.get("total_shares", matched_pos.get("quantity", 0)) or 0)
-            avg_cost = quantize_tnd(
-                matched_pos.get("average_cost_tnd", matched_pos.get("acquisition_price_tnd", "0"))
-            )
             if latest_px is None and matched_pos.get("latest_price_tnd") is not None:
                 latest_px = quantize_tnd(matched_pos["latest_price_tnd"])
         else:
             held_shares = int(
                 getattr(matched_pos, "total_shares", getattr(matched_pos, "quantity", 0)) or 0
             )
-            avg_cost = quantize_tnd(
-                getattr(
-                    matched_pos,
-                    "average_cost_tnd",
-                    getattr(matched_pos, "acquisition_price_tnd", "0"),
-                )
-            )
             if latest_px is None and getattr(matched_pos, "latest_price_tnd", None) is not None:
                 latest_px = quantize_tnd(matched_pos.latest_price_tnd)
 
-    valuation_px = latest_px if latest_px is not None and latest_px > 0 else avg_cost
-    held_value = quantize_tnd(Decimal(held_shares) * valuation_px)
+    valuation_px = latest_px if latest_px is not None and latest_px > 0 else None
+    warnings: list[str] = []
+    held_value = (
+        Decimal("0.000")
+        if held_shares == 0
+        else quantize_tnd(Decimal(held_shares) * valuation_px)
+        if valuation_px is not None
+        else None
+    )
+    if held_value is None:
+        warnings.append(
+            "Held market value unavailable: observed quote missing; acquisition cost is not a quote."
+        )
     held_weight_pct = (
         quantize_tnd(held_value / portfolio_equity_tnd * Decimal("100"))
-        if portfolio_equity_tnd > 0
+        if held_value is not None and portfolio_equity_tnd > 0
         else Decimal("0.000")
+        if held_shares == 0
+        else None
     )
 
     reserved_buy = Decimal("0.000")
@@ -1576,20 +1592,38 @@ def _compute_portfolio_risk(
             reserved_buy += po.reserved_cash_tnd
 
     max_cap_tnd = quantize_tnd(portfolio_equity_tnd * config.max_single_stock_weight)
-    headroom_tnd = max(Decimal("0.000"), quantize_tnd(max_cap_tnd - held_value - reserved_buy))
-    headroom_shares = int(headroom_tnd // valuation_px) if valuation_px > 0 else None
+    headroom_tnd = (
+        max(Decimal("0.000"), quantize_tnd(max_cap_tnd - held_value - reserved_buy))
+        if held_value is not None and portfolio_equity_tnd > 0
+        else None
+    )
+    headroom_shares = (
+        int(headroom_tnd // valuation_px)
+        if headroom_tnd is not None and valuation_px is not None
+        else None
+    )
 
-    sec_val = sector_exposures_tnd.get(sector or "", Decimal("0.000"))
+    unknown_sector = "__UNKNOWN_HELD_SECTOR__" in sector_exposures_tnd
+    sec_val = (
+        None
+        if unknown_sector or (sector is None and sector_exposures_tnd)
+        else sector_exposures_tnd.get(sector or "", Decimal("0.000"))
+    )
     sec_pct = (
         quantize_tnd(sec_val / portfolio_equity_tnd * Decimal("100"))
-        if portfolio_equity_tnd > 0
+        if sec_val is not None and portfolio_equity_tnd > 0
         else Decimal("0.000")
+        if not sector_exposures_tnd
+        else None
     )
     sec_warn = (
         f"Sector '{sector}' exposure already at {sec_pct}% of equity (>= 25% threshold)."
-        if sec_pct >= Decimal("25.000")
+        if sec_pct is not None and sec_pct >= Decimal("25.000")
         else None
     )
+    if sec_pct is None:
+        sec_warn = "Sector exposure unavailable: held sector or observed quote evidence missing."
+        warnings.append(sec_warn)
 
     if freshness.freshness_tier in {"NEVER_TRADED", "STALE"} or (
         liquidity.zero_volume_share_ratio_20s is not None
@@ -1624,6 +1658,7 @@ def _compute_portfolio_risk(
         sector_exposure_pct=sec_pct,
         sector_concentration_warning=sec_warn,
         execution_trap_risk=trap_risk,
+        risk_evidence_warnings=warnings,
     )
 
 
@@ -1896,7 +1931,13 @@ def _build_explanation(
             "Latest session was untraded or missing; executable price cannot be verified."
         )
         contradicting.append("Zero current-session executable price.")
-    if portfolio_risk.held_weight_pct >= portfolio_risk.max_single_stock_cap_pct:
+    for warning in portfolio_risk.risk_evidence_warnings:
+        why_uncertain.append(warning)
+        missing_data.append(warning)
+    if (
+        portfolio_risk.held_weight_pct is not None
+        and portfolio_risk.held_weight_pct >= portfolio_risk.max_single_stock_cap_pct
+    ):
         contradicting.append(
             f"Held weight ({portfolio_risk.held_weight_pct}%) already at/above 10% single-stock cap."
         )
@@ -1958,15 +1999,22 @@ def evaluate_sparse_market_research(
     limit_reserved_meta: Sequence[LimitReservedBarMeta] = (),
     limit_reserved_recovery_applied: bool = False,
     hb_bar_keys: frozenset[tuple[str, date]] = frozenset(),
+    universe: str = "FULL_BVMT",
 ) -> SparseMarketResearchReport:
     """Evaluate all listed BVMT instruments across 7 independent PIT layers."""
     if cutoff.tzinfo is None or cutoff.utcoffset() is None:
         raise ValueError("cutoff must be timezone-aware")
+    if universe not in {"FULL_BVMT", "TUNIS_BOURSE_CHALLENGE"}:
+        raise ValueError("Unknown research universe")
 
     cfg = config or load_frozen_sparse_research_config()
     inst_list = validate_instrument_master(instruments)
     cal_list = validate_exchange_calendar(calendar)
     bar_list = validate_bars(bars)
+    from bvmt.research_identity import canonicalize_research_identity
+
+    projection = canonicalize_research_identity(inst_list, bar_list)
+    inst_list, bar_list = list(projection.instruments), list(projection.bars)
 
     open_sessions = [
         s for s in cal_list if s.is_open and s.closes_at is not None and s.closes_at <= cutoff
@@ -1976,7 +2024,10 @@ def evaluate_sparse_market_research(
 
     latest_session = open_sessions[-1]
     latest_date = latest_session.session_date
-    suspended_keys = {(s.instrument_id, s.session_date) for s in suspensions}
+    alias_ids = {a.source_instrument_id: a.canonical_instrument_id for a in projection.aliases}
+    suspended_keys = {
+        (alias_ids.get(s.instrument_id, s.instrument_id), s.session_date) for s in suspensions
+    }
 
     pit_bars_list: list[DailyBar] = []
     pit_bars: dict[tuple[str, date], DailyBar] = {}
@@ -2017,24 +2068,41 @@ def evaluate_sparse_market_research(
     held_map = held_positions or {}
 
     # Compute held sector totals for concentration warning
-    sector_exposures_tnd: dict[str, Decimal] = defaultdict(lambda: Decimal("0.000"))
+    sector_exposures_tnd: dict[str, Decimal | None] = {}
     for key, pos in held_map.items():
         pos_sec = sector_map.get(key) or sector_map.get(_norm_token(key))
-        if not pos_sec:
-            continue
         sh = (
             int(pos.get("total_shares", pos.get("quantity", 0)) or 0)
             if isinstance(pos, Mapping)
             else int(getattr(pos, "total_shares", getattr(pos, "quantity", 0)) or 0)
         )
-        px = (
-            quantize_tnd(pos.get("latest_price_tnd", pos.get("average_cost_tnd", "0")))
+        if sh <= 0:
+            continue
+        if not pos_sec:
+            sector_exposures_tnd["__UNKNOWN_HELD_SECTOR__"] = None
+            continue
+        px_raw = (
+            pos.get("latest_price_tnd")
             if isinstance(pos, Mapping)
-            else quantize_tnd(
-                getattr(pos, "latest_price_tnd", getattr(pos, "average_cost_tnd", "0"))
-            )
+            else getattr(pos, "latest_price_tnd", None)
         )
-        sector_exposures_tnd[pos_sec] += quantize_tnd(Decimal(sh) * px)
+        px = quantize_tnd(px_raw) if px_raw is not None else None
+        if px is None or px <= 0:
+            # Prefer a known PIT market observation over an unavailable held quote.
+            aliases = resolve_instrument_aliases(key)
+            known = [
+                b
+                for iid, inst_bars in bars_by_inst.items()
+                if _norm_token(iid) in aliases or iid in aliases
+                for b in inst_bars
+                if b.status == "traded" and b.close > 0
+            ]
+            px = max(known, key=lambda b: b.session_date).close if known else None
+        if px is None or px <= 0:
+            sector_exposures_tnd[pos_sec] = None
+        elif pos_sec not in sector_exposures_tnd or sector_exposures_tnd[pos_sec] is not None:
+            current = sector_exposures_tnd.get(pos_sec) or Decimal("0.000")
+            sector_exposures_tnd[pos_sec] = current + quantize_tnd(Decimal(sh) * px)
 
     # Pass 1: raw trend computation per instrument so market benchmark_20s is strictly cross-sectional PIT
     raw_by_inst: dict[str, dict[str, Any]] = {}
@@ -2052,11 +2120,16 @@ def evaluate_sparse_market_research(
             inst_id, pit_bars, inst_bars, traded_bars, open_sessions, cfg
         )
         raw_by_inst[inst_id] = raw
-        if raw["momentum_20s_pct"] is not None and rec_ref.market_segment in {
-            "principal",
-            "principal_continu",
-            "principal_fixing",
-        }:
+        if (
+            (universe == "FULL_BVMT" or resolve_challenge_record(inst_id) is not None)
+            and raw["momentum_20s_pct"] is not None
+            and rec_ref.market_segment
+            in {
+                "principal",
+                "principal_continu",
+                "principal_fixing",
+            }
+        ):
             mom20_principal_pool.append(float(raw["momentum_20s_pct"]))
 
     bench_20s_pct: float | None = (
@@ -2280,9 +2353,12 @@ def evaluate_sparse_market_research(
             a.instrument_id,
         )
     )
-    selected_sorted = [a.instrument_id for a in assessments if a.is_selected_candidate][
-        : cfg.candidate_top_k
-    ]
+    selected_sorted = [
+        a.instrument_id
+        for a in assessments
+        if a.is_selected_candidate
+        and (universe == "FULL_BVMT" or a.competition_eligibility.in_challenge_universe)
+    ][: cfg.candidate_top_k]
     selected_set = set(selected_sorted)
     final_assessments: list[SparseInstrumentResearchAssessment] = []
     for a in assessments:
@@ -2299,7 +2375,10 @@ def evaluate_sparse_market_research(
                     research_priority_score=a.research_priority_score,
                     is_selected_candidate=False,
                     candidate_selection_reason=(
-                        f"Below candidate_top_k={cfg.candidate_top_k} cap ({a.candidate_selection_reason})"
+                        "not_in_challenge_universe: excluded before top-k allocation"
+                        if universe == "TUNIS_BOURSE_CHALLENGE"
+                        and not a.competition_eligibility.in_challenge_universe
+                        else f"Below candidate_top_k={cfg.candidate_top_k} cap ({a.candidate_selection_reason})"
                     ),
                     baseline_eligible=a.baseline_eligible,
                     baseline_exclusion_reasons=a.baseline_exclusion_reasons,

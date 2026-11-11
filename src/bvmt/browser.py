@@ -101,14 +101,79 @@ def resolve_canonical_instrument(
     Explicit non-challenge names like 'BH ASSURANCE' are resolved before falling back
     to short tickers like 'BH' so distinct issuers never inherit BH BANK's ISIN.
     """
+
+    def check_alias_display(known: tuple[str, str, str | None]) -> None:
+        if not displayed_symbol:
+            return
+        display = " ".join(displayed_symbol.upper().split())
+        display_alias = _KNOWN_BVMT_ALIASES.get(display)
+        display_record = resolve_challenge_record(display)
+        # The competition's BH short label is historically reused beside explicit
+        # BH ASSURANCE/BH LEASING names; those issuer names remain authoritative.
+        bank_short_label = known[0] in {"BH_ASSURANCE", "BH_LEASING"} and display in {
+            "BH",
+            "BH BANK",
+            "BH_BANK",
+        }
+        if display_alias and display_alias[0] != known[0]:
+            raise ValueError("Conflicting primary and displayed alias identifiers")
+        if (
+            display_record
+            and display_record.canonical_instrument_id != known[0]
+            and not bank_short_label
+        ):
+            raise ValueError("Conflicting primary alias and displayed instrument")
+
     primary_clean = " ".join(symbol.strip().upper().split())
     if primary_clean in _KNOWN_BVMT_ALIASES:
-        return _KNOWN_BVMT_ALIASES[primary_clean]
+        known = _KNOWN_BVMT_ALIASES[primary_clean]
+        check_alias_display(known)
+        if isin and known[2] and isin.strip() != known[2]:
+            raise ValueError("Conflicting alias and ISIN identifiers")
+        return known
     primary_slug = _slug_instrument_token(primary_clean)
     if primary_slug in _KNOWN_BVMT_ALIASES:
-        return _KNOWN_BVMT_ALIASES[primary_slug]
+        known = _KNOWN_BVMT_ALIASES[primary_slug]
+        check_alias_display(known)
+        if isin and known[2] and isin.strip() != known[2]:
+            raise ValueError("Conflicting alias and ISIN identifiers")
+        return known
+
+    primary_record = resolve_challenge_record(symbol) or resolve_challenge_record(primary_slug)
+    if primary_record is not None:
+        if isin and isin.strip() != primary_record.verified_isin:
+            raise ValueError("Conflicting symbol and ISIN identifiers")
+        displayed_record = resolve_challenge_record(displayed_symbol) if displayed_symbol else None
+        if displayed_record and displayed_record.verified_isin != primary_record.verified_isin:
+            raise ValueError("Conflicting symbol and displayed symbol identifiers")
 
     candidates = [symbol, primary_slug, isin, displayed_symbol]
+    resolved = [
+        record
+        for candidate in candidates
+        if candidate
+        if (record := resolve_challenge_record(candidate)) is not None
+    ]
+    aliases = [
+        _KNOWN_BVMT_ALIASES[clean]
+        for candidate in candidates
+        if candidate
+        if (clean := " ".join(candidate.upper().split())) in _KNOWN_BVMT_ALIASES
+    ]
+    known_isins = {record.verified_isin for record in resolved}
+    known_isins.update(alias[2] for alias in aliases if alias[2] is not None)
+    if len(known_isins) > 1 or (isin and any(value != isin.strip() for value in known_isins)):
+        raise ValueError("Conflicting alias and instrument identifiers")
+    if (
+        aliases
+        and resolved
+        and any(alias[0] != resolved[0].canonical_instrument_id for alias in aliases)
+    ):
+        raise ValueError("Conflicting alias and instrument identities")
+    if len({record.verified_isin for record in resolved}) > 1:
+        raise ValueError("Conflicting instrument identifiers")
+    if isin and any(record.verified_isin != isin.strip() for record in resolved):
+        raise ValueError("Conflicting ISIN and display identifiers")
     for candidate in candidates:
         if not candidate or not str(candidate).strip():
             continue

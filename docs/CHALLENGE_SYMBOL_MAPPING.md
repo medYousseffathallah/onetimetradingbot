@@ -4,7 +4,9 @@
 
 The Tunis Bourse Challenge uses customized short symbol mnemonics that occasionally diverge from standard BVMT ticker symbols or company names.
 
-This document records the exact, verified mapping between:
+This document records mappings from the existing challenge registry. The P0 recovery
+check corrected documentary disagreements against that registry, without claiming
+a new independent verification of the official website. It links:
 1. `Challenge Symbol`: The exact mnemonic displayed in the virtual challenge interface (`https://www.tunisbourse-challenge.com`).
 2. `BVMT Ticker / Instrument ID`: The internal identifier used in BVMT exchange feeds and this platform (`instrument_master.csv`).
 3. `ISIN`: The international securities identification number.
@@ -22,10 +24,11 @@ This document records the exact, verified mapping between:
 | `SAM` | `ATELIER MEUBLE INT` | TN0007740012 | Société Atelier du Meuble Intérieurs (SAM) | Challenge uses `SAM` rather than `ATELIER MEUBLE INT` |
 | `STA` | `STA` | TNNGTFLC2986 | Société Tunisienne d'Automobiles (Chery) | Ticker and symbol match |
 | `BH` | `BH BANK` | TN0001900604 | Banque de l'Habitat (BH Bank) | Challenge uses `BH` rather than `BH BANK` |
-| `TJARI` | `ATTIJARI BANK` | TN0001200401 | Attijari Bank Tunisie | Challenge uses `TJARI` rather than `ATTIJARI BANK` |
-| `TJL` / `TLS` | `TUNISIE LEASING & FAC` | TN0002100907 | Tunisie Leasing et Factoring | Both symbols map to same security |
-| `TRE` | `TUNIS RE` | TN0007390016 | Société Tunisienne de Réassurance | Group 12 Fixing security |
-| `WIFAK` | `WIFAK INT BANK` | TN0007280019 | Wifak International Bank | Group 12 Fixing security |
+| `TJARI` | `ATTIJARI BANK` | TN0001600154 | Attijari Bank Tunisie | Challenge uses `TJARI` rather than `ATTIJARI BANK` |
+| `TJL` | `ATTIJARI LEASING` | TN0006610018 | Attijari Leasing | Distinct from TLS; existing registry mapping |
+| `TLS` | `TUNISIE LEASING F` | TN0002100907 | Tunisie Leasing et Factoring | Distinct from TJL; existing registry mapping |
+| `TRE` | `TUNIS RE` | TN0007380017 | Société Tunisienne de Réassurance | Group 12 Fixing security |
+| `WIFAK` | `WIFAK INT BANK` | TN0007200017 | Wifak International Bank | Group 12 Fixing security |
 | `DH` | `DELICE HOLDING` | TN0007670011 | Délice Holding | Challenge uses `DH` rather than `DELICE HOLDING` |
 
 ---

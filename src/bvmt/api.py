@@ -36,15 +36,17 @@ from bvmt.browser import (
     run_browser_sync_subprocess,
 )
 from bvmt.calendar import read_exchange_calendar, read_instrument_master
-from bvmt.challenge_universe import get_challenge_universe
+from bvmt.challenge_universe import get_challenge_universe, resolve_challenge_record
 from bvmt.dashboard import (
     DEFAULT_CALENDAR_PATH,
     DEFAULT_INSTRUMENTS_PATH,
     DashboardAppState,
+    evaluate_account_sync_freshness,
     load_rejected_snapshot_keys,
     snapshot_rejection_keys,
 )
 from bvmt.data import inspect_market_dataset_provenance, read_bars_csv
+from bvmt.features import rank_session_baseline
 from bvmt.glossary import export_full_glossary, get_eligibility_explanation
 from bvmt.holding_period import evaluate_holding_periods
 from bvmt.ledger import CompetitionScreenshotSnapshot, ReconciliationReport
@@ -75,6 +77,7 @@ from bvmt.portfolio_service import PortfolioStateService, SnapshotConflictError
 from bvmt.position_sizing import (
     PendingOrderReservation,
 )
+from bvmt.recommendations import RecommendationReport, generate_recommendations
 from bvmt.session_accounting import generate_november_09_session_report
 from bvmt.sparse_generalization import prepare_pit_calendar_and_bars
 from bvmt.sparse_research import (
@@ -693,6 +696,90 @@ def _market(state: DashboardAppState) -> MarketDataStatusSummary:
     )
 
 
+def _operational_blockers(state: DashboardAppState, instrument_id: str, symbol: str) -> list[str]:
+    """Conservative API guard; never mutates recommendations or the account ledger."""
+    if state.portfolio_mode != "REAL_COMPETITION":
+        return []
+    reasons: list[str] = []
+    if state.data_is_synthetic:
+        reasons.append("synthetic_data_on_real_portfolio")
+    if state.rule_blockers:
+        reasons.append("competition_rules_unverified")
+    identity = resolve_challenge_record(instrument_id)
+    symbol_identity = resolve_challenge_record(symbol)
+    if identity is None:
+        reasons.append("not_in_challenge_universe")
+    elif symbol_identity is None or identity.verified_isin != symbol_identity.verified_isin:
+        reasons.append("instrument_mapping_conflict")
+    coverage = state.research_coverage.by_instrument if state.research_coverage else {}
+    analytics = coverage.get(instrument_id)
+    if analytics is None or analytics.last_traded_date is None:
+        reasons.append("quote_evidence_unavailable")
+    elif (
+        analytics.quote_age_sessions < 0
+        or state.latest_bar_session_str is None
+        or analytics.last_traded_date > date.fromisoformat(state.latest_bar_session_str)
+    ):
+        reasons.append("future_quote_evidence")
+    elif analytics.quote_age_sessions > 0 or state.data_freshness_sessions_behind > 0:
+        reasons.append("stale_quote")
+    if state.pending_browser_snapshot is not None:
+        reasons.append("portfolio_sync_pending")
+    if not state.ledger.pending_orders_verified:
+        reasons.append("pending_orders_unverified")
+    if not state.ledger.transactions_imported:
+        reasons.append("transaction_history_unverified")
+    freshness = evaluate_account_sync_freshness(
+        state.account_snapshot, state.latest_bar_session_str
+    )
+    if freshness["is_stale"]:
+        reasons.append("account_sync_stale")
+    return reasons
+
+
+def _guard_plan(plan: dict[str, Any], state: DashboardAppState) -> dict[str, Any]:
+    reasons = _operational_blockers(state, plan["instrument_id"], plan["symbol"])
+    if reasons:
+        plan["is_actionable"] = False
+        plan["suggested_max_shares"] = 0
+        plan["plan_category"] = "RESEARCH_CANDIDATE"
+        plan["rejection_reasons"] = list(dict.fromkeys(plan["rejection_reasons"] + reasons))
+        plan["binding_constraint"] = reasons[0]
+        for key in (
+            "estimated_gross_order_value_tnd",
+            "estimated_purchase_fee_tnd",
+            "estimated_total_purchase_cost_tnd",
+            "estimated_sale_fee_tnd",
+        ):
+            plan[key] = "0.000"
+        plan["cash_remaining_after_purchase_tnd"] = plan["effective_available_cash_tnd"]
+        equity = state.ledger.valuate(state.price_map).total_equity_tnd
+        exposure = Decimal(str(plan["existing_position_exposure_tnd"]))
+        plan["proposed_position_weight_pct"] = str(
+            exposure / equity * 100 if equity > 0 else Decimal("0")
+        )
+    coverage = state.research_coverage.by_instrument if state.research_coverage else {}
+    analytics = coverage.get(plan["instrument_id"])
+    plan["last_traded_date"] = (
+        analytics.last_traded_date.isoformat() if analytics and analytics.last_traded_date else None
+    )
+    plan["last_verified_price_tnd"] = (
+        str(analytics.last_verified_price)
+        if analytics and analytics.last_verified_price is not None
+        else None
+    )
+    plan["quote_age_sessions"] = analytics.quote_age_sessions if analytics else None
+    plan["data_timestamp"] = (
+        f"{plan['last_traded_date']} (session date; quote time unavailable)"
+        if plan["last_traded_date"]
+        else "Quote date and time unavailable"
+    )
+    plan["data_source"] = _dataset_label(Path(state.active_bars_path), state.data_is_synthetic)
+    # EOD session evidence does not supply an intraday quote timestamp.
+    plan["quote_timestamp_status"] = "UNAVAILABLE_EOD_SESSION_ONLY"
+    return plan
+
+
 def _overview(service: PortfolioStateService, state: DashboardAppState) -> AccountOverviewResponse:
     valuation = state.ledger.valuate(state.price_map)
     pending = state.pending_browser_snapshot
@@ -721,7 +808,9 @@ def _overview(service: PortfolioStateService, state: DashboardAppState) -> Accou
             "market_status": _market(state),
             "active_alerts_count": len(state.notifications.active_alerts()),
             "actionable_recommendations_count": sum(
-                r.suggested_shares > 0 and not r.blocked_reasons
+                r.suggested_shares > 0
+                and not r.blocked_reasons
+                and not _operational_blockers(state, r.instrument_id, r.symbol)
                 for r in state.recommendations.recommendations
             ),
         }
@@ -935,6 +1024,7 @@ def _format_sparse_decision_explanation(
 def _sparse_research_explanations(
     active: PortfolioStateService,
     state: DashboardAppState,
+    universe: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Compute and cache per-instrument Phase 4 sparse research explanations cleanly."""
     ctx = active.resolve_context()
@@ -957,8 +1047,12 @@ def _sparse_research_explanations(
         sorted((inst_id, pos.total_shares) for inst_id, pos in state.ledger.holdings.items())
     )
     cache_key: tuple[object, ...] = (
+        universe,
         get_cache_generation(),
         active.portfolio_mode,
+        file_fingerprint(ctx.ledger_path),
+        json.dumps(state.ledger.to_dict(), sort_keys=True, default=str),
+        file_fingerprint(Path("configs/sparse_research_v1.json")),
         file_fingerprint(ctx.bars_path),
         file_fingerprint(eff_cal_path),
         file_fingerprint(eff_inst_path),
@@ -984,11 +1078,7 @@ def _sparse_research_explanations(
         if cutoff.tzinfo is None:
             cutoff = cutoff.replace(tzinfo=UTC)
         valuation = state.ledger.valuate(state.price_map)
-        equity = (
-            valuation.total_equity_tnd
-            if valuation.total_equity_tnd > Decimal("0")
-            else Decimal("50000.000")
-        )
+        equity = valuation.total_equity_tnd
         report = evaluate_sparse_market_research(
             instruments=instruments,
             calendar=cal_prep,
@@ -996,7 +1086,24 @@ def _sparse_research_explanations(
             cutoff=cutoff,
             document_chunks=state.document_chunks,
             held_positions=state.ledger.holdings,
+            pending_orders=[
+                PendingOrderReservation(
+                    order_id=o.order_id,
+                    instrument_id=o.instrument_id,
+                    side=o.side,
+                    remaining_shares=o.remaining_shares,
+                    limit_price_tnd=o.limit_price_tnd,
+                )
+                for o in state.ledger.orders.values()
+                if o.status in {"PENDING", "PARTIALLY_FILLED"}
+            ],
             portfolio_equity_tnd=equity,
+            universe=universe
+            or (
+                "TUNIS_BOURSE_CHALLENGE"
+                if active.portfolio_mode == "REAL_COMPETITION"
+                else "FULL_BVMT"
+            ),
         )
     except (OSError, ValueError, KeyError, TypeError):
         return {}
@@ -1007,6 +1114,49 @@ def _sparse_research_explanations(
     }
     _SPARSE_EXPLANATIONS_CACHE.set(cache_key, formatted)
     return dict(formatted)
+
+
+def _scoped_recommendations(
+    active: PortfolioStateService, state: DashboardAppState, universe: str | None
+) -> RecommendationReport:
+    """Full-market research is explicit; it cannot unlock competition execution."""
+    if universe not in {None, "FULL_BVMT", "FULL_BVMT_RESEARCH", "TUNIS_BOURSE_CHALLENGE"}:
+        raise HTTPException(422, "Unknown research universe")
+    if universe is None or (
+        universe == "TUNIS_BOURSE_CHALLENGE" and active.portfolio_mode == "REAL_COMPETITION"
+    ):
+        return state.recommendations
+    scope = "FULL_BVMT" if universe in {"FULL_BVMT", "FULL_BVMT_RESEARCH"} else universe
+    ctx = active.resolve_context()
+    parent = ctx.bars_path.parent
+    cal_path = parent / "exchange_calendar.csv"
+    master_path = parent / "instrument_master.csv"
+    cal = read_exchange_calendar(cal_path if cal_path.is_file() else active.calendar_path)
+    bars = read_bars_csv(ctx.bars_path)
+    if any(s.is_open and s.closes_at is None for s in cal) or any(
+        b.published_at is None for b in bars
+    ):
+        cal, bars = prepare_pit_calendar_and_bars(cal, bars)
+    cutoff = datetime.fromisoformat(state.recommendations.decision_cutoff)
+    baseline = rank_session_baseline(
+        read_instrument_master(master_path if master_path.is_file() else active.instruments_path),
+        cal,
+        bars,
+        cutoff,
+        min_trade_frequency=0.60,
+        min_median_turnover_tnd=Decimal("5000"),
+        universe=scope,
+    )
+    return generate_recommendations(
+        baseline,
+        state.ledger,
+        generated_at=cutoff,
+        simulation_profile=state.recommendations.simulation_profile,
+        data_is_synthetic=state.data_is_synthetic,
+        rule_blocker_count=len(state.rule_blockers),
+        market_quotes=state.price_map,
+        universe=scope,
+    )
 
 
 def create_app(
@@ -1383,15 +1533,18 @@ def create_app(
         )
 
     @application.get("/api/rankings")
-    def rankings(mode: PortfolioMode = "REAL_COMPETITION") -> StockRankingsResponse:
+    def rankings(
+        mode: PortfolioMode = "REAL_COMPETITION", universe: str | None = None
+    ) -> StockRankingsResponse:
         active = for_mode(mode)
         state = active.load_state()
-        report = state.recommendations
-        synthetic_on_real = state.data_is_synthetic and state.portfolio_mode == "REAL_COMPETITION"
+        report = _scoped_recommendations(active, state, universe)
         research_map = (
             state.research_coverage.by_instrument if state.research_coverage is not None else {}
         )
-        sparse_explanations = _sparse_research_explanations(active, state)
+        sparse_explanations = _sparse_research_explanations(
+            active, state, "FULL_BVMT" if universe == "FULL_BVMT_RESEARCH" else universe
+        )
         ranking_items: list[StockRankingItem] = []
         for r in report.recommendations:
             an = research_map.get(r.instrument_id)
@@ -1412,8 +1565,7 @@ def create_app(
 
             dedup_blocked = list(
                 dict.fromkeys(
-                    r.blocked_reasons
-                    + (["synthetic_data_on_real_portfolio"] if synthetic_on_real else [])
+                    r.blocked_reasons + _operational_blockers(state, r.instrument_id, r.symbol)
                 )
             )
             dedup_warn = [
@@ -1440,9 +1592,9 @@ def create_app(
                     composite_score=r.composite_score,
                     eligible=r.rank is not None,
                     eligibility_warnings=dedup_warn,
-                    recommendation_category="NO TRADE" if synthetic_on_real else r.category,
-                    suggested_side=None if synthetic_on_real else r.suggested_side,
-                    suggested_shares=0 if synthetic_on_real else r.suggested_shares,
+                    recommendation_category="NO TRADE" if dedup_blocked else r.category,
+                    suggested_side=None if dedup_blocked else r.suggested_side,
+                    suggested_shares=0 if dedup_blocked else r.suggested_shares,
                     blocked_reasons=dedup_blocked,
                     rationale=r.supporting_evidence + r.main_risks,
                     eligibility_explanations=[
@@ -1523,10 +1675,13 @@ def create_app(
         q: str = "",
         mode: PortfolioMode = "REAL_COMPETITION",
         include_strategy_comparison: bool = True,
+        universe: str | None = None,
     ) -> ResearchResponse:
         active = for_mode(mode)
         state = active.load_state()
-        sparse_explanations = _sparse_research_explanations(active, state)
+        if universe not in {None, "FULL_BVMT", "TUNIS_BOURSE_CHALLENGE"}:
+            raise HTTPException(422, "Unknown research universe")
+        sparse_explanations = _sparse_research_explanations(active, state, universe)
         cutoff = datetime.fromisoformat(state.recommendations.decision_cutoff)
         chunks = state.document_chunks
         results = (
@@ -1604,13 +1759,15 @@ def create_app(
         )
 
     @application.get("/api/market-data/status")
-    def market_data_status(mode: PortfolioMode = "REAL_COMPETITION") -> MarketGatewayStatusResponse:
+    def market_data_status(
+        mode: PortfolioMode = "REAL_COMPETITION", check_remote: bool = False
+    ) -> MarketGatewayStatusResponse:
         from bvmt.gateway import MarketDataGateway
 
         active = for_mode(mode)
         context = active.resolve_context()
         gateway = MarketDataGateway(output_dir=context.bars_path.parent)
-        return MarketGatewayStatusResponse(**asdict(gateway.get_status()))
+        return MarketGatewayStatusResponse(**asdict(gateway.get_status(probe_remote=check_remote)))
 
     @application.post("/api/market-data/refresh")
     def market_data_refresh(
@@ -1985,11 +2142,13 @@ def create_app(
     ) -> TradePlansResponse:
         active = for_mode(mode)
         state = active.load_state()
-        report = state.recommendations
+        report = _scoped_recommendations(active, state, universe)
         research_map = (
             state.research_coverage.by_instrument if state.research_coverage is not None else {}
         )
-        sparse_explanations = _sparse_research_explanations(active, state)
+        sparse_explanations = _sparse_research_explanations(
+            active, state, "FULL_BVMT" if universe == "FULL_BVMT_RESEARCH" else universe
+        )
         valuation = state.ledger.valuate(state.price_map)
         tot_eq = valuation.total_equity_tnd
         cash = valuation.available_cash_tnd
@@ -2058,7 +2217,7 @@ def create_app(
                 as_of_session=report.latest_open_session,
                 universe=universe,
             )
-            plan_dict = plan.to_dict()
+            plan_dict = _guard_plan(plan.to_dict(), state)
             plan_dict["decision_explanation"] = sparse_explanations.get(r.instrument_id)
             plans.append(plan_dict)
 
@@ -2107,7 +2266,7 @@ def create_app(
         med_turnover = (
             an.median_turnover_20s_tnd
             if an is not None and an.median_turnover_20s_tnd is not None
-            else Decimal("25000.000")
+            else Decimal("0.000")
         )
         med_vol = int(med_turnover // body.limit_price_tnd) if body.limit_price_tnd > 0 else 0
         rank_val = None
@@ -2146,6 +2305,7 @@ def create_app(
             quote_age_sessions=an.quote_age_sessions
             if an and an.quote_age_sessions is not None
             else 0,
+            is_stale_quote=an is None or an.last_traded_date is None,
             research_rank=rank_val,
             composite_score=comp_score,
             momentum_20s=mom20,
@@ -2157,10 +2317,10 @@ def create_app(
             as_of_session=state.recommendations.latest_open_session,
             universe=body.universe,
         )
-        plan_dict = plan.to_dict()
-        plan_dict["decision_explanation"] = _sparse_research_explanations(active, state).get(
-            body.instrument_id
-        )
+        plan_dict = _guard_plan(plan.to_dict(), state)
+        plan_dict["decision_explanation"] = _sparse_research_explanations(
+            active, state, "FULL_BVMT" if body.universe == "FULL_BVMT_RESEARCH" else body.universe
+        ).get(body.instrument_id)
         return plan_dict
 
     @application.get("/api/challenge-universe")
@@ -2219,13 +2379,24 @@ def create_app(
             market_rankings=state.recommendations.recommendations,
             as_of_session=state.recommendations.latest_open_session,
             pending_orders=pending_res,
+            decision_timestamp=datetime.fromisoformat(state.recommendations.decision_cutoff),
         )
-        return report.to_dict()
+        payload = report.to_dict()
+        for group in ("swing_candidates", "position_candidates", "active_position_reviews"):
+            for item in payload[group]:
+                reasons = _operational_blockers(state, item["instrument_id"], item["symbol"])
+                if reasons:
+                    item["quantity_limit"] = 0
+                    item["decision_status"] = "INSUFFICIENT_EVIDENCE"
+                    item["limitations"] = list(dict.fromkeys(item["limitations"] + reasons))
+        return payload
 
     @application.get("/api/macro-intelligence")
     def macro_intelligence(symbol: str | None = None) -> dict[str, Any]:
-        events = get_all_macro_events()
-        narrative = get_macro_narrative_context(symbol) if symbol else ""
+        state = base.load_state()
+        cutoff = datetime.fromisoformat(state.recommendations.decision_cutoff)
+        events = get_all_macro_events(cutoff=cutoff)
+        narrative = get_macro_narrative_context(symbol, cutoff=cutoff) if symbol else ""
         return {
             "narrative": narrative,
             "count": len(events),

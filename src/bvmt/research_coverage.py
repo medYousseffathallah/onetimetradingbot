@@ -27,6 +27,7 @@ from bvmt.calendar import (
 from bvmt.challenge_universe import resolve_challenge_record
 from bvmt.data import DailyBar, validate_bars
 from bvmt.features import SessionBaselineReport
+from bvmt.research_identity import canonicalize_research_identity
 
 ResearchCoverageStatus = Literal[
     "FULL_COVERAGE",
@@ -244,6 +245,8 @@ def evaluate_market_research_coverage(
     inst_list = validate_instrument_master(instruments)
     cal_list = validate_exchange_calendar(calendar)
     bar_list = validate_bars(bars)
+    projection = canonicalize_research_identity(inst_list, bar_list)
+    inst_list, bar_list = list(projection.instruments), list(projection.bars)
 
     open_sessions = [
         s for s in cal_list if s.is_open and s.closes_at is not None and s.closes_at <= cutoff
