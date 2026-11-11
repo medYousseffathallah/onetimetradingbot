@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { FileSearch, BookOpen, CheckCircle2, Search, Info } from "lucide-react";
-import { api, ResearchResponse } from "@/lib/api";
+import { api, ResearchResponse, StockRankingItem } from "@/lib/api";
 import { formatTimestamp } from "@/lib/utils";
 import {
   Badge,
@@ -14,26 +14,68 @@ import {
   CardTitle,
 } from "@/components/ui/primitives";
 import { MetricHelp } from "@/components/ui/metric-help";
+import { DecisionExplanationCard } from "@/components/decision-explanation-card";
 import { usePortfolioMode } from "@/components/app-shell";
 
 export default function StockResearchPage() {
   const { mode, refreshTrigger } = usePortfolioMode();
   const [query, setQuery] = useState("");
   const [data, setData] = useState<ResearchResponse | null>(null);
+  const [rankings, setRankings] = useState<StockRankingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const runSearch = (qStr: string) => {
     setLoading(true);
-    api
-      .getResearch(qStr, mode)
-      .then((res) => setData(res))
+    Promise.all([
+      api.getResearch(qStr, mode),
+      rankings.length === 0 ? api.getRankings(mode).catch(() => null) : Promise.resolve(null),
+    ])
+      .then(([res, rk]) => {
+        setData(res);
+        if (rk) setRankings(rk.rankings);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    runSearch(query);
+    setLoading(true);
+    Promise.all([
+      api.getResearch(query, mode),
+      api.getRankings(mode).catch(() => null),
+    ])
+      .then(([res, rk]) => {
+        setData(res);
+        if (rk) setRankings(rk.rankings);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [mode, refreshTrigger]);
+
+  const matchingStocks = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!rankings.length) return [];
+    if (q) {
+      return rankings
+        .filter(
+          (r) =>
+            r.symbol.toLowerCase().includes(q) ||
+            r.instrument_id.toLowerCase().includes(q) ||
+            (r.isin ?? "").toLowerCase().includes(q)
+        )
+        .slice(0, 6);
+    }
+    const icf = rankings.find((r) => r.symbol === "ICF");
+    const eligibleTop = rankings.filter((r) => r.eligible).slice(0, 2);
+    const partial = rankings
+      .filter((r) => !r.eligible && r.in_challenge_universe && r.symbol !== "ICF")
+      .slice(0, 1);
+    const dedup = new Map<string, StockRankingItem>();
+    for (const item of [icf, ...eligibleTop, ...partial]) {
+      if (item) dedup.set(item.instrument_id, item);
+    }
+    return Array.from(dedup.values());
+  }, [rankings, query]);
 
   return (
     <div className="space-y-6">
@@ -126,6 +168,49 @@ export default function StockResearchPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Security Research Briefs (Separated Evidence & Eligibility) */}
+      {matchingStocks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <CardTitle className="text-lg">
+                  Per-Security Research &amp; Missing-Evidence Briefs
+                </CardTitle>
+                <CardDescription>
+                  Separated quantitative price completeness, local fundamental/event availability, and trading eligibility
+                  {query.trim() ? ` matching “${query.trim()}”` : " (ICF + Spotlight Securities)"}.
+                </CardDescription>
+              </div>
+              <MetricHelp metricId="research_status_taxonomy" />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {matchingStocks.map((stock) => (
+              <div key={stock.instrument_id} className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className="font-bold text-slate-900 dark:text-slate-100">
+                    {stock.symbol} ({stock.instrument_id})
+                    {stock.isin ? ` • ${stock.isin}` : ""}
+                  </span>
+                  <span className="font-mono text-slate-500 dark:text-slate-400">
+                    {stock.market_segment ?? "Principal Continu"}
+                  </span>
+                </div>
+                <DecisionExplanationCard
+                  symbol={stock.symbol}
+                  ranking={stock}
+                  explanation={
+                    data?.decision_explanations?.[stock.instrument_id] ??
+                    stock.decision_explanation
+                  }
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Verified Event Signals */}
       <Card>

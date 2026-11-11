@@ -43,6 +43,7 @@ import {
   Button,
 } from "@/components/ui/primitives";
 import { MetricHelp } from "@/components/ui/metric-help";
+import { DecisionExplanationCard } from "@/components/decision-explanation-card";
 
 type HorizonTab = "SWING" | "POSITION" | "HOLDINGS" | "DAY_TRADING" | "ALL_PLANS";
 
@@ -629,6 +630,30 @@ export default function TradePlannerPage() {
 
         {/* Right Column: Multi-Horizon Candidate Cards (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
+          {(calculatedPlan || selectedPlan) && (
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <span>
+                    Decision Explanation Brief:{" "}
+                    {(calculatedPlan ?? selectedPlan)?.symbol} (
+                    {(calculatedPlan ?? selectedPlan)?.instrument_id})
+                  </span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    Plain-language evidence, missingness &amp; separate eligibility check
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <DecisionExplanationCard
+                  symbol={(calculatedPlan ?? selectedPlan)!.symbol}
+                  plan={(calculatedPlan ?? selectedPlan)!}
+                  explanation={(calculatedPlan ?? selectedPlan)!.decision_explanation}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Horizon Selector Navigation Bar */}
           <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
             <button

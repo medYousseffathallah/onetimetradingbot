@@ -187,6 +187,33 @@ export interface GlossaryResponse {
   categories: Record<string, MetricDefinitionItem[]>;
 }
 
+export type UnifiedResearchStatus =
+  | "FULL_RESEARCH_AVAILABLE"
+  | "PARTIAL_RESEARCH_AVAILABLE"
+  | "EVENT_RESEARCH_AVAILABLE"
+  | "INSUFFICIENT_EVIDENCE"
+  | "RESTRICTED_FOR_TRADING";
+
+export interface ResearchDecisionExplanation {
+  model_version: string;
+  research_status: UnifiedResearchStatus;
+  research_status_label: string;
+  price_indicators_status: string;
+  fundamental_evidence_status: string;
+  event_evidence_status: string;
+  liquidity_status: string;
+  trading_eligibility_status: string;
+  why_interesting: string;
+  why_uncertain: string;
+  missing_data: string[];
+  supporting_evidence: string[];
+  contradicting_evidence: string[];
+  is_tradable: boolean;
+  execution_risk: string;
+  review_trigger: string;
+  non_buy_notice: string;
+}
+
 export interface StockRankingItem {
   rank: number | null;
   instrument_id: string;
@@ -228,6 +255,7 @@ export interface StockRankingItem {
   in_challenge_universe?: boolean;
   challenge_symbol?: string | null;
   order_entry_eligibility?: string;
+  decision_explanation?: ResearchDecisionExplanation | null;
 }
 
 export interface StockRankingsResponse {
@@ -561,6 +589,7 @@ export interface ResearchResponse {
   document_results: DocumentSearchResultItem[];
   backtest_summary: BacktestSummaryItem;
   strategy_comparison?: StrategyExperimentRegistry | null;
+  decision_explanations?: Record<string, ResearchDecisionExplanation>;
 }
 
 export interface AlertItem {
@@ -737,6 +766,7 @@ export interface ManualTradePlan {
   trading_activity_status?: string;
   execution_feasibility_status?: string;
   universe?: string;
+  decision_explanation?: ResearchDecisionExplanation | null;
 }
 
 export interface TradePlansResponse {

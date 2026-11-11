@@ -846,8 +846,8 @@ export default function PortfolioPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {snapshots.confirmed_history.map((s) => (
-                    <tr key={`${s.snapshot_id}-${s.capture_timestamp}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                  {snapshots.confirmed_history.map((s, idx) => (
+                    <tr key={`${s.snapshot_id}-${s.capture_timestamp}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
                       <td className="py-2.5 px-3 font-mono font-medium text-slate-800 dark:text-slate-200">
                         {s.snapshot_id}
                       </td>
