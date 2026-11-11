@@ -56,6 +56,12 @@ from bvmt.paper_trading import (
     load_or_init_paper_journal,
     record_forward_paper_signal,
 )
+from bvmt.perf_cache import (
+    BoundedLruCache,
+    file_fingerprint,
+    invalidate_all_caches,
+    register_cache,
+)
 from bvmt.playwright_worker import global_job_manager
 from bvmt.portfolio_service import PortfolioStateService
 from bvmt.position_sizing import (
@@ -67,6 +73,11 @@ from bvmt.sync_service import (
     NormalizedAccountObservation,
 )
 from bvmt.trade_planner import build_manual_trade_plan
+
+_STRATEGY_LAB_CACHE: BoundedLruCache[tuple[str, int, int, str], dict[str, Any]] = BoundedLruCache(4)
+_HOLDING_PERIODS_CACHE: BoundedLruCache[tuple[object, ...], dict[str, Any]] = BoundedLruCache(8)
+register_cache(_STRATEGY_LAB_CACHE)  # type: ignore[arg-type]
+register_cache(_HOLDING_PERIODS_CACHE)  # type: ignore[arg-type]
 
 PortfolioMode = Literal["REAL_COMPETITION", "SYNTHETIC_DEMO"]
 Money = Annotated[
@@ -392,8 +403,9 @@ class StrategyLabResponse(APIModel):
 
 
 class PaperTradingResponse(APIModel):
-    status: Literal["available"] = "available"
-    journal: dict[str, Any]
+    status: Literal["available", "unavailable"] = "available"
+    journal: dict[str, Any] | None = None
+    limitations: list[str] = Field(default_factory=list)
 
 
 class RecordPaperSignalRequest(APIModel):
@@ -679,7 +691,7 @@ def _preview(
 ) -> ReconciliationPreviewResponse:
     state = service.load_state()
     pending = captured or state.pending_browser_snapshot
-    result = service.preview_reconciliation(pending)
+    result = service.preview_reconciliation(pending, state=state)
     valuation = state.ledger.valuate(state.price_map)
     before = (
         state.account_snapshot.portfolio_total_tnd
@@ -798,17 +810,23 @@ def create_app(
     def load_strategy_lab() -> StrategyLabResponse:
         # GET only serves saved research; never runs experiments or changes portfolios.
         try:
-            registry = json.loads(strategy_registry_path.read_text(encoding="utf-8"))
-            if (
-                not isinstance(registry, dict)
-                or registry.get("status") != "available"
-                or not isinstance(registry.get("reports"), list)
-                or len(registry["reports"]) != 9
-                or any(
-                    not isinstance(r, dict) or "strategy_id" not in r for r in registry["reports"]
-                )
-            ):
-                raise ValueError("Invalid registry structure")
+            fp = file_fingerprint(strategy_registry_path)
+            registry = _STRATEGY_LAB_CACHE.get(fp) if fp is not None else None
+            if registry is None:
+                parsed = json.loads(strategy_registry_path.read_text(encoding="utf-8"))
+                if (
+                    not isinstance(parsed, dict)
+                    or parsed.get("status") != "available"
+                    or not isinstance(parsed.get("reports"), list)
+                    or len(parsed["reports"]) != 9
+                    or any(
+                        not isinstance(r, dict) or "strategy_id" not in r for r in parsed["reports"]
+                    )
+                ):
+                    raise ValueError("Invalid registry structure")
+                registry = parsed
+                if fp is not None:
+                    _STRATEGY_LAB_CACHE.set(fp, registry)
             return StrategyLabResponse(
                 status="available", registry=registry, robustness_v2=registry.get("robustness_v2")
             )
@@ -833,12 +851,24 @@ def create_app(
 
     @application.get("/api/paper-trading")
     def paper_trading() -> PaperTradingResponse:
-        journal = load_or_init_paper_journal(
-            paper_journal_path,
-            bars_path=paper_bars_path,
-            instruments_path=paper_instruments_path,
-            calendar_path=paper_calendar_path,
-        )
+        try:
+            journal = load_or_init_paper_journal(
+                paper_journal_path,
+                bars_path=paper_bars_path,
+                instruments_path=paper_instruments_path,
+                calendar_path=paper_calendar_path,
+            )
+        except ValueError as exc:
+            if "No completed verified market session available" in str(exc):
+                return PaperTradingResponse(
+                    status="unavailable",
+                    journal=None,
+                    limitations=[
+                        "Forward paper trading requires verified session open/close hours in "
+                        "exchange_calendar.csv; active official EOD calendar uses observed_daily_unknown_hours."
+                    ],
+                )
+            raise
         return PaperTradingResponse(journal=asdict(journal))
 
     @application.post("/api/paper-trading/record-signal")
@@ -857,6 +887,7 @@ def create_app(
                 status_code=400,
                 detail="Paper signal rejected: invalid strategy, date, journal or revised history.",
             ) from exc
+        invalidate_all_caches()
         return PaperTradingResponse(journal=asdict(journal))
 
     application.add_middleware(
@@ -1074,10 +1105,14 @@ def create_app(
         return PendingOrdersResponse(pending_orders=list(items.values()))
 
     @application.get("/api/market-status")
-    def market_status(mode: PortfolioMode = "REAL_COMPETITION") -> MarketDataStatusResponse:
+    def market_status(
+        mode: PortfolioMode = "REAL_COMPETITION",
+        include_observations: bool = False,
+    ) -> MarketDataStatusResponse:
         active = for_mode(mode)
         state = active.load_state()
         context = active.resolve_context()
+        active_resolved = context.bars_path.resolve()
         paths = list(
             {
                 path.resolve(): path
@@ -1085,16 +1120,30 @@ def create_app(
             }.values()
         )
         synthetic = {
-            path: bool(inspect_market_dataset_provenance(path)["is_synthetic"]) for path in paths
+            path: (
+                bool(state.data_is_synthetic)
+                if path.resolve() == active_resolved
+                else bool(inspect_market_dataset_provenance(path)["is_synthetic"])
+            )
+            for path in paths
         }
+        cov_summary = dict(state.coverage_summary)
+        raw_observations = cov_summary.get("observations")
+        if not include_observations and isinstance(raw_observations, list):
+            cov_summary = {
+                **cov_summary,
+                "observations": [],
+                "observations_omitted_count": len(raw_observations),
+                "observations_included": False,
+            }
         return MarketDataStatusResponse(
             market_status=_market(state),
-            coverage_summary=state.coverage_summary,
+            coverage_summary=cov_summary,
             available_datasets=[
                 DatasetOptionItem(
                     label=_dataset_label(path, synthetic[path]),
                     is_synthetic=synthetic[path],
-                    is_active=path.resolve() == context.bars_path.resolve(),
+                    is_active=path.resolve() == active_resolved,
                 )
                 for path in paths
             ],
@@ -1234,7 +1283,11 @@ def create_app(
         }
 
     @application.get("/api/research")
-    def research(q: str = "", mode: PortfolioMode = "REAL_COMPETITION") -> ResearchResponse:
+    def research(
+        q: str = "",
+        mode: PortfolioMode = "REAL_COMPETITION",
+        include_strategy_comparison: bool = True,
+    ) -> ResearchResponse:
         state = for_mode(mode).load_state()
         cutoff = datetime.fromisoformat(state.recommendations.decision_cutoff)
         chunks = state.document_chunks
@@ -1269,11 +1322,16 @@ def create_app(
                 for c in results
             ],
             backtest_summary=_backtest_summary(),
-            strategy_comparison=load_strategy_lab().registry,
+            strategy_comparison=load_strategy_lab().registry
+            if include_strategy_comparison
+            else None,
         )
 
     @application.get("/api/health")
-    def health(mode: PortfolioMode = "REAL_COMPETITION") -> SystemHealthResponse:
+    def health(
+        mode: PortfolioMode = "REAL_COMPETITION",
+        check_remote: bool = False,
+    ) -> SystemHealthResponse:
         active = for_mode(mode)
         state = active.load_state()
         alerts = [AlertItem.model_validate(a) for a in state.notifications.active_alerts()]
@@ -1283,7 +1341,9 @@ def create_app(
             from bvmt.gateway import MarketDataGateway
 
             gw = MarketDataGateway(output_dir=context.bars_path.parent)
-            gw_status = MarketGatewayStatusResponse(**asdict(gw.get_status()))
+            gw_status = MarketGatewayStatusResponse(
+                **asdict(gw.get_status(probe_remote=check_remote))
+            )
         except Exception:
             gw_status = None
         return SystemHealthResponse(
@@ -1324,6 +1384,7 @@ def create_app(
         gateway = MarketDataGateway(output_dir=context.bars_path.parent)
         req = body or MarketRefreshRequest()
         res = gateway.refresh(force=req.force, as_of=req.as_of)
+        invalidate_all_caches()
         return MarketRefreshResponse(
             success=True,
             message=(
@@ -1356,6 +1417,7 @@ def create_app(
                 snapshots_dir=base.snapshots_dir,
                 timeout_seconds=body.timeout_seconds,
             )
+            invalidate_all_caches()
         except AuthenticationExpiredError as exc:
             raise HTTPException(
                 400, "Browser authentication expired. Log in manually and retry."
@@ -1416,6 +1478,7 @@ def create_app(
             )
 
         dom_snap = obs.to_dom_snapshot()
+        invalidate_all_caches()
         return SyncIngestionResponse(
             success=True,
             validation_status=result.validation_status,
@@ -1454,6 +1517,7 @@ def create_app(
             )
 
         dom_snap = obs.to_dom_snapshot()
+        invalidate_all_caches()
         return SyncIngestionResponse(
             success=True,
             validation_status=result.validation_status,
@@ -1492,6 +1556,7 @@ def create_app(
             )
 
         dom_snap = obs.to_dom_snapshot()
+        invalidate_all_caches()
         return SyncIngestionResponse(
             success=True,
             validation_status=result.validation_status,
@@ -1737,8 +1802,19 @@ def create_app(
 
     @application.get("/api/holding-periods")
     def holding_periods(universe: str = "FULL_BVMT") -> dict[str, Any]:
+        cache_key = (
+            universe,
+            file_fingerprint(DATA_DIR / "daily_bars.canonical.csv"),
+            file_fingerprint(DATA_DIR / "exchange_calendar.csv"),
+            file_fingerprint(DATA_DIR / "instrument_master.csv"),
+        )
+        cached = _HOLDING_PERIODS_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
         report = evaluate_holding_periods(universe=universe)
-        return report.to_dict()
+        payload = report.to_dict()
+        _HOLDING_PERIODS_CACHE.set(cache_key, payload)
+        return payload
 
     @application.get("/api/trading-intelligence")
     def trading_intelligence(

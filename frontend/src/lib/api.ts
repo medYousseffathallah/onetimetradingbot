@@ -896,14 +896,16 @@ export interface DailySessionReport {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+
+async function executeFetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers || {});
+  if (init?.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const res = await fetch(url, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
+    headers,
     cache: "no-store",
   });
   if (!res.ok) {
@@ -919,6 +921,23 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(errDetail);
   }
   return res.json() as Promise<T>;
+}
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const method = (init?.method || "GET").toUpperCase();
+  if (method === "GET" && !init?.signal && init?.body === undefined) {
+    const existing = inFlightGetRequests.get(url);
+    if (existing) {
+      return existing as Promise<T>;
+    }
+    const pending = executeFetchJson<T>(url, init).finally(() => {
+      inFlightGetRequests.delete(url);
+    });
+    inFlightGetRequests.set(url, pending);
+    return pending;
+  }
+  return executeFetchJson<T>(url, init);
 }
 
 export interface HorizonDecisionItem {
@@ -1005,8 +1024,14 @@ export const api = {
   getRankings: (mode: PortfolioMode = "REAL_COMPETITION") =>
     fetchJson<StockRankingsResponse>(`/api/rankings?mode=${mode}`),
   getGlossary: () => fetchJson<GlossaryResponse>(`/api/glossary`),
-  getResearch: (q = "", mode: PortfolioMode = "REAL_COMPETITION") =>
-    fetchJson<ResearchResponse>(`/api/research?mode=${mode}&q=${encodeURIComponent(q)}`),
+  getResearch: (
+    q = "",
+    mode: PortfolioMode = "REAL_COMPETITION",
+    includeStrategyComparison = true
+  ) =>
+    fetchJson<ResearchResponse>(
+      `/api/research?mode=${mode}&q=${encodeURIComponent(q)}&include_strategy_comparison=${includeStrategyComparison}`
+    ),
   getStrategyLab: () => fetchJson<StrategyLabResponse>(`/api/strategy-lab`),
   getPaperTrading: (strategyId = "G_LIQUIDITY_FILTERED_MOMENTUM") =>
     fetchJson<PaperTradingResponse>(

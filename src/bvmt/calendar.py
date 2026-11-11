@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 from bvmt.data import DailyBar, aware_timestamp, validate_bar
+from bvmt.perf_cache import BoundedLruCache, file_fingerprint, register_cache
 from bvmt.snapshots import validate_safe_id
 
 INSTRUMENT_ID_RE = re.compile(r"[A-Za-z0-9._-]+")
@@ -271,8 +272,23 @@ def _instrument_from_mapping(row: dict[str, object]) -> InstrumentRecord:
     return record
 
 
+_INSTRUMENT_MASTER_CACHE: BoundedLruCache[
+    tuple[str, int, int, str], tuple[InstrumentRecord, ...]
+] = BoundedLruCache(16)
+_CALENDAR_CACHE: BoundedLruCache[tuple[str, int, int, str], tuple[ExchangeSession, ...]] = (
+    BoundedLruCache(16)
+)
+register_cache(_INSTRUMENT_MASTER_CACHE)  # type: ignore[arg-type]
+register_cache(_CALENDAR_CACHE)  # type: ignore[arg-type]
+
+
 def read_instrument_master(path: Path) -> list[InstrumentRecord]:
     """Load and validate a dated instrument master from CSV or JSON."""
+    fp = file_fingerprint(path)
+    if fp is not None:
+        cached = _INSTRUMENT_MASTER_CACHE.get(fp)
+        if cached is not None:
+            return list(cached)
     if path.suffix.lower() == ".json":
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, list):
@@ -290,7 +306,10 @@ def read_instrument_master(path: Path) -> list[InstrumentRecord]:
                     f"got {sorted(item.keys())}"
                 )
             records.append(_instrument_from_mapping(item))
-        return validate_instrument_master(records)
+        validated = validate_instrument_master(records)
+        if fp is not None:
+            _INSTRUMENT_MASTER_CACHE.set(fp, tuple(validated))
+        return validated
 
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
@@ -311,7 +330,10 @@ def read_instrument_master(path: Path) -> list[InstrumentRecord]:
                 records.append(_instrument_from_mapping(clean_row))
             except ValueError as exc:
                 raise ValueError(f"Invalid instrument master row {line_number}: {exc}") from exc
-    return validate_instrument_master(records)
+    validated = validate_instrument_master(records)
+    if fp is not None:
+        _INSTRUMENT_MASTER_CACHE.set(fp, tuple(validated))
+    return validated
 
 
 def resolve_instrument_on_date(
@@ -401,6 +423,11 @@ def _session_from_mapping(row: dict[str, object]) -> ExchangeSession:
 
 def read_exchange_calendar(path: Path) -> list[ExchangeSession]:
     """Load and validate an official-source-backed exchange calendar from CSV or JSON."""
+    fp = file_fingerprint(path)
+    if fp is not None:
+        cached = _CALENDAR_CACHE.get(fp)
+        if cached is not None:
+            return list(cached)
     if path.suffix.lower() == ".json":
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, list):
@@ -415,7 +442,10 @@ def read_exchange_calendar(path: Path) -> list[ExchangeSession]:
                     f"got {sorted(item.keys())}"
                 )
             sessions.append(_session_from_mapping(item))
-        return validate_exchange_calendar(sessions)
+        validated = validate_exchange_calendar(sessions)
+        if fp is not None:
+            _CALENDAR_CACHE.set(fp, tuple(validated))
+        return validated
 
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
@@ -433,7 +463,10 @@ def read_exchange_calendar(path: Path) -> list[ExchangeSession]:
                 sessions.append(_session_from_mapping(clean_row))
             except ValueError as exc:
                 raise ValueError(f"Invalid exchange calendar row {line_number}: {exc}") from exc
-    return validate_exchange_calendar(sessions)
+    validated = validate_exchange_calendar(sessions)
+    if fp is not None:
+        _CALENDAR_CACHE.set(fp, tuple(validated))
+    return validated
 
 
 def evaluate_coverage(

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   RefreshCw,
   CheckCircle2,
@@ -21,13 +22,21 @@ import {
   ShieldCheck,
   Info,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip as RechartsTooltip,
-} from "recharts";
+
+const PortfolioAllocationChart = dynamic(
+  () =>
+    import("@/components/charts/portfolio-allocation-chart").then(
+      (mod) => mod.PortfolioAllocationChart
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center text-xs text-slate-400">
+        Loading allocation chart…
+      </div>
+    ),
+  }
+);
 import {
   api,
   AccountOverviewResponse,
@@ -803,34 +812,7 @@ export default function PortfolioPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  paddingAngle={3}
-                >
-                  {pieData.map((_, idx) => (
-                    <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip
-                  formatter={(value: number) => formatTnd(value)}
-                  contentStyle={{
-                    backgroundColor: "#ffffff",
-                    borderColor: "#cbd5e1",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    color: "#0f172a",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <PortfolioAllocationChart data={pieData} colors={COLORS} />
           </CardContent>
         </Card>
       </div>
