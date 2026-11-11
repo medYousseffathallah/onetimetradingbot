@@ -1,0 +1,150 @@
+{
+  "reproductions": {
+    "m14_audit_results.json": {
+      "equal_excluding_generated_timestamp": true,
+      "original_sha256": "3cdc0fb36b4090c748605f01b6e7470e542166efc510956e52ed606e6a00e801"
+    },
+    "m14_g5_folds_and_peers.json": {
+      "equal_excluding_generated_timestamp": true,
+      "original_sha256": "b1c952f7af9a3d4a2507498f4d2d70b7930734d1cab08cad3a069c7aa767807c"
+    },
+    "challenge_42_accounting.json": {
+      "equal_excluding_generated_timestamp": true,
+      "original_sha256": "2efcc90c007b953f5900cf896f9a6e833d49ed8bb89943e1c4741ac7e419f5fe"
+    }
+  },
+  "reported_source_hash_checks": [
+    {
+      "path": "src/bvmt/features.py",
+      "expected": "66654E5CCDDB5F57124F9EA16FF3FF890C3EEDE86E105E9F0D709F24240ED3FC",
+      "baseline_actual": "66654E5CCDDB5F57124F9EA16FF3FF890C3EEDE86E105E9F0D709F24240ED3FC",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/recommendations.py",
+      "expected": "70591DA4019697904081076465C757E688E7096FEFAF2210CC750497727803CB",
+      "baseline_actual": "70591DA4019697904081076465C757E688E7096FEFAF2210CC750497727803CB",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/research_coverage.py",
+      "expected": "84196FBCA0915E6056D4725AD48FAB8ACD6D36756951C040111D261E14927690",
+      "baseline_actual": "84196FBCA0915E6056D4725AD48FAB8ACD6D36756951C040111D261E14927690",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/sparse_research.py",
+      "expected": "2FB3B7F867610F6569394F2766DCBAF62AC481C0FC180291D2B4CEE6A41EA658",
+      "baseline_actual": "2FB3B7F867610F6569394F2766DCBAF62AC481C0FC180291D2B4CEE6A41EA658",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/sparse_generalization.py",
+      "expected": "B11C00F47BAF72132E2164A96BCF460EB802C4230AEC589662647A65AFE1356F",
+      "baseline_actual": "B11C00F47BAF72132E2164A96BCF460EB802C4230AEC589662647A65AFE1356F",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/multi_horizon.py",
+      "expected": "BE14FA7149373373EF4903585612D054AF68E5AB8A2A77761756791AD8C8D4D5",
+      "baseline_actual": "BE14FA7149373373EF4903585612D054AF68E5AB8A2A77761756791AD8C8D4D5",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/strategies.py",
+      "expected": "73EE1EEDC41D275FCF6466EA70733E00617F930D42D484BFCCC99AB6504B8DD1",
+      "baseline_actual": "73EE1EEDC41D275FCF6466EA70733E00617F930D42D484BFCCC99AB6504B8DD1",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/holding_period.py",
+      "expected": "9CB44CC5804AF4821575243B11C24C8FC155658BDC7416BFD3AD598D0A7DFF5F",
+      "baseline_actual": "9CB44CC5804AF4821575243B11C24C8FC155658BDC7416BFD3AD598D0A7DFF5F",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/execution.py",
+      "expected": "F7F5527CFC9FDA6DF755D8C081306F10E7FCD5115952880C8BA22D5BB9DC8063",
+      "baseline_actual": "F7F5527CFC9FDA6DF755D8C081306F10E7FCD5115952880C8BA22D5BB9DC8063",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/position_sizing.py",
+      "expected": "EB6133B10DE28B7E443B770A0F60E91583E0D93875FC4C532520ABFADC3E9ABC",
+      "baseline_actual": "EB6133B10DE28B7E443B770A0F60E91583E0D93875FC4C532520ABFADC3E9ABC",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/challenge_universe.py",
+      "expected": "BF6902BC86BC9DD3996642428F1F903C8D6087B51C78BB9E830FF01A374E349A",
+      "baseline_actual": "BF6902BC86BC9DD3996642428F1F903C8D6087B51C78BB9E830FF01A374E349A",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/trade_planner.py",
+      "expected": "4A2700ED81105B585FAC75015D502F39A6D254B3D898F028FC35FCAEA96B9BE9",
+      "baseline_actual": "4A2700ED81105B585FAC75015D502F39A6D254B3D898F028FC35FCAEA96B9BE9",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/data.py",
+      "expected": "CEF1631801B6466E9371BFBAB4449B9CFD302D52B1799270BE55C53BCC6C4D93",
+      "baseline_actual": "B4AC874ABC001DD033933D43B2E3EB321C7FACDD6A514843EF3527AB6E17F8C3",
+      "matches": false
+    },
+    {
+      "path": "src/bvmt/calendar.py",
+      "expected": "3774FDC1B26094E45F25A8BDF463628A703757B47318353A0512746C0B3D7C62",
+      "baseline_actual": "63CC72D60A4CB1E38537BA797411209269C31B71F367C1CF8ACC2ECE0176A1FA",
+      "matches": false
+    },
+    {
+      "path": "src/bvmt/api.py",
+      "expected": "2DC25727C429870D6A5853C6DCA159F1338EA6B21892FDB4085DED487D757747",
+      "baseline_actual": "2DC25727C429870D6A5853C6DCA159F1338EA6B21892FDB4085DED487D757747",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/gateway.py",
+      "expected": "5E19E107CDBC32C6AD9813E619C79B700B1C3361C9A3563B1C5B01118D8BA245",
+      "baseline_actual": "5E19E107CDBC32C6AD9813E619C79B700B1C3361C9A3563B1C5B01118D8BA245",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/dashboard.py",
+      "expected": "F218E26ADE82DB5CD775D687540DBEA204D89BD9967425683616296D69B9C197",
+      "baseline_actual": "F218E26ADE82DB5CD775D687540DBEA204D89BD9967425683616296D69B9C197",
+      "matches": true
+    },
+    {
+      "path": "src/bvmt/llm.py",
+      "expected": "3CFC42FFCB9A553CA6B36EEE027583BDDE29962BCA6A8F759C742024F505618F",
+      "baseline_actual": "3CFC42FFCB9A553CA6B36EEE027583BDDE29962BCA6A8F759C742024F505618F",
+      "matches": true
+    },
+    {
+      "path": "configs/competition.json",
+      "expected": "0B71F5AAE60ED4CACE88288BC63884EF85F8C12BAE739AAFCB4328921393D451",
+      "baseline_actual": "0B71F5AAE60ED4CACE88288BC63884EF85F8C12BAE739AAFCB4328921393D451",
+      "matches": true
+    },
+    {
+      "path": "configs/research.json",
+      "expected": "46CAD32000F6C0F6F771223BDDA7862C9C0FEF4831185AA21EB8B3106F101091",
+      "baseline_actual": "46CAD32000F6C0F6F771223BDDA7862C9C0FEF4831185AA21EB8B3106F101091",
+      "matches": true
+    },
+    {
+      "path": "configs/sparse_research_v1.json",
+      "expected": "F0BF9E10577CD04A540C35C2494DCA9A060A25FA39A2226FAF6AAFA04663DE22",
+      "baseline_actual": "F0BF9E10577CD04A540C35C2494DCA9A060A25FA39A2226FAF6AAFA04663DE22",
+      "matches": true
+    },
+    {
+      "path": "data/portfolio/real_competition_ledger.json",
+      "expected": "0A1B86CB281187A0E9AB88A4CDE6D4DE173A5DF162111266CE1988DCBF91D395",
+      "baseline_actual": "0A1B86CB281187A0E9AB88A4CDE6D4DE173A5DF162111266CE1988DCBF91D395",
+      "matches": true
+    }
+  ]
+}
