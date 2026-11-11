@@ -661,9 +661,7 @@ def parse_competition_movements_with_warnings(
             # Detect header row (including Libellé / Nombre variants)
             if any(
                 k in joined for k in ("valeur", "titre", "instrument", "symbole", "libell")
-            ) and any(
-                k in joined for k in ("quantit", "qté", "qte", "shares", "nombre", "volume")
-            ):
+            ) and any(k in joined for k in ("quantit", "qté", "qte", "shares", "nombre", "volume")):
                 matched_any_header = True
                 header_map = {}
                 for idx, col in enumerate(row_lower):
@@ -679,17 +677,14 @@ def parse_competition_movements_with_warnings(
                     ):
                         header_map.setdefault("side", idx)
                     elif any(
-                        k in col
-                        for k in ("quantit", "qté", "qte", "shares", "nombre", "volume")
+                        k in col for k in ("quantit", "qté", "qte", "shares", "nombre", "volume")
                     ):
                         header_map.setdefault("quantity", idx)
                     elif any(k in col for k in ("cours", "prix", "limite", "price")):
                         header_map.setdefault("price", idx)
                     elif any(k in col for k in ("frais", "commission", "fee")):
                         header_map.setdefault("fee", idx)
-                    elif any(
-                        k in col for k in ("statut", "état", "etat", "status", "situation")
-                    ):
+                    elif any(k in col for k in ("statut", "état", "etat", "status", "situation")):
                         header_map.setdefault("status", idx)
                     elif any(k in col for k in ("réf", "ref", "ordre", "id", "n°", "num")):
                         header_map.setdefault("id", idx)
@@ -705,7 +700,13 @@ def parse_competition_movements_with_warnings(
                 continue
             if any(
                 k in joined
-                for k in ("aucun mouvement", "aucun ordre", "aucune opération", "totaux", "liquidit")
+                for k in (
+                    "aucun mouvement",
+                    "aucun ordre",
+                    "aucune opération",
+                    "totaux",
+                    "liquidit",
+                )
             ):
                 continue
 
@@ -1052,9 +1053,7 @@ def parse_competition_portfolio_html(
             tx_items, pend_items, mov_warnings = parse_competition_movements_with_warnings(
                 movements_html, retrieved_at=timestamp
             )
-            movements_captured = (
-                bool(tx_items or pend_items) or not mov_warnings
-            )
+            movements_captured = bool(tx_items or pend_items) or not mov_warnings
         except AuthenticationExpiredError as exc:
             movements_captured = False
             mov_warnings = (str(exc),)

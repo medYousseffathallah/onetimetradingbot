@@ -35,8 +35,11 @@ from bvmt.browser import (
     CompetitionPortfolioDOMSnapshot,
     run_browser_sync_subprocess,
 )
+from bvmt.calendar import read_exchange_calendar, read_instrument_master
 from bvmt.challenge_universe import get_challenge_universe
 from bvmt.dashboard import (
+    DEFAULT_CALENDAR_PATH,
+    DEFAULT_INSTRUMENTS_PATH,
     DashboardAppState,
     load_rejected_snapshot_keys,
     snapshot_rejection_keys,
@@ -60,18 +63,39 @@ from bvmt.paper_trading import (
     load_or_init_paper_journal,
     record_forward_paper_signal,
 )
+from bvmt.perf_cache import (
+    BoundedLruCache,
+    file_fingerprint,
+    get_cache_generation,
+    invalidate_all_caches,
+    register_cache,
+)
 from bvmt.playwright_worker import global_job_manager
 from bvmt.portfolio_service import PortfolioStateService, SnapshotConflictError
 from bvmt.position_sizing import (
     PendingOrderReservation,
 )
 from bvmt.session_accounting import generate_november_09_session_report
+from bvmt.sparse_generalization import prepare_pit_calendar_and_bars
+from bvmt.sparse_research import (
+    SparseInstrumentResearchAssessment,
+    evaluate_sparse_market_research,
+)
 from bvmt.sync_service import (
     CanonicalSyncService,
     NormalizedAccountObservation,
     quantize_tnd,
 )
 from bvmt.trade_planner import build_manual_trade_plan
+
+_STRATEGY_LAB_CACHE: BoundedLruCache[tuple[str, int, int, str], dict[str, Any]] = BoundedLruCache(4)
+_HOLDING_PERIODS_CACHE: BoundedLruCache[tuple[object, ...], dict[str, Any]] = BoundedLruCache(8)
+_SPARSE_EXPLANATIONS_CACHE: BoundedLruCache[tuple[object, ...], dict[str, dict[str, Any]]] = (
+    BoundedLruCache(16)
+)
+register_cache(_STRATEGY_LAB_CACHE)  # type: ignore[arg-type]
+register_cache(_HOLDING_PERIODS_CACHE)  # type: ignore[arg-type]
+register_cache(_SPARSE_EXPLANATIONS_CACHE)  # type: ignore[arg-type]
 
 PortfolioMode = Literal["REAL_COMPETITION", "SYNTHETIC_DEMO"]
 Money = Annotated[
@@ -322,6 +346,7 @@ class StockRankingItem(APIModel):
     in_challenge_universe: bool = False
     challenge_symbol: str | None = None
     order_entry_eligibility: str = "NOT_IN_UNIVERSE"
+    decision_explanation: dict[str, Any] | None = None
 
 
 class StockRankingsResponse(APIModel):
@@ -388,6 +413,7 @@ class ResearchResponse(APIModel):
     document_results: list[DocumentSearchResultItem]
     backtest_summary: BacktestSummaryItem
     strategy_comparison: dict[str, Any] | None = None
+    decision_explanations: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class StrategyLabResponse(APIModel):
@@ -398,8 +424,9 @@ class StrategyLabResponse(APIModel):
 
 
 class PaperTradingResponse(APIModel):
-    status: Literal["available"] = "available"
-    journal: dict[str, Any]
+    status: Literal["available", "unavailable"] = "available"
+    journal: dict[str, Any] | None = None
+    limitations: list[str] = Field(default_factory=list)
 
 
 class RecordPaperSignalRequest(APIModel):
@@ -644,8 +671,7 @@ def _browser(
     snapshot: CompetitionPortfolioDOMSnapshot, confirmed: bool
 ) -> BrowserSnapshotSummaryItem:
     snap_id = (
-        snapshot.snapshot_id
-        or f"browser_sync_{snapshot.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+        snapshot.snapshot_id or f"browser_sync_{snapshot.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
     )
     return BrowserSnapshotSummaryItem.model_validate(
         {
@@ -708,7 +734,7 @@ def _preview(
 ) -> ReconciliationPreviewResponse:
     state = service.load_state()
     pending = captured or state.pending_browser_snapshot
-    result = service.preview_reconciliation(pending)
+    result = service.preview_reconciliation(pending, state=state)
     valuation = state.ledger.valuate(state.price_map)
     before = (
         state.account_snapshot.portfolio_total_tnd
@@ -805,6 +831,184 @@ def _reconciliation(report: ReconciliationReport) -> ReconciliationSummaryItem:
     )
 
 
+_RESEARCH_STATUS_LABELS: dict[str, str] = {
+    "FULL_RESEARCH_AVAILABLE": "Full data",
+    "PARTIAL_RESEARCH_AVAILABLE": "Partial data",
+    "EVENT_RESEARCH_AVAILABLE": "Event data only",
+    "INSUFFICIENT_EVIDENCE": "Insufficient evidence",
+    "RESTRICTED_FOR_TRADING": "Restricted for trading",
+}
+
+
+def _format_sparse_decision_explanation(
+    assessment: SparseInstrumentResearchAssessment,
+) -> dict[str, Any]:
+    """Project 7-layer PIT research assessment onto the UI ResearchDecisionExplanation schema."""
+    dq = assessment.data_quality_freshness
+    tr = assessment.quantitative_trend_evidence
+    fe = assessment.fundamental_evidence
+    ee = assessment.event_disclosure_evidence
+    liq = assessment.liquidity_execution_feasibility
+    te = assessment.trading_eligibility
+    exp = assessment.explanation
+
+    if (
+        tr.momentum_20s_pct is not None
+        and tr.momentum_60s_pct is not None
+        and dq.missing_open_sessions_60s == 0
+    ):
+        price_status = "Complete (20s & 60s verified)"
+    elif dq.observed_bars == 0 or dq.traded_bars == 0:
+        price_status = "Unavailable (no traded bars)"
+    else:
+        price_status = (
+            f"Partial ({dq.traded_bars}/{dq.total_open_sessions} traded; "
+            f"{dq.missing_open_sessions_60s} missing)"
+        )
+
+    if fe.availability_status == "AVAILABLE":
+        fundamental_status = f"Verified ({fe.latest_period or 'PIT'})"
+    elif fe.availability_status == "PARTIAL":
+        fundamental_status = f"Partial ({fe.latest_period or 'PIT'})"
+    else:
+        fundamental_status = "Unavailable locally"
+
+    if ee.availability_status == "EVENTS_FOUND":
+        event_count = ee.company_disclosure_count or ee.events_count
+        event_status = f"{event_count} verified event(s)"
+    elif ee.availability_status == "MACRO_CONTEXT_ONLY":
+        event_status = f"Macro context only ({ee.macro_context_count})"
+    else:
+        event_status = "Unavailable locally"
+
+    liquidity_labels = {
+        "FEASIBLE": "Verified (feasible turnover)",
+        "LIQUIDITY_LIMITED": "Limited liquidity (< 5,000 TND)",
+        "STALE_OR_UNTRADED": "Stale or untraded quote",
+        "MARKET_RESTRICTED": "Restricted segment",
+        "INSUFFICIENT_OBSERVATIONS": "Insufficient observations",
+    }
+    eligibility_labels = {
+        "CHALLENGE_ORDER_ELIGIBLE": "Eligible (Challenge Universe)",
+        "RESEARCH_ONLY_NOT_IN_CHALLENGE": "Excluded from Challenge Universe",
+        "UNTRADED_OR_STALE_EXECUTION_RISK": "Separately flagged (Stale/Untraded)",
+        "SUSPENDED_AT_CUTOFF": "Suspended at cutoff",
+        "MARKET_SEGMENT_RESTRICTED": "Restricted segment",
+    }
+
+    why_interesting = (
+        " ".join(exp.why_interesting)
+        if exp.why_interesting
+        else f"{assessment.symbol} tracked under multi-layer sparse research."
+    )
+    why_uncertain = (
+        " ".join(exp.why_uncertain)
+        if exp.why_uncertain
+        else "Missing or sparse observations require verification before any decision."
+    )
+
+    return {
+        "model_version": assessment.model_version,
+        "research_status": assessment.research_status,
+        "research_status_label": _RESEARCH_STATUS_LABELS.get(
+            assessment.research_status, assessment.research_status
+        ),
+        "price_indicators_status": price_status,
+        "fundamental_evidence_status": fundamental_status,
+        "event_evidence_status": event_status,
+        "liquidity_status": liquidity_labels.get(liq.execution_status, "Requires verification"),
+        "trading_eligibility_status": eligibility_labels.get(
+            te.status, "Separately verified (Requires review)"
+        ),
+        "why_interesting": why_interesting,
+        "why_uncertain": why_uncertain,
+        "missing_data": list(exp.missing_data),
+        "supporting_evidence": list(exp.supporting_evidence),
+        "contradicting_evidence": list(exp.contradicting_evidence),
+        "is_tradable": bool(exp.is_tradable),
+        "execution_risk": exp.execution_risk,
+        "review_trigger": exp.review_trigger,
+        "non_buy_notice": exp.disclaimer,
+    }
+
+
+def _sparse_research_explanations(
+    active: PortfolioStateService,
+    state: DashboardAppState,
+) -> dict[str, dict[str, Any]]:
+    """Compute and cache per-instrument Phase 4 sparse research explanations cleanly."""
+    ctx = active.resolve_context()
+    eff_cal_path = (
+        ctx.bars_path.parent / "exchange_calendar.csv"
+        if active.calendar_path == DEFAULT_CALENDAR_PATH
+        and (ctx.bars_path.parent / "exchange_calendar.csv").is_file()
+        else active.calendar_path
+    )
+    eff_inst_path = (
+        ctx.bars_path.parent / "instrument_master.csv"
+        if active.instruments_path == DEFAULT_INSTRUMENTS_PATH
+        and (ctx.bars_path.parent / "instrument_master.csv").is_file()
+        else active.instruments_path
+    )
+    if not (ctx.bars_path.is_file() and eff_cal_path.is_file() and eff_inst_path.is_file()):
+        return {}
+
+    held_signature = tuple(
+        sorted((inst_id, pos.total_shares) for inst_id, pos in state.ledger.holdings.items())
+    )
+    cache_key: tuple[object, ...] = (
+        get_cache_generation(),
+        active.portfolio_mode,
+        file_fingerprint(ctx.bars_path),
+        file_fingerprint(eff_cal_path),
+        file_fingerprint(eff_inst_path),
+        file_fingerprint(active.doc_index_path),
+        state.recommendations.decision_cutoff,
+        held_signature,
+    )
+    cached = _SPARSE_EXPLANATIONS_CACHE.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+
+    try:
+        instruments = read_instrument_master(eff_inst_path)
+        cal_raw = read_exchange_calendar(eff_cal_path)
+        bars_raw = read_bars_csv(ctx.bars_path)
+        if any(s.is_open and s.closes_at is None for s in cal_raw) or any(
+            b.published_at is None for b in bars_raw
+        ):
+            cal_prep, bars_prep = prepare_pit_calendar_and_bars(cal_raw, bars_raw)
+        else:
+            cal_prep, bars_prep = cal_raw, bars_raw
+        cutoff = datetime.fromisoformat(state.recommendations.decision_cutoff)
+        if cutoff.tzinfo is None:
+            cutoff = cutoff.replace(tzinfo=UTC)
+        valuation = state.ledger.valuate(state.price_map)
+        equity = (
+            valuation.total_equity_tnd
+            if valuation.total_equity_tnd > Decimal("0")
+            else Decimal("50000.000")
+        )
+        report = evaluate_sparse_market_research(
+            instruments=instruments,
+            calendar=cal_prep,
+            bars=bars_prep,
+            cutoff=cutoff,
+            document_chunks=state.document_chunks,
+            held_positions=state.ledger.holdings,
+            portfolio_equity_tnd=equity,
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+    formatted = {
+        assessment.instrument_id: _format_sparse_decision_explanation(assessment)
+        for assessment in report.assessments
+    }
+    _SPARSE_EXPLANATIONS_CACHE.set(cache_key, formatted)
+    return dict(formatted)
+
+
 def create_app(
     service: PortfolioStateService | None = None,
     *,
@@ -829,17 +1033,23 @@ def create_app(
     def load_strategy_lab() -> StrategyLabResponse:
         # GET only serves saved research; never runs experiments or changes portfolios.
         try:
-            registry = json.loads(strategy_registry_path.read_text(encoding="utf-8"))
-            if (
-                not isinstance(registry, dict)
-                or registry.get("status") != "available"
-                or not isinstance(registry.get("reports"), list)
-                or len(registry["reports"]) != 9
-                or any(
-                    not isinstance(r, dict) or "strategy_id" not in r for r in registry["reports"]
-                )
-            ):
-                raise ValueError("Invalid registry structure")
+            fp = file_fingerprint(strategy_registry_path)
+            registry = _STRATEGY_LAB_CACHE.get(fp) if fp is not None else None
+            if registry is None:
+                parsed = json.loads(strategy_registry_path.read_text(encoding="utf-8"))
+                if (
+                    not isinstance(parsed, dict)
+                    or parsed.get("status") != "available"
+                    or not isinstance(parsed.get("reports"), list)
+                    or len(parsed["reports"]) != 9
+                    or any(
+                        not isinstance(r, dict) or "strategy_id" not in r for r in parsed["reports"]
+                    )
+                ):
+                    raise ValueError("Invalid registry structure")
+                registry = parsed
+                if fp is not None:
+                    _STRATEGY_LAB_CACHE.set(fp, registry)
             return StrategyLabResponse(
                 status="available", registry=registry, robustness_v2=registry.get("robustness_v2")
             )
@@ -864,12 +1074,24 @@ def create_app(
 
     @application.get("/api/paper-trading")
     def paper_trading() -> PaperTradingResponse:
-        journal = load_or_init_paper_journal(
-            paper_journal_path,
-            bars_path=paper_bars_path,
-            instruments_path=paper_instruments_path,
-            calendar_path=paper_calendar_path,
-        )
+        try:
+            journal = load_or_init_paper_journal(
+                paper_journal_path,
+                bars_path=paper_bars_path,
+                instruments_path=paper_instruments_path,
+                calendar_path=paper_calendar_path,
+            )
+        except ValueError as exc:
+            if "No completed verified market session available" in str(exc):
+                return PaperTradingResponse(
+                    status="unavailable",
+                    journal=None,
+                    limitations=[
+                        "Forward paper trading requires verified session open/close hours in "
+                        "exchange_calendar.csv; active official EOD calendar uses observed_daily_unknown_hours."
+                    ],
+                )
+            raise
         return PaperTradingResponse(journal=asdict(journal))
 
     @application.post("/api/paper-trading/record-signal")
@@ -888,6 +1110,7 @@ def create_app(
                 status_code=400,
                 detail="Paper signal rejected: invalid strategy, date, journal or revised history.",
             ) from exc
+        invalidate_all_caches()
         return PaperTradingResponse(journal=asdict(journal))
 
     application.add_middleware(
@@ -1023,7 +1246,9 @@ def create_app(
                 continue
             seen_confirmed_keys.add(key)
             deduped_history.append(SnapshotSummaryItem.model_validate(_website(snap).model_dump()))
-        confirmed = {s.capture_timestamp for s in state.ledger.snapshot_history if s.capture_timestamp}
+        confirmed = {
+            s.capture_timestamp for s in state.ledger.snapshot_history if s.capture_timestamp
+        }
         rejected_keys = load_rejected_snapshot_keys(active.snapshots_dir)
         return SnapshotsResponse(
             confirmed_history=deduped_history,
@@ -1113,10 +1338,14 @@ def create_app(
         return PendingOrdersResponse(pending_orders=list(items.values()))
 
     @application.get("/api/market-status")
-    def market_status(mode: PortfolioMode = "REAL_COMPETITION") -> MarketDataStatusResponse:
+    def market_status(
+        mode: PortfolioMode = "REAL_COMPETITION",
+        include_observations: bool = False,
+    ) -> MarketDataStatusResponse:
         active = for_mode(mode)
         state = active.load_state()
         context = active.resolve_context()
+        active_resolved = context.bars_path.resolve()
         paths = list(
             {
                 path.resolve(): path
@@ -1124,16 +1353,30 @@ def create_app(
             }.values()
         )
         synthetic = {
-            path: bool(inspect_market_dataset_provenance(path)["is_synthetic"]) for path in paths
+            path: (
+                bool(state.data_is_synthetic)
+                if path.resolve() == active_resolved
+                else bool(inspect_market_dataset_provenance(path)["is_synthetic"])
+            )
+            for path in paths
         }
+        cov_summary = dict(state.coverage_summary)
+        raw_observations = cov_summary.get("observations")
+        if not include_observations and isinstance(raw_observations, list):
+            cov_summary = {
+                **cov_summary,
+                "observations": [],
+                "observations_omitted_count": len(raw_observations),
+                "observations_included": False,
+            }
         return MarketDataStatusResponse(
             market_status=_market(state),
-            coverage_summary=state.coverage_summary,
+            coverage_summary=cov_summary,
             available_datasets=[
                 DatasetOptionItem(
                     label=_dataset_label(path, synthetic[path]),
                     is_synthetic=synthetic[path],
-                    is_active=path.resolve() == context.bars_path.resolve(),
+                    is_active=path.resolve() == active_resolved,
                 )
                 for path in paths
             ],
@@ -1141,12 +1384,14 @@ def create_app(
 
     @application.get("/api/rankings")
     def rankings(mode: PortfolioMode = "REAL_COMPETITION") -> StockRankingsResponse:
-        state = for_mode(mode).load_state()
+        active = for_mode(mode)
+        state = active.load_state()
         report = state.recommendations
         synthetic_on_real = state.data_is_synthetic and state.portfolio_mode == "REAL_COMPETITION"
         research_map = (
             state.research_coverage.by_instrument if state.research_coverage is not None else {}
         )
+        sparse_explanations = _sparse_research_explanations(active, state)
         ranking_items: list[StockRankingItem] = []
         for r in report.recommendations:
             an = research_map.get(r.instrument_id)
@@ -1242,6 +1487,7 @@ def create_app(
                     in_challenge_universe=an.in_challenge_universe if an else False,
                     challenge_symbol=an.challenge_symbol if an else None,
                     order_entry_eligibility=an.order_entry_eligibility if an else "NOT_IN_UNIVERSE",
+                    decision_explanation=sparse_explanations.get(r.instrument_id),
                 )
             )
 
@@ -1273,8 +1519,14 @@ def create_app(
         }
 
     @application.get("/api/research")
-    def research(q: str = "", mode: PortfolioMode = "REAL_COMPETITION") -> ResearchResponse:
-        state = for_mode(mode).load_state()
+    def research(
+        q: str = "",
+        mode: PortfolioMode = "REAL_COMPETITION",
+        include_strategy_comparison: bool = True,
+    ) -> ResearchResponse:
+        active = for_mode(mode)
+        state = active.load_state()
+        sparse_explanations = _sparse_research_explanations(active, state)
         cutoff = datetime.fromisoformat(state.recommendations.decision_cutoff)
         chunks = state.document_chunks
         results = (
@@ -1308,11 +1560,17 @@ def create_app(
                 for c in results
             ],
             backtest_summary=_backtest_summary(),
-            strategy_comparison=load_strategy_lab().registry,
+            strategy_comparison=load_strategy_lab().registry
+            if include_strategy_comparison
+            else None,
+            decision_explanations=sparse_explanations,
         )
 
     @application.get("/api/health")
-    def health(mode: PortfolioMode = "REAL_COMPETITION") -> SystemHealthResponse:
+    def health(
+        mode: PortfolioMode = "REAL_COMPETITION",
+        check_remote: bool = False,
+    ) -> SystemHealthResponse:
         active = for_mode(mode)
         state = active.load_state()
         alerts = [AlertItem.model_validate(a) for a in state.notifications.active_alerts()]
@@ -1322,7 +1580,9 @@ def create_app(
             from bvmt.gateway import MarketDataGateway
 
             gw = MarketDataGateway(output_dir=context.bars_path.parent)
-            gw_status = MarketGatewayStatusResponse(**asdict(gw.get_status()))
+            gw_status = MarketGatewayStatusResponse(
+                **asdict(gw.get_status(probe_remote=check_remote))
+            )
         except Exception:
             gw_status = None
         return SystemHealthResponse(
@@ -1363,6 +1623,7 @@ def create_app(
         gateway = MarketDataGateway(output_dir=context.bars_path.parent)
         req = body or MarketRefreshRequest()
         res = gateway.refresh(force=req.force, as_of=req.as_of)
+        invalidate_all_caches()
         return MarketRefreshResponse(
             success=True,
             message=(
@@ -1396,6 +1657,7 @@ def create_app(
                 snapshots_dir=base.snapshots_dir,
                 timeout_seconds=body.timeout_seconds,
             )
+            invalidate_all_caches()
         except AuthenticationExpiredError as exc:
             raise HTTPException(
                 400, "Browser authentication expired. Log in manually and retry."
@@ -1406,10 +1668,13 @@ def create_app(
                 (p, s) for p, s in base.list_browser_snapshots() if p.name not in before_names
             ]
             if new_snaps:
+                invalidate_all_caches()
                 latest = new_snaps[0][1]
                 state = base.load_state()
                 confirmed_timestamps = {
-                    s.capture_timestamp for s in state.ledger.snapshot_history if s.capture_timestamp
+                    s.capture_timestamp
+                    for s in state.ledger.snapshot_history
+                    if s.capture_timestamp
                 }
                 if state.account_snapshot and state.account_snapshot.capture_timestamp:
                     confirmed_timestamps.add(state.account_snapshot.capture_timestamp)
@@ -1487,6 +1752,7 @@ def create_app(
             )
 
         dom_snap = obs.to_dom_snapshot()
+        invalidate_all_caches()
         return SyncIngestionResponse(
             success=True,
             validation_status=result.validation_status,
@@ -1524,6 +1790,7 @@ def create_app(
             )
 
         dom_snap = obs.to_dom_snapshot()
+        invalidate_all_caches()
         return SyncIngestionResponse(
             success=True,
             validation_status=result.validation_status,
@@ -1561,6 +1828,7 @@ def create_app(
             )
 
         dom_snap = obs.to_dom_snapshot()
+        invalidate_all_caches()
         return SyncIngestionResponse(
             success=True,
             validation_status=result.validation_status,
@@ -1613,6 +1881,7 @@ def create_app(
             )
 
         dom_snap = obs.to_dom_snapshot()
+        invalidate_all_caches()
         return SyncIngestionResponse(
             success=True,
             validation_status=result.validation_status,
@@ -1714,8 +1983,13 @@ def create_app(
         mode: PortfolioMode = "REAL_COMPETITION",
         universe: str = "TUNIS_BOURSE_CHALLENGE",
     ) -> TradePlansResponse:
-        state = for_mode(mode).load_state()
+        active = for_mode(mode)
+        state = active.load_state()
         report = state.recommendations
+        research_map = (
+            state.research_coverage.by_instrument if state.research_coverage is not None else {}
+        )
+        sparse_explanations = _sparse_research_explanations(active, state)
         valuation = state.ledger.valuate(state.price_map)
         tot_eq = valuation.total_equity_tnd
         cash = valuation.available_cash_tnd
@@ -1746,10 +2020,15 @@ def create_app(
             pos = held_map.get(r.instrument_id)
             held_sh = pos.total_shares if pos else 0
             avg_cost = pos.average_cost_tnd if pos else Decimal("0.000")
+            an = research_map.get(r.instrument_id)
             med_turnover = (
                 Decimal(r.median_turnover_20s_tnd)
                 if r.median_turnover_20s_tnd
-                else Decimal("0.000")
+                else (
+                    an.median_turnover_20s_tnd
+                    if an is not None and an.median_turnover_20s_tnd is not None
+                    else Decimal("0.000")
+                )
             )
             med_vol = int(med_turnover // ref_price) if ref_price > 0 else 0
 
@@ -1757,8 +2036,8 @@ def create_app(
                 instrument_id=r.instrument_id,
                 symbol=r.symbol,
                 stock_name=r.symbol,
-                isin=None,
-                market_segment="PRINCIPAL",
+                isin=an.isin if an else None,
+                market_segment=an.market_segment if an else "PRINCIPAL",
                 limit_price_tnd=ref_price,
                 portfolio_total_equity_tnd=tot_eq,
                 available_cash_tnd=cash,
@@ -1766,6 +2045,9 @@ def create_app(
                 existing_average_cost_tnd=avg_cost,
                 median_daily_turnover_20s_tnd=med_turnover,
                 median_daily_volume_20s=med_vol,
+                quote_age_sessions=an.quote_age_sessions
+                if an and an.quote_age_sessions is not None
+                else 0,
                 research_rank=r.rank,
                 composite_score=(
                     Decimal(str(r.composite_score)) if r.composite_score is not None else None
@@ -1776,7 +2058,9 @@ def create_app(
                 as_of_session=report.latest_open_session,
                 universe=universe,
             )
-            plans.append(plan.to_dict())
+            plan_dict = plan.to_dict()
+            plan_dict["decision_explanation"] = sparse_explanations.get(r.instrument_id)
+            plans.append(plan_dict)
 
         return TradePlansResponse(
             as_of=report.generated_at,
@@ -1792,7 +2076,11 @@ def create_app(
 
     @application.post("/api/trade-plans/calculate")
     def trade_plan_calculate(body: TradePlanCalculateRequest) -> dict[str, Any]:
-        state = for_mode(body.portfolio_mode).load_state()
+        active = for_mode(body.portfolio_mode)
+        state = active.load_state()
+        research_map = (
+            state.research_coverage.by_instrument if state.research_coverage is not None else {}
+        )
         valuation = state.ledger.valuate(state.price_map)
         tot_eq = valuation.total_equity_tnd
         cash = valuation.available_cash_tnd
@@ -1815,7 +2103,12 @@ def create_app(
         held_sh = pos.total_shares if pos else 0
         avg_cost = pos.average_cost_tnd if pos else Decimal("0.000")
 
-        med_turnover = Decimal("25000.000")
+        an = research_map.get(body.instrument_id)
+        med_turnover = (
+            an.median_turnover_20s_tnd
+            if an is not None and an.median_turnover_20s_tnd is not None
+            else Decimal("25000.000")
+        )
         med_vol = int(med_turnover // body.limit_price_tnd) if body.limit_price_tnd > 0 else 0
         rank_val = None
         comp_score = None
@@ -1841,8 +2134,8 @@ def create_app(
             instrument_id=body.instrument_id,
             symbol=body.symbol,
             stock_name=body.symbol,
-            isin=None,
-            market_segment="PRINCIPAL",
+            isin=an.isin if an else None,
+            market_segment=an.market_segment if an else "PRINCIPAL",
             limit_price_tnd=body.limit_price_tnd,
             portfolio_total_equity_tnd=tot_eq,
             available_cash_tnd=cash,
@@ -1850,6 +2143,9 @@ def create_app(
             existing_average_cost_tnd=avg_cost,
             median_daily_turnover_20s_tnd=med_turnover,
             median_daily_volume_20s=med_vol,
+            quote_age_sessions=an.quote_age_sessions
+            if an and an.quote_age_sessions is not None
+            else 0,
             research_rank=rank_val,
             composite_score=comp_score,
             momentum_20s=mom20,
@@ -1861,7 +2157,11 @@ def create_app(
             as_of_session=state.recommendations.latest_open_session,
             universe=body.universe,
         )
-        return plan.to_dict()
+        plan_dict = plan.to_dict()
+        plan_dict["decision_explanation"] = _sparse_research_explanations(active, state).get(
+            body.instrument_id
+        )
+        return plan_dict
 
     @application.get("/api/challenge-universe")
     def challenge_universe() -> dict[str, Any]:
@@ -1874,8 +2174,19 @@ def create_app(
 
     @application.get("/api/holding-periods")
     def holding_periods(universe: str = "FULL_BVMT") -> dict[str, Any]:
+        cache_key = (
+            universe,
+            file_fingerprint(DATA_DIR / "daily_bars.canonical.csv"),
+            file_fingerprint(DATA_DIR / "exchange_calendar.csv"),
+            file_fingerprint(DATA_DIR / "instrument_master.csv"),
+        )
+        cached = _HOLDING_PERIODS_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
         report = evaluate_holding_periods(universe=universe)
-        return report.to_dict()
+        payload = report.to_dict()
+        _HOLDING_PERIODS_CACHE.set(cache_key, payload)
+        return payload
 
     @application.get("/api/trading-intelligence")
     def trading_intelligence(

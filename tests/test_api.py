@@ -1003,3 +1003,39 @@ def test_playwright_async_endpoints(service: PortfolioStateService) -> None:
 
         # 4. Unknown job -> 404
         assert client.get("/api/sync/playwright/status/nonexistent").status_code == 404
+
+
+def test_decision_explanation_bridge_across_rankings_research_and_planner(
+    service: PortfolioStateService,
+) -> None:
+    with TestClient(create_app(service)) as client:
+        rank_res = client.get("/api/rankings")
+        assert rank_res.status_code == 200
+        rankings = rank_res.json()["rankings"]
+        assert rankings
+        with_exp = [r for r in rankings if r.get("decision_explanation") is not None]
+        assert with_exp
+        first_exp = with_exp[0]["decision_explanation"]
+        assert first_exp["model_version"] == "sparse_research_v1"
+        assert first_exp["research_status"] in {
+            "FULL_RESEARCH_AVAILABLE",
+            "PARTIAL_RESEARCH_AVAILABLE",
+            "EVENT_RESEARCH_AVAILABLE",
+            "INSUFFICIENT_EVIDENCE",
+            "RESTRICTED_FOR_TRADING",
+        }
+        assert isinstance(first_exp["missing_data"], list)
+        assert isinstance(first_exp["supporting_evidence"], list)
+        assert isinstance(first_exp["contradicting_evidence"], list)
+        assert isinstance(first_exp["is_tradable"], bool)
+
+        research_res = client.get("/api/research?include_strategy_comparison=false")
+        assert research_res.status_code == 200
+        exps_map = research_res.json()["decision_explanations"]
+        assert with_exp[0]["instrument_id"] in exps_map
+
+        plans_res = client.get("/api/trade-plans")
+        assert plans_res.status_code == 200
+        plans = plans_res.json()["plans"]
+        assert plans
+        assert any(p.get("decision_explanation") is not None for p in plans)

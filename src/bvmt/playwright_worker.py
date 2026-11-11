@@ -70,6 +70,8 @@ class PlaywrightJobManager:
     def configure_persistence(self, jobs_path: Path) -> None:
         """Bind a persistence file path lazily (used when FastAPI app sets snapshots_dir)."""
         with self._lock:
+            if self._jobs_path != jobs_path:
+                self._jobs.clear()
             self._jobs_path = jobs_path
             self._load_jobs_locked()
 

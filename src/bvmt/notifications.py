@@ -391,6 +391,12 @@ class NotificationCenter:
         ensure_no_symlink_ancestors(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         text = json.dumps(self.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n"
+        if path.is_file():
+            try:
+                if path.read_text(encoding="utf-8") == text:
+                    return
+            except OSError:
+                pass
         try:
             atomic_write_text(path, text, allow_identical=True, allow_overwrite=True)
         except OSError:

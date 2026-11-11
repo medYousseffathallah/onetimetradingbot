@@ -61,6 +61,18 @@ from bvmt.ledger import (
     ReconciliationReport,
     build_snapshot_from_dom,
 )
+from bvmt.perf_cache import (
+    BoundedLruCache,
+    dir_files_fingerprint,
+    file_fingerprint,
+    get_cache_generation,
+    invalidate_all_caches,
+    processed_datasets_fingerprint,
+    register_cache,
+)
+
+_DASHBOARD_STATE_CACHE: BoundedLruCache[tuple[object, ...], DashboardAppState] = BoundedLruCache(16)
+register_cache(_DASHBOARD_STATE_CACHE)  # type: ignore[arg-type]
 
 
 class SnapshotConflictError(ValueError):
@@ -166,6 +178,52 @@ class PortfolioStateService:
             processed_root=self.processed_root,
         )
 
+    def _state_cache_key(
+        self,
+        ctx: CanonicalDataResolution,
+        *,
+        short_lookback: int,
+        long_lookback: int,
+        min_turnover_tnd: Decimal,
+    ) -> tuple[object, ...]:
+        eff_cal_path = self.calendar_path
+        eff_inst_path = self.instruments_path
+        if (
+            self.calendar_path == DEFAULT_CALENDAR_PATH
+            and (ctx.bars_path.parent / "exchange_calendar.csv").is_file()
+        ):
+            eff_cal_path = ctx.bars_path.parent / "exchange_calendar.csv"
+        if (
+            self.instruments_path == DEFAULT_INSTRUMENTS_PATH
+            and (ctx.bars_path.parent / "instrument_master.csv").is_file()
+        ):
+            eff_inst_path = ctx.bars_path.parent / "instrument_master.csv"
+        return (
+            get_cache_generation(),
+            ctx.portfolio_mode,
+            ctx.dataset_label,
+            file_fingerprint(ctx.ledger_path),
+            file_fingerprint(ctx.bars_path),
+            file_fingerprint(eff_cal_path),
+            file_fingerprint(eff_inst_path),
+            file_fingerprint(self.competition_config_path),
+            file_fingerprint(self.llm_config_path),
+            file_fingerprint(Path("artifacts/llm_usage_ledger.json")),
+            file_fingerprint(self.doc_index_path),
+            file_fingerprint(self.alerts_path),
+            file_fingerprint(self.real_snapshot_path)
+            if ctx.portfolio_mode == "REAL_COMPETITION"
+            else None,
+            file_fingerprint(DEFAULT_LEDGER_PATH)
+            if ctx.portfolio_mode == "REAL_COMPETITION"
+            else None,
+            dir_files_fingerprint(self.snapshots_dir, "sync_*.json"),
+            processed_datasets_fingerprint(self.processed_root),
+            short_lookback,
+            long_lookback,
+            str(min_turnover_tnd),
+        )
+
     def load_state(
         self,
         *,
@@ -174,7 +232,16 @@ class PortfolioStateService:
         min_turnover_tnd: Decimal = Decimal("5000"),
     ) -> DashboardAppState:
         ctx = self.resolve_context()
-        return build_dashboard_state(
+        pre_key = self._state_cache_key(
+            ctx,
+            short_lookback=short_lookback,
+            long_lookback=long_lookback,
+            min_turnover_tnd=min_turnover_tnd,
+        )
+        cached = _DASHBOARD_STATE_CACHE.get(pre_key)
+        if cached is not None:
+            return cached
+        state = build_dashboard_state(
             ledger_path=ctx.ledger_path,
             alerts_path=self.alerts_path,
             bars_path=ctx.bars_path,
@@ -190,6 +257,14 @@ class PortfolioStateService:
             real_snapshot_path=self.real_snapshot_path,
             snapshots_dir=self.snapshots_dir,
         )
+        post_key = self._state_cache_key(
+            ctx,
+            short_lookback=short_lookback,
+            long_lookback=long_lookback,
+            min_turnover_tnd=min_turnover_tnd,
+        )
+        _DASHBOARD_STATE_CACHE.set(post_key, state)
+        return state
 
     def list_browser_snapshots(self) -> list[tuple[Path, CompetitionPortfolioDOMSnapshot]]:
         """Return all valid saved browser DOM snapshots sorted newest-first by retrieved_at."""
@@ -229,24 +304,26 @@ class PortfolioStateService:
     def preview_reconciliation(
         self,
         dom_snap: CompetitionPortfolioDOMSnapshot | None = None,
+        *,
+        state: DashboardAppState | None = None,
     ) -> tuple[CompetitionScreenshotSnapshot, ReconciliationReport] | None:
         """Preview reconciliation of a browser DOM snapshot against the current ledger without mutating disk."""
-        state = self.load_state()
-        target_dom = self._resolve_target_snapshot(state, dom_snap)
+        active_state = state if state is not None else self.load_state()
+        target_dom = self._resolve_target_snapshot(active_state, dom_snap)
         if target_dom is None:
             return None
         candidate_acct = build_snapshot_from_dom(target_dom)
         comp_acct = candidate_acct.to_competition_account_snapshot(
             as_of=target_dom.retrieved_at.isoformat()
         )
-        if is_histo_only_dom_snapshot(target_dom) and state.account_snapshot is not None:
-            prev = state.account_snapshot
+        if is_histo_only_dom_snapshot(target_dom) and active_state.account_snapshot is not None:
+            prev = active_state.account_snapshot
             prev_comp = prev.to_competition_account_snapshot(
                 as_of=target_dom.retrieved_at.isoformat()
             )
             comp_acct = replace(
                 comp_acct,
-                settled_cash_tnd=state.ledger.settled_cash_tnd,
+                settled_cash_tnd=active_state.ledger.settled_cash_tnd,
                 available_cash_tnd=None,
                 holdings=list(prev_comp.holdings),
                 pending_orders_verified=True,
@@ -265,7 +342,7 @@ class PortfolioStateService:
                 transactions_imported=True,
                 pending_orders_verified=True,
             )
-        recon = state.ledger.reconcile_with_snapshot(
+        recon = active_state.ledger.reconcile_with_snapshot(
             comp_acct,
             evaluated_at=target_dom.retrieved_at,
         )
@@ -283,6 +360,7 @@ class PortfolioStateService:
             raise ValueError(
                 "Explicit user confirmation (confirmed_by_user=True) is required before applying browser sync"
             )
+        invalidate_all_caches()
         state = self.load_state()
         target_dom = self._resolve_target_snapshot(state, dom_snap)
         if target_dom is None:
@@ -299,11 +377,14 @@ class PortfolioStateService:
                 f"Pending snapshot changed (expected '{expected_snapshot_id}', current is '{actual_id}'). "
                 "Refresh preview before confirming."
             )
-        recon = apply_confirmed_browser_sync_to_state(
-            state,
-            target_dom,
-            confirmed_by_user=True,
-        )
+        try:
+            recon = apply_confirmed_browser_sync_to_state(
+                state,
+                target_dom,
+                confirmed_by_user=True,
+            )
+        finally:
+            invalidate_all_caches()
         return state, recon
 
     def reject_snapshot(
@@ -325,7 +406,10 @@ class PortfolioStateService:
                     break
         if target_dom is None:
             raise FileNotFoundError("No matching pending browser snapshot found to reject.")
-        return mark_snapshot_rejected(self.snapshots_dir, target_dom, reason=reason)
+        try:
+            return mark_snapshot_rejected(self.snapshots_dir, target_dom, reason=reason)
+        finally:
+            invalidate_all_caches()
 
     def get_freshness_status(self, state: DashboardAppState | None = None) -> dict[str, object]:
         active_state = state or self.load_state()

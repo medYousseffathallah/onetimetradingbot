@@ -38,6 +38,7 @@ import {
   CardTitle,
 } from "@/components/ui/primitives";
 import { MetricHelp } from "@/components/ui/metric-help";
+import { DecisionExplanationCard } from "@/components/decision-explanation-card";
 import { usePortfolioMode } from "@/components/app-shell";
 
 type FilterTab =
@@ -775,12 +776,28 @@ export default function MarketExplorerPage() {
                                     </Link>
                                   </div>
 
-                                  {/* Section 1: Sparse Data Analytics & Microstructure */}
-                                  <div>
-                                    <h5 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
-                                      <Layers className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
-                                      <span>Market Microstructure & Sparse-Data Indicators</span>
-                                    </h5>
+                                  {/* Section 1: Plain-Language Decision Explanation Card */}
+                                  <DecisionExplanationCard
+                                    symbol={r.symbol}
+                                    ranking={r}
+                                    explanation={r.decision_explanation}
+                                  />
+
+                                  {/* Section 2: Advanced Quantitative & Microstructure Metrics (Collapsed unless Advanced enabled) */}
+                                  <details
+                                    open={showAdvanced}
+                                    className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-950/60 p-3.5"
+                                  >
+                                    <summary className="cursor-pointer select-none text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between gap-2">
+                                      <span className="flex items-center gap-1.5">
+                                        <Layers className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                                        <span>Advanced Metrics: Market Microstructure &amp; Sparse-Data Numerics</span>
+                                      </span>
+                                      <span className="text-[11px] font-normal text-slate-500">
+                                        Click to expand / collapse
+                                      </span>
+                                    </summary>
+                                    <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
                                       <div className="rounded-lg bg-white dark:bg-slate-950 p-2.5 border border-slate-200 dark:border-slate-800">
                                         <div className="text-[10px] text-slate-500 mb-0.5">Last Traded Price</div>
@@ -863,9 +880,10 @@ export default function MarketExplorerPage() {
                                         <div className="text-[10px] text-slate-400 mt-0.5">Liquidity-Damped</div>
                                       </div>
                                     </div>
-                                  </div>
+                                    </div>
+                                  </details>
 
-                                  {/* Section 2: Conservative Order Capacity (Zero Intraday Lookahead) */}
+                                  {/* Section 3: Conservative Order Capacity (Zero Intraday Lookahead) */}
                                   <div className="rounded-lg bg-teal-50/40 dark:bg-teal-950/20 border border-teal-200/60 dark:border-teal-900/40 p-3.5 space-y-2">
                                     <div className="flex items-center justify-between">
                                       <h5 className="text-xs font-semibold text-teal-950 dark:text-teal-200 flex items-center gap-1.5">

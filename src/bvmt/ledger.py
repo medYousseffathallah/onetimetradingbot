@@ -2633,7 +2633,12 @@ class PortfolioLedger:
             same_pends = sorted(p.order_id for p in last_snap.imported_pending_orders) == sorted(
                 p.order_id for p in snapshot.pending_orders
             )
-            if same_ts and (not sync_holdings_and_cash or (same_cash and same_holds)) and same_txs and same_pends:
+            if (
+                same_ts
+                and (not sync_holdings_and_cash or (same_cash and same_holds))
+                and same_txs
+                and same_pends
+            ):
                 return pre_report
 
         if snapshot.initial_cash_tnd is not None and snapshot.initial_cash_tnd > Decimal("0"):
@@ -2759,7 +2764,11 @@ class PortfolioLedger:
                 )
                 realized_delta = Decimal("0.000")
                 cur_h = self.holdings.get(tx.instrument_id) or prev_holdings.get(tx.instrument_id)
-                if tx.side == "SELL" and cur_h is not None and cur_h.average_cost_tnd > Decimal("0"):
+                if (
+                    tx.side == "SELL"
+                    and cur_h is not None
+                    and cur_h.average_cost_tnd > Decimal("0")
+                ):
                     realized_delta = quantize_tnd(
                         gross - fee - (Decimal(tx.filled_shares) * cur_h.average_cost_tnd)
                     )
@@ -2796,9 +2805,7 @@ class PortfolioLedger:
                         reserved_sell_shares=target_h.reserved_sell_shares,
                         average_cost_tnd=target_h.average_cost_tnd,
                         cost_basis_tnd=target_h.cost_basis_tnd,
-                        realized_pnl_tnd=quantize_tnd(
-                            target_h.realized_pnl_tnd + realized_delta
-                        ),
+                        realized_pnl_tnd=quantize_tnd(target_h.realized_pnl_tnd + realized_delta),
                         total_fees_paid_tnd=quantize_tnd(target_h.total_fees_paid_tnd + fee),
                     )
 
@@ -2807,10 +2814,14 @@ class PortfolioLedger:
             first_tx = tx_list[0]
             pend_match = acct_pend_by_id.get(oid)
             if pend_match is not None:
-                req_sh = max(total_filled + pend_match.remaining_shares, pend_match.requested_shares)
+                req_sh = max(
+                    total_filled + pend_match.remaining_shares, pend_match.requested_shares
+                )
                 rem_sh = pend_match.remaining_shares
                 lim_px = quantize_tnd(pend_match.limit_price_tnd)
-                ord_status = "PARTIALLY_FILLED" if total_filled > 0 and rem_sh > 0 else pend_match.status
+                ord_status = (
+                    "PARTIALLY_FILLED" if total_filled > 0 and rem_sh > 0 else pend_match.status
+                )
                 rem_gross = quantize_tnd(Decimal(rem_sh) * lim_px)
                 rem_fee = compute_commission(rem_gross, self.fee_rate)
                 res_cash = (

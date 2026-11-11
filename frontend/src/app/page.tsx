@@ -400,14 +400,14 @@ export default function HomePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {holdings.holdings.map((h) => {
+                    {holdings.holdings.map((h, idx) => {
                       const pnl = parseFloat(h.website_unrealized_pnl_tnd || "0");
                       const cost = parseFloat(h.acquisition_price_tnd || "0");
                       const breakEven = (cost * 1.005 / 0.995).toFixed(3);
                       const isNearCap = parseFloat(h.weight_pct || "0") >= 9.5;
 
                       return (
-                        <tr key={h.instrument_id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors">
+                        <tr key={`${h.instrument_id}-${idx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors">
                           <td className="py-3 px-4">
                             <div className="font-semibold text-slate-900 dark:text-slate-100">
                               {h.symbol}

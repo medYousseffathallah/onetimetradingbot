@@ -332,7 +332,9 @@ def mark_snapshot_rejected(
     rejected_keys.update(snapshot_rejection_keys(dom_snap))
     raw_rejections = existing.get("rejections")
     rejections: list[object] = list(raw_rejections) if isinstance(raw_rejections, list) else []
-    snap_id = dom_snap.snapshot_id or f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    snap_id = (
+        dom_snap.snapshot_id or f"browser_sync_{dom_snap.retrieved_at.strftime('%Y%m%d_%H%M%S')}"
+    )
     entry: dict[str, object] = {
         "snapshot_id": snap_id,
         "capture_timestamp": dom_snap.retrieved_at.isoformat(),
@@ -356,8 +358,7 @@ def mark_snapshot_rejected(
 
 def is_histo_only_dom_snapshot(dom_snap: CompetitionPortfolioDOMSnapshot) -> bool:
     return (
-        "/display_histo.aspx" in dom_snap.source_url
-        or "manual_transactions" in dom_snap.source_url
+        "/display_histo.aspx" in dom_snap.source_url or "manual_transactions" in dom_snap.source_url
     ) and not dom_snap.holdings
 
 

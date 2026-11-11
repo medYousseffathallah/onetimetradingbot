@@ -142,9 +142,7 @@ class NormalizedHoldingObservation:
 
         raw_mkt = data.get("market_value_tnd")
         mkt_val = (
-            quantize_tnd(raw_mkt)
-            if raw_mkt is not None and str(raw_mkt).strip() != ""
-            else None
+            quantize_tnd(raw_mkt) if raw_mkt is not None and str(raw_mkt).strip() != "" else None
         )
 
         raw_lat = data.get("latest_price_tnd")
@@ -428,7 +426,9 @@ class NormalizedAccountObservation:
         )
         is_rec = True if is_histo_only else (gap <= DEFAULT_BALANCE_TOLERANCE_TND)
         has_movements = bool(
-            self.transactions or self.pending_orders or self.source_page_type == "display_histo.aspx"
+            self.transactions
+            or self.pending_orders
+            or self.source_page_type == "display_histo.aspx"
         )
 
         return CompetitionPortfolioDOMSnapshot(
@@ -481,9 +481,7 @@ class NormalizedAccountObservation:
     def from_dict(cls, data: dict[str, Any]) -> NormalizedAccountObservation:
         raw_perf = data.get("displayed_overall_performance_pct")
         perf_dec = (
-            quantize_tnd(raw_perf)
-            if raw_perf is not None and str(raw_perf).strip() != ""
-            else None
+            quantize_tnd(raw_perf) if raw_perf is not None and str(raw_perf).strip() != "" else None
         )
         return cls(
             source=data.get("source", "MANUAL_PASTE"),

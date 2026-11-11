@@ -82,4 +82,3 @@ def test_api_session_summary_endpoint() -> None:
     assert len(data["positions"]) == 5
     assert len(data["transactions"]) == 4
     assert len(data["model_evaluations"]) >= 3
-

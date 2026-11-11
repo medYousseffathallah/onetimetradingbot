@@ -696,11 +696,34 @@ class MarketDataGateway:
         self.output_dir = output_dir
         self.provider = provider or OfficialBvmtNdjsonProvider()
 
-    def get_status(self, as_of: date | None = None) -> MarketGatewayStatus:
+    def get_status(
+        self, as_of: date | None = None, *, probe_remote: bool = True
+    ) -> MarketGatewayStatus:
         canonical_csv = self.output_dir / "daily_bars.canonical.csv"
-        health = self.provider.check_health()
         now = datetime.now(UTC)
         as_of_date = as_of or now.date()
+        cached_meta = (
+            OfficialBvmtNdjsonProvider(staging_dir=DEFAULT_STAGING_DIR)._read_cached_metadata()
+            if isinstance(self.provider, OfficialBvmtNdjsonProvider)
+            else {}
+        )
+        if probe_remote:
+            health = self.provider.check_health()
+        else:
+            last_synced_raw = cached_meta.get("last_synced_at")
+            last_success = datetime.fromisoformat(last_synced_raw) if last_synced_raw else None
+            health = ProviderHealthStatus(
+                provider_id=self.provider.provider_id,
+                display_name=self.provider.display_name,
+                status="HEALTHY" if last_success is not None else "DEGRADED",
+                message=(
+                    f"Cached local sync status (last synced {last_synced_raw}); remote probe skipped."
+                    if last_synced_raw
+                    else "Remote probe skipped on fast health check (no cached sync timestamp)."
+                ),
+                last_checked=now,
+                last_success=last_success,
+            )
 
         # Check calendar status
         calendar_status = "REGULAR_TRADING_SCHEDULE"
@@ -746,11 +769,7 @@ class MarketDataGateway:
         if "synthetic" in str(self.output_dir).lower():
             classification = "SYNTHETIC_DEMO"
 
-        cached = (
-            OfficialBvmtNdjsonProvider(staging_dir=DEFAULT_STAGING_DIR)._read_cached_metadata()
-            if isinstance(self.provider, OfficialBvmtNdjsonProvider)
-            else {}
-        )
+        cached = cached_meta
         last_sync = cached.get("last_synced_at") or (
             health.last_success.isoformat() if health.last_success else None
         )

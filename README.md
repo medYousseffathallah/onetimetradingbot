@@ -518,6 +518,18 @@ Multi-horizon backtesting across 194 sessions of 2026 BVMT data revealed critica
 ### 16.4 Operational Runbook
 - Complete step-by-step user instructions for pre-opening, continuous matching, and post-session reconciliation: [`docs/MONDAY_2026_11_09_OPERATIONS.md`](docs/MONDAY_2026_11_09_OPERATIONS.md)
 
+---
+
+## 17. Milestone 13 — Reliability, Performance Optimization & Sparse-Data Research
+
+Milestone 13 hardened the localhost platform across synchronization reliability, end-to-end latency, forensic case analysis, sparse-data research separation, and UI decision explainability:
+
+- **Phase 1 — Sync Reliability & Transaction Reconciliation ([`docs/SYNC_RELIABILITY_AUDIT.md`](docs/SYNC_RELIABILITY_AUDIT.md)):** Fixed MV3 background relay (`extension/`), locale-strict French numeric/date parsing across DOM/paste/CSV/transactions (`src/bvmt/sync_service.py`, `src/bvmt/manual_import.py`), content-hash snapshot deduplication, Chrome -> Edge fallback and process-tree job lifecycle (`src/bvmt/browser.py`, `src/bvmt/playwright_worker.py`), `/api/sync/reject` and `/api/sync/manual/transactions`, and monotonic order/transaction reconciliation (`src/bvmt/ledger.py`).
+- **Phase 2 — Performance Optimization ([`docs/PERFORMANCE_AUDIT.md`](docs/PERFORMANCE_AUDIT.md)):** Added content-fingerprinted bounded caches (`src/bvmt/perf_cache.py`) for canonical CSVs, dashboard state, holding periods, strategy registry, and sparse research explanations; lightweight query defaults; duplicate GET removal; and dynamically loaded charts.
+- **Phase 3 — ICF Missed-Opportunity Autopsy ([`docs/ICF_MISSED_OPPORTUNITY_AUTOPSY.md`](docs/ICF_MISSED_OPPORTUNITY_AUTOPSY.md)):** Reconstructed why `ICF` (`TN0003200755`) fell into `missing_observation` via `'B'` limit-down quarantine (`2026-09-22`) while simultaneously failing `2026-11-06` liquidity (`1,364.090 TND`) and negative momentum (`-2.6831%`) hurdles prior to its Nov 9–10 volume awakening.
+- **Phases 4, 5 & 7 — Multi-Layer Sparse Research & Benchmark (`sparse_research_v1`, [`docs/SPARSE_DATA_RESEARCH.md`](docs/SPARSE_DATA_RESEARCH.md), [`docs/STRATEGY_COMPARISON.md`](docs/STRATEGY_COMPARISON.md)):** Decoupled research visibility (`FULL_RESEARCH_AVAILABLE`, `PARTIAL_RESEARCH_AVAILABLE`, `EVENT_RESEARCH_AVAILABLE`, `INSUFFICIENT_EVIDENCE`, `RESTRICTED_FOR_TRADING`) from trading eligibility without mutating Models A–I or historical results; evaluated strictly out-of-sample across 6 cohorts (`PROMOTION BLOCKED` under conservative FP/expectancy gates, research-only).
+- **Phase 6 — Plain-Language Decision Explainability (`frontend/` & `src/bvmt/api.py`):** Integrated [`DecisionExplanationCard`](frontend/src/components/decision-explanation-card.tsx) across `/market`, `/planner`, and `/research`, separating research evidence pillars from Challenge trading eligibility with explicit missing-data disclosures and human-review triggers.
+
 
 
 

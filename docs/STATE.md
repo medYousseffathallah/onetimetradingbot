@@ -1,6 +1,25 @@
 # Working state
 
 ## Current checkpoint
+**Wednesday, November 11, 2026 — Milestone 13 Integrated & Verified on `main` (`bvmt-starter-kit`)**.
+- **Integrated Workstreams**:
+  - Merged `gemini/dashboard` (`db22a02`, `aff4270`, `fdfae2a` — Phases 1, 3, 4, 5, 7) and `codex/data-research` (`a297b95`, `4a57b44` — Phases 2, 6) cleanly into `main`, resolving `src/bvmt/portfolio_service.py` and preserving pre-Milestone-13 React row-key & snapshot deduplication fixes.
+  - Wired Phase 4 multi-layer sparse explanations (`evaluate_sparse_market_research`, `sparse_research_v1`) through `BoundedLruCache` `_SPARSE_EXPLANATIONS_CACHE` in `src/bvmt/api.py` onto `/api/rankings`, `/api/research`, `/api/trade-plans`, and `/api/trade-plans/calculate`, while preserving Models `A–I` and recorded historical results untouched (`auto_order_submission=False`, `BVMT_ALLOW_LIVE_LLM=0`).
+  - Wired `invalidate_all_caches()` into `/api/sync/reject`, `/api/sync/manual/transactions`, and partial salvage in `/api/sync/browser`; preserved observed `median_turnover_20s_tnd` fallback in trade plans; isolated `PlaywrightJobManager._jobs` across persistence paths.
+- **Milestone 13 Deliverables & Architecture Docs (with Mermaid Diagrams)**:
+  - `docs/MILESTONE_13_PLAN.md`: Baseline inventory & worktree orchestration plan.
+  - `docs/SYNC_RELIABILITY_AUDIT.md`: 24 reproduced sync/parser/lifecycle failures + fixes across Browser Companion (`extension/`), Manual Paste/CSV/Transactions (`manual_import.py`), Playwright fallback (`browser.py`, `playwright_worker.py`), Canonical Sync (`sync_service.py`), API (`api.py`), and Atomic Ledger (`ledger.py`), with current vs. target Mermaid sync diagrams.
+  - `docs/PERFORMANCE_AUDIT.md`: Cold vs. warm measurements (`perf_baseline.py` vs. `perf_after.py`) showing 19/19 warm API routes `<180 ms` p95 (up to 243x speedup) and Next.js `next start` warm nav `<1.1s`, plus Mermaid request/cache architecture diagram.
+  - `docs/ICF_MISSED_OPPORTUNITY_AUTOPSY.md`: Forensic timeline & counterfactual on `ICF` (`TN0003200755`) separating `data.py` `'B'` limit-down bar quarantine (`2026-09-22`) from `2026-11-06` negative momentum (`-2.6831%`) and thin turnover (`1,364.090 TND`).
+  - `docs/SPARSE_DATA_RESEARCH.md`: 7-layer PIT research architecture (`sparse_research_v1`, config SHA-256 `abd3841ab77e20ef21e97babf850cbf5388839e9cce00ce35b03b4247cf5b8fe`) separating `ResearchStatus` (`FULL_RESEARCH_AVAILABLE`, `PARTIAL_RESEARCH_AVAILABLE`, `EVENT_RESEARCH_AVAILABLE`, `INSUFFICIENT_EVIDENCE`, `RESTRICTED_FOR_TRADING`) from `TradingEligibilityStatus`, with two Mermaid architecture diagrams.
+  - `docs/STRATEGY_COMPARISON.md`: Strict purged walk-forward comparison (`n=988`, 13 folds `2026-03-30..2026-10-20`) across `ICF`, `OTHER_EXCLUDED_CHALLENGE`, `SPARSE_LATER_ROSE`, `SPARSE_LATER_FELL`, `FREQUENT_BENCHMARK`, and `NO_MEANINGFUL_MOVE`; **PROMOTION BLOCKED** (`overall` false-positive rate `0.6058 > 0.45`; `SPARSE_LATER_FELL` `10` FPs at `-5.1137%` mean net).
+- **Verified Unified Quality Gate (`main`)**:
+  - `uv run python scripts/check.py` -> **PASS** (`74` files formatted, `ruff check` passed, `mypy src/bvmt` `35` source files 0 errors, `validate_skills.py` 10 skills valid, **`pytest -q` `424 passed`, 1 warning in `134.10s`**).
+  - `data/portfolio/real_competition_ledger.json` preserved byte-for-byte (`97,637` bytes, SHA-256 `0A1B86CB281187A0E9AB88A4CDE6D4DE173A5DF162111266CE1988DCBF91D395`).
+- **Remaining User-Assisted Acceptance Gate**:
+  - Live interactive test of the updated Chrome Browser Companion (`extension/`) against a logged-in `tunisbourse-challenge.com` session (`displayp.aspx` & `display_histo.aspx`) with explicit user confirmation on `http://127.0.0.1:3000/portfolio`.
+
+## Previous checkpoint (2026-11-11 — Gemini Workstream)
 **Wednesday, November 11, 2026 — Phase 1 Synchronization Reliability & Transaction-History Reconciliation (`gemini/dashboard`)**.
 - **Phase 1 Synchronization Audit (`docs/SYNC_RELIABILITY_AUDIT.md`) & Fixes**:
   - **Chrome Extension (`extension/manifest.json`, `extension/background.js`, `extension/content.js`, `extension/popup.js`)**: Added MV3 background fetch relay (`BVMT_SYNC_UPLOAD`) surviving popup closes; upgraded schema `2026.11-v2`; fixed `colMap.mktVal` (`Nom de valeur` collision), `<th>` header skip, 12-cell `tbody.alri` extraction (`displayed_identifier` preserved, qty not confused with ID), strict French thousands/decimal parsing, removed silent `"50000.000"` and `|| 0` fallbacks, added `display_histo.aspx` transaction & pending order extraction, and blocked Transmit on `res.success === false` or non-empty `validation_errors`.

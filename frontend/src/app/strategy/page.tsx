@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   FlaskConical,
   AlertTriangle,
@@ -18,20 +19,45 @@ import {
   PlayCircle,
   ShieldAlert,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  Legend,
-} from "recharts";
+
+const StrategyEquityChart = dynamic(
+  () =>
+    import("@/components/charts/strategy-charts").then((mod) => mod.StrategyEquityChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center text-xs text-slate-400">
+        Loading equity chart…
+      </div>
+    ),
+  }
+);
+
+const StrategyComparisonBarChart = dynamic(
+  () =>
+    import("@/components/charts/strategy-charts").then((mod) => mod.StrategyComparisonBarChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center text-xs text-slate-400">
+        Loading strategy comparison chart…
+      </div>
+    ),
+  }
+);
+
+const StrategyDrawdownChart = dynamic(
+  () =>
+    import("@/components/charts/strategy-charts").then((mod) => mod.StrategyDrawdownChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center text-xs text-slate-400">
+        Loading drawdown chart…
+      </div>
+    ),
+  }
+);
 import {
   api,
   PaperTradingResponse,
@@ -90,7 +116,7 @@ export default function StrategyLabPage() {
       .catch(() => {});
 
     api
-      .getResearch("", mode)
+      .getResearch("", mode, false)
       .then((res) => setResearchData(res))
       .catch(() => {});
   }, [mode, refreshTrigger]);
@@ -828,49 +854,7 @@ export default function StrategyLabPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={selectedReport.equity_curve}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                      <XAxis
-                        dataKey="session_date"
-                        stroke="#94a3b8"
-                        fontSize={11}
-                        minTickGap={28}
-                      />
-                      <YAxis
-                        stroke="#94a3b8"
-                        fontSize={11}
-                        domain={["auto", "auto"]}
-                        tickFormatter={(v) => `${(Number(v) / 1000).toFixed(1)}k`}
-                      />
-                      <RechartsTooltip
-                        contentStyle={{
-                          backgroundColor: "#0f172a",
-                          borderColor: "#334155",
-                          borderRadius: "8px",
-                          fontSize: "12px",
-                        }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: "12px" }} />
-                      <Line
-                        type="monotone"
-                        name={`${selectedReport.strategy_id} Equity (TND)`}
-                        dataKey="total_equity_tnd"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        name="Benchmark C Equity (TND)"
-                        dataKey="benchmark_equity_tnd"
-                        stroke="#64748b"
-                        strokeWidth={1.5}
-                        strokeDasharray="4 4"
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <StrategyEquityChart selectedReport={selectedReport} />
                 </CardContent>
               </Card>
 
@@ -888,29 +872,7 @@ export default function StrategyLabPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={comparisonChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                      <XAxis dataKey="strategy" stroke="#94a3b8" fontSize={10} interval={0} />
-                      <YAxis stroke="#94a3b8" fontSize={11} unit="%" />
-                      <RechartsTooltip
-                        contentStyle={{
-                          backgroundColor: "#0f172a",
-                          borderColor: "#334155",
-                          borderRadius: "8px",
-                          fontSize: "12px",
-                        }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: "12px" }} />
-                      <Bar name="5-Slot Raw (%)" dataKey="NetReturn" fill="#10b981" />
-                      <Bar
-                        name="10-Slot Equal Budget (%)"
-                        dataKey="EqualBudget10SlotReturn"
-                        fill="#38bdf8"
-                      />
-                      <Bar name="Ex-SOTETEL (%)" dataKey="ExSotetelReturn" fill="#f59e0b" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <StrategyComparisonBarChart data={comparisonChartData} />
                 </CardContent>
               </Card>
             </div>
@@ -935,34 +897,7 @@ export default function StrategyLabPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={selectedReport.equity_curve}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                      <XAxis
-                        dataKey="session_date"
-                        stroke="#94a3b8"
-                        fontSize={10}
-                        minTickGap={32}
-                      />
-                      <YAxis stroke="#94a3b8" fontSize={10} unit="%" />
-                      <RechartsTooltip
-                        contentStyle={{
-                          backgroundColor: "#0f172a",
-                          borderColor: "#334155",
-                          borderRadius: "8px",
-                          fontSize: "12px",
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        name="Drawdown (%)"
-                        dataKey="drawdown_pct"
-                        stroke="#f59e0b"
-                        fill="#f59e0b"
-                        fillOpacity={0.2}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <StrategyDrawdownChart selectedReport={selectedReport} />
                 </CardContent>
               </Card>
 

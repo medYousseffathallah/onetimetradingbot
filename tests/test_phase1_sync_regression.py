@@ -89,7 +89,9 @@ def _run_node(script: str) -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
-def _run_content_js(*, body_text: str, tables: list[dict[str, object]], href: str) -> dict[str, object]:
+def _run_content_js(
+    *, body_text: str, tables: list[dict[str, object]], href: str
+) -> dict[str, object]:
     content_path = str(EXTENSION_DIR / "content.js").replace("\\", "\\\\")
     script = f"""
 const fs = require("fs");
@@ -873,9 +875,7 @@ def test_brw03_brw04_same_second_snapshots_not_overwritten_and_corrupt_snapshot_
     snap2 = replace(
         snap1,
         retrieved_at=datetime.fromisoformat("2026-11-11T10:00:00.900000+00:00"),
-        holdings=(
-            replace(snap1.holdings[0], symbol="STA"),
-        ),
+        holdings=(replace(snap1.holdings[0], symbol="STA"),),
     )
     p1 = save_browser_snapshot(snap1, service.snapshots_dir)
     p2 = save_browser_snapshot(snap2, service.snapshots_dir)
@@ -1101,7 +1101,13 @@ def test_led01_displayp_only_confirm_preserves_open_orders_and_transactions_flag
         portfolio_total_tnd=Decimal("50000.750"),
         available_cash_tnd=Decimal("49608.050"),
         holdings_market_value_tnd=Decimal("392.700"),
-        holdings=(replace(snap_mov.holdings[0], latest_price_tnd=Decimal("13.090"), market_value_tnd=Decimal("392.700")),),
+        holdings=(
+            replace(
+                snap_mov.holdings[0],
+                latest_price_tnd=Decimal("13.090"),
+                market_value_tnd=Decimal("392.700"),
+            ),
+        ),
         competition_rank=None,
         total_participants=None,
         displayed_overall_performance_pct=None,

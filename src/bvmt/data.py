@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Literal
 
 from bvmt import __version__
+from bvmt.perf_cache import BoundedLruCache, file_fingerprint, register_cache
 from bvmt.snapshots import (
     atomic_write_bytes,
     atomic_write_text,
@@ -280,8 +281,17 @@ def _parse_canonical_row(
     return bar
 
 
+_BARS_CACHE: BoundedLruCache[tuple[str, int, int, str], tuple[DailyBar, ...]] = BoundedLruCache(16)
+register_cache(_BARS_CACHE)  # type: ignore[arg-type]
+
+
 def read_bars_csv(path: Path) -> list[DailyBar]:
     """Read canonical dot-decimal CSV; reject the whole batch on invalid records."""
+    fp = file_fingerprint(path)
+    if fp is not None:
+        cached = _BARS_CACHE.get(fp)
+        if cached is not None:
+            return list(cached)
     required = set(CANONICAL_COLUMNS)
     bars: list[DailyBar] = []
     with path.open(newline="", encoding="utf-8-sig") as handle:
@@ -294,7 +304,10 @@ def read_bars_csv(path: Path) -> list[DailyBar]:
                 bars.append(_parse_canonical_row(row))
             except (ValueError, InvalidOperation, KeyError, TypeError) as exc:
                 raise ValueError(f"Invalid canonical CSV row {line_number}: {exc}") from exc
-    return validate_bars(bars)
+    validated = validate_bars(bars)
+    if fp is not None:
+        _BARS_CACHE.set(fp, tuple(validated))
+    return validated
 
 
 def inspect_market_dataset_provenance(bars_path: Path) -> dict[str, object]:
