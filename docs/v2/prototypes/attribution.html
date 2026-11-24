@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Performance &amp; Attribution — BVMT Trading Intelligence V2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="drawer-backdrop" data-close-nav></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary V2 Navigation">
+      <div class="brand">
+        <div class="brand-mark">BV</div>
+        <div>
+          <div class="brand-title">BVMT Terminal V2</div>
+          <div class="brand-sub">Manual Research &amp; Risk</div>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Portfolio &amp; Supervision</div>
+        <a class="nav-link" href="overview.html">1. Investment Overview</a>
+        <a class="nav-link" href="portfolio.html">2. Portfolio Manager</a>
+        <a class="nav-link" href="position-management.html">6. Position Management</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Research &amp; Decisions</div>
+        <a class="nav-link muted-route" href="overview.html#discovery-note">3. Opportunity Discovery <span class="nav-tag">Spec</span></a>
+        <a class="nav-link" href="stock-research.html">4. Stock Research</a>
+        <a class="nav-link muted-route" href="overview.html#decision-note">5. Decision Workspace <span class="nav-tag">Spec</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Evaluation &amp; Integrity</div>
+        <a class="nav-link active" href="attribution.html">7. Performance &amp; Attribution</a>
+        <a class="nav-link muted-route" href="#benchmarks">8. Research Lab <span class="nav-tag">Spec</span></a>
+        <a class="nav-link muted-route" href="overview.html#health-note">9. Data &amp; Account Health <span class="nav-tag">72</span></a>
+      </div>
+
+      <div class="sidebar-foot">
+        <strong>Strict Lane Separation</strong><br>
+        Realized account P&amp;L is never blended with simulated backtest returns.
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" type="button" data-toggle-nav>Menu</button>
+          <div class="breadcrumb">BVMT V2 / <strong>7. Performance &amp; Attribution</strong></div>
+        </div>
+        <div class="topbar-meta">
+          <span class="context-chip">Window: <strong class="num">2026-11-07..2026-11-18</strong></span>
+          <span class="pill pill-unverified">Attribution Partial</span>
+          <select class="mode-select" aria-label="Workspace mode" data-mode-select>
+            <option value="REAL_COMPETITION">REAL_COMPETITION</option>
+            <option value="SYNTHETIC_DEMO">SYNTHETIC_DEMO</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="sandbox-ribbon">
+        <strong>SYNTHETIC DEMO MODE</strong> — Illustrative sandbox only.
+      </div>
+
+      <main class="main-content">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">GET /api/v2/attribution?mode=REAL_COMPETITION</div>
+            <h1>Performance &amp; Attribution</h1>
+            <p class="page-subtitle">Nov 7–18 equity trajectory, realized vs unrealized breakdown, cash drag, and unexplained residual audit.</p>
+          </div>
+          <div class="header-actions">
+            <span class="pill pill-unverified">Residual: +235.680 TND</span>
+            <a class="btn" href="portfolio.html">Inspect Captures &rarr;</a>
+          </div>
+        </div>
+
+        <div class="banner banner-warn">
+          <div>
+            <div class="banner-title">Attribution Incomplete: +235.680 TND Unexplained Residual Between EOD Marks &amp; User Screenshot</div>
+            <div class="banner-desc">
+              Known realized P&amp;L (<strong>+71.820 TND</strong>, Nov 9) + Nov 18 EOD unrealized gain on Nov 12 holdings (<strong>+284.000 TND</strong>) = <strong>50,355.830 TND</strong> (+0.71%). Unverified Nov 18 screenshot (<strong>50,591.510 TND</strong>) leaves a <strong>+235.680 TND</strong> residual caused by unimported movements after Nov 12 (<code>movements_page_captured=false</code>).
+            </div>
+          </div>
+          <span class="pill pill-unverified">UNVERIFIED GAP</span>
+        </div>
+
+        <!-- P&L Decomposition KPIs -->
+        <section class="grid-4">
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Realized P&amp;L (Nov 9)</span>
+              <span class="pill pill-observed">OBSERVED</span>
+            </div>
+            <div class="kpi-value text-pos">+71.820<small>TND</small></div>
+            <div class="kpi-meta">Documented Nov 9 closed lot (35 sh)</div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Unrealized (11-18 EOD)</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kpi-value text-pos">+284.000<small>TND</small></div>
+            <div class="kpi-meta">8 Nov 12 holdings marked @ 11-18 EOD</div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Unexplained Residual</span>
+              <span class="pill pill-unverified">UNVERIFIED</span>
+            </div>
+            <div class="kpi-value text-warn">+235.680<small>TND</small></div>
+            <div class="kpi-meta">Missing Nov 12–18 executions / fees</div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Cash Drag Impact</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kpi-value">58.73%<small>IDLE</small></div>
+            <div class="kpi-meta">Cash uninvested (vs 77.51% on Nov 10)</div>
+          </article>
+        </section>
+
+        <!-- Trajectory + Separate Benchmark Comparison Lane -->
+        <section class="grid-7-5">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Account Equity Trajectory (Nov 7 – Nov 18)</h2>
+                <div class="card-sub">Solid: observed snapshots &amp; EOD mark path &middot; Dashed: unverified screenshot gap</div>
+              </div>
+              <span class="pill pill-calculated">MIXED PROVENANCE</span>
+            </div>
+            <div class="card-pad">
+              <svg class="chart-svg" viewBox="0 0 640 220" role="img" aria-label="Account equity trajectory Nov 7 to Nov 18">
+                <line x1="56" y1="30" x2="616" y2="30" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+                <line x1="56" y1="80" x2="616" y2="80" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+                <line x1="56" y1="130" x2="616" y2="130" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+                <line x1="56" y1="180" x2="616" y2="180" stroke="#CBD5E1"/>
+
+                <text x="50" y="34" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">50,600</text>
+                <text x="50" y="84" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">50,350</text>
+                <text x="50" y="134" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">50,100</text>
+                <text x="50" y="184" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">49,850</text>
+
+                <!-- Baseline 50,000 (y=150) -->
+                <line x1="56" y1="150" x2="616" y2="150" stroke="#94A3B8" stroke-dasharray="5 4"/>
+
+                <!-- Observed / EOD mark path: 11-07(50000.75 y=149.8), 11-09am(49979.07 y=154.2), 11-09pm(50061.96 y=137.6), 11-10am(50006.57 y=148.7), 11-10mid(49993.43 y=151.3), 11-12(50093.19 y=131.4), 11-18 EOD(50355.83 y=78.8) -->
+                <polyline fill="none" stroke="#0F766E" stroke-width="2.2"
+                  points="70,150 150,154 210,138 280,149 330,151 420,131 595,79"/>
+                <!-- Unverified gap line from 11-12 to 11-18 screenshot (50591.51 y=31.7) -->
+                <line x1="420" y1="131" x2="595" y2="32" stroke="#D97706" stroke-width="2" stroke-dasharray="4 4"/>
+
+                <circle cx="70" cy="150" r="3.5" fill="#0F766E"/>
+                <circle cx="210" cy="138" r="3.5" fill="#0F766E"/>
+                <circle cx="330" cy="151" r="3.5" fill="#0F766E"/>
+                <circle cx="420" cy="131" r="3.5" fill="#0F766E"/>
+                <circle cx="595" cy="79" r="4" fill="#0F766E" stroke="#FFF" stroke-width="1.5"/>
+                <circle cx="595" cy="32" r="4" fill="#D97706" stroke="#FFF" stroke-width="1.5"/>
+
+                <text x="70" y="206" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-07</text>
+                <text x="210" y="206" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-09</text>
+                <text x="330" y="206" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-10</text>
+                <text x="420" y="206" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-12</text>
+                <text x="595" y="206" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#0F172A" font-weight="600">11-18</text>
+              </svg>
+              <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--text-muted); margin-top:8px;">
+                <span>&#9632; <strong style="color:#0F766E">Calculated EOD Mark</strong>: 50,355.830 TND</span>
+                <span>&#9632; <strong style="color:#D97706">Unverified Screenshot</strong>: 50,591.510 TND (+235.680 gap)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Separate Benchmark Lane -->
+          <div class="card" id="benchmarks">
+            <div class="card-head">
+              <div>
+                <h2>Benchmark Comparison (Separate Lane)</h2>
+                <div class="card-sub">Simulated / reference benchmarks are NEVER equated to account profit.</div>
+              </div>
+              <span class="pill pill-simulated">SIMULATED / REF</span>
+            </div>
+            <div class="card-pad">
+              <div class="kv-row">
+                <span class="kv-key">Account EOD Mark (Nov 7–18)<br><span class="pill pill-calculated">CALCULATED</span></span>
+                <span class="kv-val num text-pos">+0.71% (+355.830 TND)</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">100% Cash Reserve (Nov 7–18)<br><span class="pill pill-calculated">CALCULATED</span></span>
+                <span class="kv-val num">0.00% (0.000 TND)</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">BVMT 75/76 Equal-Weight (Nov 6–18)<br><span class="pill pill-calculated">PRE-FEE</span></span>
+                <span class="kv-val num text-pos">+0.88%</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Legacy Model G (13 Historical Folds)<br><span class="pill pill-simulated">SIMULATED · NOT NOV 7-18</span></span>
+                <span class="kv-val num">+18.60% (Gate Closed)</span>
+              </div>
+              <div class="muted-box" style="margin-top:12px;">
+                <strong>Honesty Guard:</strong> Legacy Model G's +18.60% (<code>m14_correctness_192f2d93ee102f6e</code>) is an in-sample/walk-forward historical simulation across Mar–Oct 2026, not a live competition guarantee.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Per-Stock Attribution Table -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>Per-Stock Unrealized Attribution (Nov 12 Lot Cost Basis &rarr; Nov 18 EOD)</h2>
+              <div class="card-sub">Closed-lot realized P&amp;L (+71.820 TND) and unimported Nov 12–18 trades (+235.680 residual) tracked separately above.</div>
+            </div>
+            <span class="pill pill-calculated">CALCULATED</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table responsive-table">
+              <thead>
+                <tr>
+                  <th>Security</th>
+                  <th class="num-col">Qty</th>
+                  <th class="num-col">Cost Basis (TND)</th>
+                  <th class="num-col">Nov 18 Value (TND)</th>
+                  <th class="num-col">P&amp;L Contrib (TND)</th>
+                  <th class="num-col">Return %</th>
+                  <th>Provenance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="primary-cell"><strong>EURO-CYCLES</strong> <span class="issuer-sub">TN0007570013</span></td>
+                  <td class="num-col" data-label="Qty">510</td>
+                  <td class="num-col" data-label="Cost Basis">4,997.360</td>
+                  <td class="num-col" data-label="Nov 18 Value">5,181.600</td>
+                  <td class="num-col text-pos" data-label="P&amp;L Contrib">+184.240</td>
+                  <td class="num-col text-pos" data-label="Return %">+3.69%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell"><strong>DELICE HOLDING</strong> <span class="issuer-sub">TN0007670011</span></td>
+                  <td class="num-col" data-label="Qty">263</td>
+                  <td class="num-col" data-label="Cost Basis">5,021.990</td>
+                  <td class="num-col" data-label="Nov 18 Value">5,123.240</td>
+                  <td class="num-col text-pos" data-label="P&amp;L Contrib">+101.250</td>
+                  <td class="num-col text-pos" data-label="Return %">+2.02%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell"><strong>MPBS</strong> <span class="issuer-sub">TN0007620016</span></td>
+                  <td class="num-col" data-label="Qty">400</td>
+                  <td class="num-col" data-label="Cost Basis">4,180.800</td>
+                  <td class="num-col" data-label="Nov 18 Value">4,276.000</td>
+                  <td class="num-col text-pos" data-label="P&amp;L Contrib">+95.200</td>
+                  <td class="num-col text-pos" data-label="Return %">+2.28%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell"><strong>UIB</strong> <span class="issuer-sub">TN0003900107</span></td>
+                  <td class="num-col" data-label="Qty">24</td>
+                  <td class="num-col" data-label="Cost Basis">876.520</td>
+                  <td class="num-col" data-label="Nov 18 Value">864.000</td>
+                  <td class="num-col text-neg" data-label="P&amp;L Contrib">-12.520</td>
+                  <td class="num-col text-neg" data-label="Return %">-1.43%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell"><strong>NEW BODY LINE</strong> <span class="issuer-sub">TN0007540016</span></td>
+                  <td class="num-col" data-label="Qty">200</td>
+                  <td class="num-col" data-label="Cost Basis">492.450</td>
+                  <td class="num-col" data-label="Nov 18 Value">478.000</td>
+                  <td class="num-col text-neg" data-label="P&amp;L Contrib">-14.450</td>
+                  <td class="num-col text-neg" data-label="Return %">-2.93%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell"><strong>BH BANK</strong> <span class="issuer-sub">TN0001900604</span></td>
+                  <td class="num-col" data-label="Qty">30</td>
+                  <td class="num-col" data-label="Cost Basis">391.950</td>
+                  <td class="num-col" data-label="Nov 18 Value">374.400</td>
+                  <td class="num-col text-neg" data-label="P&amp;L Contrib">-17.550</td>
+                  <td class="num-col text-neg" data-label="Return %">-4.48%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell"><strong>STA</strong> <span class="issuer-sub">TNNGTFLC2986</span></td>
+                  <td class="num-col" data-label="Qty">22</td>
+                  <td class="num-col" data-label="Cost Basis">2,542.650</td>
+                  <td class="num-col" data-label="Nov 18 Value">2,519.000</td>
+                  <td class="num-col text-neg" data-label="P&amp;L Contrib">-23.650</td>
+                  <td class="num-col text-neg" data-label="Return %">-0.93%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell"><strong>SMART TUNISIE</strong> <span class="issuer-sub">TNQPQXRODTH8</span></td>
+                  <td class="num-col" data-label="Qty">62</td>
+                  <td class="num-col" data-label="Cost Basis">1,993.920</td>
+                  <td class="num-col" data-label="Nov 18 Value">1,965.400</td>
+                  <td class="num-col text-neg" data-label="P&amp;L Contrib">-28.520</td>
+                  <td class="num-col text-neg" data-label="Return %">-1.43%</td>
+                  <td data-label="Provenance"><span class="pill pill-calculated">CALCULATED</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

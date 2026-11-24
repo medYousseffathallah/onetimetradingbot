@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portfolio Manager — BVMT Trading Intelligence V2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="drawer-backdrop" data-close-nav></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary V2 Navigation">
+      <div class="brand">
+        <div class="brand-mark">BV</div>
+        <div>
+          <div class="brand-title">BVMT Terminal V2</div>
+          <div class="brand-sub">Manual Research &amp; Risk</div>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Portfolio &amp; Supervision</div>
+        <a class="nav-link" href="overview.html">1. Investment Overview</a>
+        <a class="nav-link active" href="portfolio.html">2. Portfolio Manager</a>
+        <a class="nav-link" href="position-management.html">6. Position Management</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Research &amp; Decisions</div>
+        <a class="nav-link muted-route" href="overview.html#discovery-note">3. Opportunity Discovery <span class="nav-tag">Spec</span></a>
+        <a class="nav-link" href="stock-research.html">4. Stock Research</a>
+        <a class="nav-link muted-route" href="overview.html#decision-note">5. Decision Workspace <span class="nav-tag">Spec</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Evaluation &amp; Integrity</div>
+        <a class="nav-link" href="attribution.html">7. Performance &amp; Attribution</a>
+        <a class="nav-link muted-route" href="attribution.html#benchmarks">8. Research Lab <span class="nav-tag">Spec</span></a>
+        <a class="nav-link muted-route" href="overview.html#health-note">9. Data &amp; Account Health <span class="nav-tag">72</span></a>
+      </div>
+
+      <div class="sidebar-foot">
+        <strong>Read-Only Audit Surface</strong><br>
+        Ledger edits require human confirmation &amp; movements verification.
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" type="button" data-toggle-nav>Menu</button>
+          <div class="breadcrumb">BVMT V2 / <strong>2. Portfolio Manager</strong></div>
+        </div>
+        <div class="topbar-meta">
+          <span class="context-chip">Cutoff: <strong class="num">2026-11-18 EOD</strong> (Not Live)</span>
+          <span class="pill pill-unverified">Pending Capture Diff</span>
+          <select class="mode-select" aria-label="Workspace mode" data-mode-select>
+            <option value="REAL_COMPETITION">REAL_COMPETITION</option>
+            <option value="SYNTHETIC_DEMO">SYNTHETIC_DEMO</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="sandbox-ribbon">
+        <strong>SYNTHETIC DEMO MODE</strong> — Illustrative sandbox only. Real competition ledger remains untouched.
+      </div>
+
+      <main class="main-content">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">GET /api/v2/portfolio?mode=REAL_COMPETITION</div>
+            <h1>Portfolio Manager</h1>
+            <p class="page-subtitle">Holdings, sector &amp; issuer weights, documented theses, and read-only snapshot reconciliation.</p>
+          </div>
+          <div class="header-actions">
+            <span class="pill pill-unverified">ORDERS UNVERIFIED</span>
+            <a class="btn btn-primary" href="position-management.html">Manage EURO-CYCLES &rarr;</a>
+          </div>
+        </div>
+
+        <!-- Account Conflict Banner -->
+        <div class="banner banner-warn">
+          <div>
+            <div class="banner-title">Account Conflict: Confirmed Ledger (Nov 10) vs Latest Capture (Nov 12)</div>
+            <div class="banner-desc">
+              <strong>Confirmed Ledger</strong> (<code>browser_sync_20261110_110702</code>): 6 holdings, 38,752.350 TND cash, 49,993.430 TND total.<br>
+              <strong>Latest Capture</strong> (<code>ext_1794476128406</code>, <code>2026-11-12T09:35:26Z</code>): 8 holdings (+510 EURO-CYCLES, +400 MPBS), 29,574.190 TND cash, 50,093.190 TND total. <code>movements_page_captured = false</code>.
+            </div>
+          </div>
+          <span class="pill pill-blocked">RECONCILIATION REQUIRED</span>
+        </div>
+
+        <!-- Summary Strip -->
+        <section class="grid-4">
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Capture Cash (Nov 12)</span>
+              <span class="pill pill-unverified">UNVERIFIED</span>
+            </div>
+            <div class="kpi-value">29,574.190<small>TND</small></div>
+            <div class="kpi-meta">Confirmed Nov 10 cash: <span class="num">38,752.350 TND</span></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Holdings @ Nov 18 EOD</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kpi-value">20,781.640<small>TND</small></div>
+            <div class="kpi-meta">Cost basis sum: <span class="num">20,497.640 TND</span></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Concentration Breaches</span>
+              <span class="pill pill-review">2 ISSUERS &gt; 10%</span>
+            </div>
+            <div class="kpi-value">10.29%<small>MAX</small></div>
+            <div class="kpi-meta">EURO-CYCLES (10.29%), DELICE (10.17%)</div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Pending Orders</span>
+              <span class="pill pill-unverified">UNVERIFIED</span>
+            </div>
+            <div class="kpi-value">Unknown</div>
+            <div class="kpi-meta"><code>movements_page_captured=false</code></div>
+          </article>
+        </section>
+
+        <!-- Sub-navigation tabs -->
+        <div class="tabs" data-tab-group="portfolio-tabs">
+          <button class="tab-btn active" type="button" data-tab-target="holdings">Holdings &amp; Theses (8)</button>
+          <button class="tab-btn" type="button" data-tab-target="sectors">Sector &amp; Issuer Weights</button>
+          <button class="tab-btn" type="button" data-tab-target="orders">Transactions &amp; Pending Orders</button>
+        </div>
+
+        <!-- Tab 1: Holdings & Theses -->
+        <section class="card" data-tab-panel="portfolio-tabs" data-panel-id="holdings">
+          <div class="card-head">
+            <div>
+              <h2>Holdings Table (8 Issuers from Nov 12 Capture @ Nov 18 EOD)</h2>
+              <div class="card-sub">Single-stock competition cap = 10.00% of total equity (50,355.830 TND EOD mark basis).</div>
+            </div>
+            <span class="pill pill-calculated">EOD MARK BASIS</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table responsive-table">
+              <thead>
+                <tr>
+                  <th>Security / ISIN</th>
+                  <th class="num-col">Qty</th>
+                  <th class="num-col">Avg Cost</th>
+                  <th class="num-col">EOD 11-18 <span class="pill pill-observed">OBS</span></th>
+                  <th class="num-col">Unr. P&amp;L (TND)</th>
+                  <th class="num-col">Weight %</th>
+                  <th>Thesis / Horizon</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name"><a href="position-management.html">EURO-CYCLES</a></span>
+                      <span class="issuer-sub">TN0007570013 &middot; Capture Nov 12</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">510</td>
+                  <td class="num-col" data-label="Avg Cost">9.799</td>
+                  <td class="num-col" data-label="EOD 11-18">10.160</td>
+                  <td class="num-col text-pos" data-label="Unr. P&L">+184.240</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill breach" style="width:100%"></span></span><span class="text-warn">10.29%</span></span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>UNVERIFIED_NONE</span><br><span class="issuer-sub">Horizon: Unrecorded</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-trim">REVIEW</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">DELICE HOLDING</span>
+                      <span class="issuer-sub">TN0007670011 &middot; Confirmed</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">263</td>
+                  <td class="num-col" data-label="Avg Cost">19.095</td>
+                  <td class="num-col" data-label="EOD 11-18">19.480</td>
+                  <td class="num-col text-pos" data-label="Unr. P&L">+101.250</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill breach" style="width:100%"></span></span><span class="text-warn">10.17%</span></span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>Cap-breach hold guard</span><br><span class="issuer-sub">Horizon: 10–20s (Human)</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-review">REVIEW</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name"><a href="stock-research.html">MPBS</a></span>
+                      <span class="issuer-sub">TN0007620016 &middot; Capture Nov 12</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">400</td>
+                  <td class="num-col" data-label="Avg Cost">10.452</td>
+                  <td class="num-col" data-label="EOD 11-18">10.690</td>
+                  <td class="num-col text-pos" data-label="Unr. P&L">+95.200</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill" style="width:85%"></span></span>8.49%</span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>UNVERIFIED_NONE</span><br><span class="issuer-sub">Horizon: Unrecorded</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-hold">HOLD</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">STA</span>
+                      <span class="issuer-sub">TNNGTFLC2986 &middot; Confirmed</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">22</td>
+                  <td class="num-col" data-label="Avg Cost">115.575</td>
+                  <td class="num-col" data-label="EOD 11-18">114.500</td>
+                  <td class="num-col text-neg" data-label="Unr. P&L">-23.650</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill" style="width:50%"></span></span>5.00%</span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>Swing entry (Stop 110.15)</span><br><span class="issuer-sub">Horizon: 10–20s (Human)</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-hold">HOLD</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">SMART TUNISIE</span>
+                      <span class="issuer-sub">TNQPQXRODTH8 &middot; Confirmed</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">62</td>
+                  <td class="num-col" data-label="Avg Cost">32.160</td>
+                  <td class="num-col" data-label="EOD 11-18">31.700</td>
+                  <td class="num-col text-neg" data-label="Unr. P&L">-28.520</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill" style="width:39%"></span></span>3.90%</span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>UNVERIFIED_NONE</span><br><span class="issuer-sub">Horizon: Unrecorded</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-hold">HOLD</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">UIB</span>
+                      <span class="issuer-sub">TN0003900107 &middot; Confirmed</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">24</td>
+                  <td class="num-col" data-label="Avg Cost">36.522</td>
+                  <td class="num-col" data-label="EOD 11-18">36.000</td>
+                  <td class="num-col text-neg" data-label="Unr. P&L">-12.520</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill" style="width:17%"></span></span>1.72%</span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>UNVERIFIED_NONE</span><br><span class="issuer-sub">Horizon: Unrecorded</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-hold">HOLD</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">NEW BODY LINE</span>
+                      <span class="issuer-sub">TN0007540016 &middot; Confirmed</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">200</td>
+                  <td class="num-col" data-label="Avg Cost">2.462</td>
+                  <td class="num-col" data-label="EOD 11-18">2.390</td>
+                  <td class="num-col text-neg" data-label="Unr. P&L">-14.450</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill" style="width:10%"></span></span>0.95%</span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>UNVERIFIED_NONE</span><br><span class="issuer-sub">Horizon: Unrecorded</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-review">REVIEW</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">BH BANK</span>
+                      <span class="issuer-sub">TN0001900604 &middot; Confirmed</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">30</td>
+                  <td class="num-col" data-label="Avg Cost">13.065</td>
+                  <td class="num-col" data-label="EOD 11-18">12.480</td>
+                  <td class="num-col text-neg" data-label="Unr. P&L">-17.550</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="weight-bar-wrap"><span class="weight-bar"><span class="weight-fill" style="width:7%"></span></span>0.74%</span>
+                  </td>
+                  <td data-label="Thesis / Horizon">
+                    <span>Opening anchor lot</span><br><span class="issuer-sub">Horizon: Unrecorded</span>
+                  </td>
+                  <td data-label="Status"><span class="pill pill-review">REVIEW</span> <span class="pill pill-blocked">BLOCKED</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 2: Sector & Issuer Weights -->
+        <section class="grid-2" data-tab-panel="portfolio-tabs" data-panel-id="sectors" style="display:none;">
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:10px;">
+              <span class="kpi-label">Sector Weights (EOD Mark Basis)</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kv-row"><span class="kv-key">Cash Reserve (TND)</span><span class="kv-val num">58.73% (29,574.190)</span></div>
+            <div class="kv-row"><span class="kv-key">Consumer Goods &amp; Agro (DELICE, EURO-CYCLES, NBL)</span><span class="kv-val num">21.41% (10,782.840)</span></div>
+            <div class="kv-row"><span class="kv-key">Industrials &amp; Auto Distribution (MPBS, STA)</span><span class="kv-val num">13.49% (6,795.000)</span></div>
+            <div class="kv-row"><span class="kv-key">IT Distribution (SMART TUNISIE)</span><span class="kv-val num">3.90% (1,965.400)</span></div>
+            <div class="kv-row"><span class="kv-key">Banking (UIB, BH BANK)</span><span class="kv-val num">2.46% (1,238.400)</span></div>
+          </div>
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:10px;">
+              <span class="kpi-label">Concentration Guardrails</span>
+              <span class="pill pill-unverified">RULES UNVERIFIED</span>
+            </div>
+            <div class="muted-box">
+              Challenge FAQ specifies a <strong>10.00% single-stock cap</strong> on buys. <strong>EURO-CYCLES (10.29%)</strong> and <strong>DELICE HOLDING (10.17%)</strong> sit above 10.00% due to mark-to-market drift; no additional buys are permissible on either issuer.
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Transactions & Pending Orders -->
+        <section class="card card-pad" data-tab-panel="portfolio-tabs" data-panel-id="orders" style="display:none;">
+          <div class="kpi-top" style="margin-bottom:12px;">
+            <span class="kpi-label">Executed Transactions &amp; Open Orders</span>
+            <span class="pill pill-unverified">UNVERIFIED</span>
+          </div>
+          <div class="banner banner-warn" style="margin-bottom:10px;">
+            <div>
+              <div class="banner-title">Movements History Not Imported (<code>movements_page_captured = false</code>)</div>
+              <div class="banner-desc">An empty pending-order array in <code>ext_1794476128406</code> is NOT proof of zero open orders or zero cash reservations. Import <code>display_histo.aspx</code> manually before trusting realized attribution.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

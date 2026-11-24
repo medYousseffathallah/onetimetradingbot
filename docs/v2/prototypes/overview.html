@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Investment Overview — BVMT Trading Intelligence V2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="drawer-backdrop" data-close-nav></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary V2 Navigation">
+      <div class="brand">
+        <div class="brand-mark">BV</div>
+        <div>
+          <div class="brand-title">BVMT Terminal V2</div>
+          <div class="brand-sub">Manual Research &amp; Risk</div>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Portfolio &amp; Supervision</div>
+        <a class="nav-link active" href="overview.html">1. Investment Overview</a>
+        <a class="nav-link" href="portfolio.html">2. Portfolio Manager</a>
+        <a class="nav-link" href="position-management.html">6. Position Management</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Research &amp; Decisions</div>
+        <a class="nav-link muted-route" href="overview.html#discovery-note" title="Spec in SCREEN_SPECIFICATIONS.md">3. Opportunity Discovery <span class="nav-tag">Spec</span></a>
+        <a class="nav-link" href="stock-research.html">4. Stock Research</a>
+        <a class="nav-link muted-route" href="overview.html#decision-note" title="Spec in SCREEN_SPECIFICATIONS.md">5. Decision Workspace <span class="nav-tag">Spec</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Evaluation &amp; Integrity</div>
+        <a class="nav-link" href="attribution.html">7. Performance &amp; Attribution</a>
+        <a class="nav-link muted-route" href="attribution.html#benchmarks" title="Spec in SCREEN_SPECIFICATIONS.md">8. Research Lab <span class="nav-tag">Spec</span></a>
+        <a class="nav-link muted-route" href="overview.html#health-note" title="Spec in SCREEN_SPECIFICATIONS.md">9. Data &amp; Account Health <span class="nav-tag">72</span></a>
+      </div>
+
+      <div class="sidebar-foot">
+        <strong>100% Localhost &amp; Manual</strong><br>
+        Zero auto-orders · Zero live LLM spend (<code>BVMT_ALLOW_LIVE_LLM=0</code>).<br>
+        EOD marks are never executable quotes.
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" type="button" data-toggle-nav>Menu</button>
+          <div class="breadcrumb">BVMT V2 / <strong>1. Investment Overview</strong></div>
+        </div>
+        <div class="topbar-meta">
+          <span class="context-chip">Cutoff: <strong class="num">2026-11-18 EOD</strong> (Not Live)</span>
+          <span class="pill pill-unverified">Account Conflict</span>
+          <select class="mode-select" aria-label="Workspace mode" data-mode-select>
+            <option value="REAL_COMPETITION">REAL_COMPETITION</option>
+            <option value="SYNTHETIC_DEMO">SYNTHETIC_DEMO</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="sandbox-ribbon">
+        <strong>SYNTHETIC DEMO MODE</strong> — Illustrative sandbox only. Real competition ledger remains untouched.
+      </div>
+
+      <main class="main-content">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">GET /api/v2/overview?mode=REAL_COMPETITION</div>
+            <h1>Investment Overview</h1>
+            <p class="page-subtitle">Separate confirmed ledger state, newer captures, unverified screenshots, and EOD mark-to-market valuations.</p>
+          </div>
+          <div class="header-actions">
+            <span class="pill pill-blocked">EXECUTION_BLOCKED</span>
+            <a class="btn btn-primary" href="portfolio.html">Inspect Portfolio Conflict &rarr;</a>
+          </div>
+        </div>
+
+        <div class="banner banner-warn">
+          <div>
+            <div class="banner-title">Account Truth Conflict &amp; Unimported Movements History</div>
+            <div class="banner-desc">
+              Confirmed ledger was overwritten out-of-order by <code>browser_sync_20261110_110702</code> (Nov 10, 6 holdings, 49,993.430 TND), whereas newer DOM capture <code>ext_1794476128406</code> (Nov 12, 8 holdings, 50,093.190 TND) has <code>movements_page_captured=false</code>. Automated planning remains blocked.
+            </div>
+          </div>
+          <a class="btn" href="portfolio.html">Review Diff</a>
+        </div>
+
+        <!-- 4-Way Explicit Truth Comparison -->
+        <section class="grid-4" aria-label="Account valuation truth states">
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">1. Confirmed Ledger</span>
+              <span class="pill pill-observed">OBSERVED</span>
+            </div>
+            <div class="kpi-value">49,993.430<small>TND</small></div>
+            <div class="kpi-meta">Cash: <strong class="num">38,752.350 TND</strong> &middot; 6 holdings</div>
+            <div class="kpi-foot">
+              <span><code>browser_sync_20261110_110702</code></span>
+              <span class="num">Rank 14,258 / 14,430</span>
+            </div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">2. Latest DOM Capture</span>
+              <span class="pill pill-unverified">UNVERIFIED</span>
+            </div>
+            <div class="kpi-value">50,093.190<small>TND</small></div>
+            <div class="kpi-meta">Cash: <strong class="num">29,574.190 TND</strong> &middot; 8 holdings</div>
+            <div class="kpi-foot">
+              <span><code>ext_1794476128406</code> (Nov 12)</span>
+              <span class="num">Rank 81 / 14,450</span>
+            </div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">3. User Screenshot</span>
+              <span class="pill pill-unverified">UNVERIFIED</span>
+            </div>
+            <div class="kpi-value">50,647.640<small>TND</small></div>
+            <div class="kpi-meta">Residual vs open gains: <strong class="num text-warn">+235.680 TND</strong></div>
+            <div class="kpi-foot">
+              <span>Unverified (+1.30%, 9 pos)</span>
+              <span>Rank 111 / 14,541</span>
+            </div>
+          </article>
+
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">4. Nov 18 EOD Mark</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kpi-value">50,355.830<small>TND</small></div>
+            <div class="kpi-meta">8 Nov 12 holdings @ <strong class="num">2026-11-18</strong> close</div>
+            <div class="kpi-foot">
+              <span>Live quote:</span>
+              <span class="pill pill-unavailable">UNAVAILABLE</span>
+            </div>
+          </article>
+        </section>
+
+        <section class="grid-7-5">
+          <!-- Cash Drag & Capital Allocation -->
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Capital Structure &amp; Cash Drag</h2>
+                <div class="card-sub">Based on Nov 12 positions (20,781.640 TND @ Nov 18 EOD) + 29,574.190 TND cash</div>
+              </div>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="card-pad">
+              <div class="grid-2" style="margin-bottom: 12px; align-items: center;">
+                <div style="display:flex; align-items:center; gap:16px;">
+                  <svg width="108" height="108" viewBox="0 0 120 120" role="img" aria-label="Allocation 58.73% cash, 41.27% equities">
+                    <circle cx="60" cy="60" r="46" fill="none" stroke="#E2E8F0" stroke-width="14"/>
+                    <circle cx="60" cy="60" r="46" fill="none" stroke="#0F766E" stroke-width="14"
+                            stroke-dasharray="119.3 289.0" transform="rotate(-90 60 60)"/>
+                    <text x="60" y="57" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="15" font-weight="700" fill="#0F172A">41.3%</text>
+                    <text x="60" y="73" text-anchor="middle" font-family="Inter, sans-serif" font-size="9.5" font-weight="600" fill="#64748B">INVESTED</text>
+                  </svg>
+                  <div>
+                    <div style="font-size:12px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Idle Cash Share</div>
+                    <div class="num" style="font-size:22px; font-weight:600;">58.73%</div>
+                    <div style="font-size:12px; color:var(--text-secondary);">77.51% in confirmed Nov 10 ledger</div>
+                  </div>
+                </div>
+                <div>
+                  <div class="kv-row">
+                    <span class="kv-key">Nov 12 Cash Reserve</span>
+                    <span class="kv-val num">29,574.190 TND</span>
+                  </div>
+                  <div class="kv-row">
+                    <span class="kv-key">Nov 18 EOD Holdings Value</span>
+                    <span class="kv-val num">20,781.640 TND</span>
+                  </div>
+                  <div class="kv-row">
+                    <span class="kv-key">Pending Orders</span>
+                    <span class="kv-val"><span class="pill pill-unverified">UNVERIFIED</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="muted-box">
+                <strong>Cash Drag Note:</strong> Idle cash reduced effective equity exposure by <strong class="num">58.73%–77.51%</strong> during Nov 7–18. High cash is preserved deliberately while <code>72</code> competition rule blockers and missing movements history remain unresolved.
+              </div>
+            </div>
+          </div>
+
+          <!-- Review Priorities Queue -->
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Review Priorities</h2>
+                <div class="card-sub">Ordered by portfolio integrity &amp; risk severity</div>
+              </div>
+              <span class="pill pill-review">4 ITEMS</span>
+            </div>
+            <div class="priority-list">
+              <div class="priority-item">
+                <div class="priority-head">
+                  <span class="priority-title">1. Resolve Out-of-Order Snapshot Conflict</span>
+                  <span class="pill pill-unverified">UNVERIFIED</span>
+                </div>
+                <div class="priority-desc">Nov 10 ledger overwrote Nov 12 capture; <code>display_histo.aspx</code> not imported.</div>
+                <div><a href="portfolio.html">Open Portfolio Reconciliation &rarr;</a></div>
+              </div>
+              <div class="priority-item">
+                <div class="priority-head">
+                  <span class="priority-title">2. EURO-CYCLES Concentration Breach (10.29%)</span>
+                  <div>
+                    <span class="pill pill-trim">CONSIDER_TRIM</span>
+                    <span class="pill pill-blocked">EXECUTION_BLOCKED</span>
+                  </div>
+                </div>
+                <div class="priority-desc">510 sh @ 10.160 EOD = 5,181.600 TND (&gt;10.00% cap); 60s trend -16.65%.</div>
+                <div><a href="position-management.html">Manage Position &rarr;</a></div>
+              </div>
+              <div class="priority-item">
+                <div class="priority-head">
+                  <span class="priority-title">3. DELICE HOLDING Concentration Watch (10.17%)</span>
+                  <span class="pill pill-review">REVIEW</span>
+                </div>
+                <div class="priority-desc">263 sh @ 19.480 EOD = 5,123.240 TND; exceeds 10.00% single-stock cap by +0.17%.</div>
+                <div><a href="portfolio.html">Inspect Weights &rarr;</a></div>
+              </div>
+              <div class="priority-item">
+                <div class="priority-head">
+                  <span class="priority-title">4. Unexplained P&amp;L Gap (+235.680 TND)</span>
+                  <span class="pill pill-unverified">ATTRIBUTION PARTIAL</span>
+                </div>
+                <div class="priority-desc">Unreconciled delta vs unverified screenshot requires movement history import.</div>
+                <div><a href="attribution.html">View Attribution &rarr;</a></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Holdings Pulse Table -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>Holdings Pulse (Latest Nov 12 Positions @ Nov 18 EOD Marks)</h2>
+              <div class="card-sub">Current executable quotes are UNAVAILABLE; prices reflect 2026-11-18 BVMT EOD closes (<code>EOD_UNVERIFIED_PUB_TIME</code>).</div>
+            </div>
+            <a class="btn" href="portfolio.html">Full Portfolio Table &rarr;</a>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table responsive-table">
+              <thead>
+                <tr>
+                  <th>Security / ISIN</th>
+                  <th class="num-col">Qty</th>
+                  <th class="num-col">Avg Cost (TND)</th>
+                  <th class="num-col">EOD 11-18 <span class="pill pill-observed">OBS</span></th>
+                  <th class="num-col">EOD Value <span class="pill pill-calculated">CALC</span></th>
+                  <th class="num-col">Weight %</th>
+                  <th>Monitoring / Gate</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">EURO-CYCLES</span>
+                      <span class="issuer-sub">TN0007570013 &middot; Nov 12 capture only</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">510</td>
+                  <td class="num-col" data-label="Avg Cost">9.799</td>
+                  <td class="num-col" data-label="EOD 11-18">10.160</td>
+                  <td class="num-col" data-label="EOD Value">5,181.600</td>
+                  <td class="num-col" data-label="Weight %">
+                    <span class="text-warn">10.29%</span>
+                  </td>
+                  <td data-label="State">
+                    <span class="pill pill-trim">REVIEW</span>
+                    <span class="pill pill-blocked">BLOCKED</span>
+                  </td>
+                  <td data-label="Action"><a href="position-management.html">Manage &rarr;</a></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">DELICE HOLDING</span>
+                      <span class="issuer-sub">TN0007670011 &middot; Confirmed</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">263</td>
+                  <td class="num-col" data-label="Avg Cost">19.095</td>
+                  <td class="num-col" data-label="EOD 11-18">19.480</td>
+                  <td class="num-col" data-label="EOD Value">5,123.240</td>
+                  <td class="num-col" data-label="Weight %"><span class="text-warn">10.17%</span></td>
+                  <td data-label="State">
+                    <span class="pill pill-review">REVIEW</span>
+                    <span class="pill pill-blocked">BLOCKED</span>
+                  </td>
+                  <td data-label="Action"><a href="portfolio.html">Inspect &rarr;</a></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">MPBS</span>
+                      <span class="issuer-sub">TN0007620016 &middot; Nov 12 capture only</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">400</td>
+                  <td class="num-col" data-label="Avg Cost">10.452</td>
+                  <td class="num-col" data-label="EOD 11-18">10.690</td>
+                  <td class="num-col" data-label="EOD Value">4,276.000</td>
+                  <td class="num-col" data-label="Weight %">8.49%</td>
+                  <td data-label="State">
+                    <span class="pill pill-hold">HOLD</span>
+                    <span class="pill pill-blocked">BLOCKED</span>
+                  </td>
+                  <td data-label="Action"><a href="stock-research.html">Research &rarr;</a></td>
+                </tr>
+                <tr>
+                  <td class="primary-cell">
+                    <div class="issuer-cell">
+                      <span class="issuer-name">STA</span>
+                      <span class="issuer-sub">TNNGTFLC2986 &middot; Confirmed (3 untraded days)</span>
+                    </div>
+                  </td>
+                  <td class="num-col" data-label="Qty">22</td>
+                  <td class="num-col" data-label="Avg Cost">115.575</td>
+                  <td class="num-col" data-label="EOD 11-18">114.500</td>
+                  <td class="num-col" data-label="EOD Value">2,519.000</td>
+                  <td class="num-col" data-label="Weight %">5.00%</td>
+                  <td data-label="State">
+                    <span class="pill pill-hold">HOLD</span>
+                    <span class="pill pill-blocked">BLOCKED</span>
+                  </td>
+                  <td data-label="Action"><a href="portfolio.html">Inspect &rarr;</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <p class="footnote" id="discovery-note">
+          <strong>Canonical Dataset Provenance (ADR-001 / ADR-003):</strong> <code>data/v2_market/</code> &middot; 76 equities (15,080 rows across 202 sessions <code>2026-01-02..2026-11-18</code>) &middot; 496 bond/debt/rights instruments (2,480 rows) excluded &middot; <code>published_at_present_count = 0</code> &middot; <code>automatic_submission_enabled = False</code>.
+        </p>
+      </main>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

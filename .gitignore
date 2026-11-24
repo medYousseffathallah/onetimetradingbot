@@ -51,6 +51,11 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
+apps/terminal-v2/node_modules/
+apps/terminal-v2/.next/
+apps/terminal-v2/out/
+apps/terminal-v2/tsconfig.tsbuildinfo
+data/v2_market/*.csv
 playwright-report/
 browser-profiles/
 data/browser_profile/

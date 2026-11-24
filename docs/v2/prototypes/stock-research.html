@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stock Research Workspace: EURO-CYCLES — BVMT Trading Intelligence V2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="drawer-backdrop" data-close-nav></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary V2 Navigation">
+      <div class="brand">
+        <div class="brand-mark">BV</div>
+        <div>
+          <div class="brand-title">BVMT Terminal V2</div>
+          <div class="brand-sub">Manual Research &amp; Risk</div>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Portfolio &amp; Supervision</div>
+        <a class="nav-link" href="overview.html">1. Investment Overview</a>
+        <a class="nav-link" href="portfolio.html">2. Portfolio Manager</a>
+        <a class="nav-link" href="position-management.html">6. Position Management</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Research &amp; Decisions</div>
+        <a class="nav-link muted-route" href="overview.html#discovery-note">3. Opportunity Discovery <span class="nav-tag">Spec</span></a>
+        <a class="nav-link active" href="stock-research.html">4. Stock Research</a>
+        <a class="nav-link muted-route" href="overview.html#decision-note">5. Decision Workspace <span class="nav-tag">Spec</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Evaluation &amp; Integrity</div>
+        <a class="nav-link" href="attribution.html">7. Performance &amp; Attribution</a>
+        <a class="nav-link muted-route" href="attribution.html#benchmarks">8. Research Lab <span class="nav-tag">Spec</span></a>
+        <a class="nav-link muted-route" href="overview.html#health-note">9. Data &amp; Account Health <span class="nav-tag">72</span></a>
+      </div>
+
+      <div class="sidebar-foot">
+        <strong>10-Layer Evidence Model</strong><br>
+        Missingness is preserved explicitly; zero synthetic fundamentals.
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" type="button" data-toggle-nav>Menu</button>
+          <div class="breadcrumb">BVMT V2 / <strong>4. Stock Research Workspace</strong> / EURO-CYCLES</div>
+        </div>
+        <div class="topbar-meta">
+          <span class="context-chip">Cutoff: <strong class="num">2026-11-18 EOD</strong> (Not Live)</span>
+          <span class="pill pill-unavailable">Quote: UNAVAILABLE</span>
+          <select class="mode-select" aria-label="Workspace mode" data-mode-select>
+            <option value="REAL_COMPETITION">REAL_COMPETITION</option>
+            <option value="SYNTHETIC_DEMO">SYNTHETIC_DEMO</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="sandbox-ribbon">
+        <strong>SYNTHETIC DEMO MODE</strong> — Illustrative sandbox only.
+      </div>
+
+      <main class="main-content">
+        <!-- Persistent Issuer Header -->
+        <section class="card card-pad" style="margin-bottom:18px;">
+          <div class="page-header" style="margin-bottom:10px;">
+            <div>
+              <div class="eyebrow">GET /api/v2/stocks/EURO-CYCLES?mode=REAL_COMPETITION&amp;horizon=5_10</div>
+              <h1>EURO-CYCLES <span class="mono" style="font-size:15px; color:var(--text-muted); font-weight:500;">TN0007570013</span></h1>
+              <p class="page-subtitle">BVMT Main Market Continu &middot; Challenge Member &middot; Held Position (510 sh in Nov 12 capture)</p>
+            </div>
+            <div class="header-actions">
+              <span class="pill pill-review">HELD_POSITION_REVIEW</span>
+              <span class="pill pill-blocked">EXECUTION_BLOCKED</span>
+              <a class="btn btn-primary" href="position-management.html">Manage Position &rarr;</a>
+            </div>
+          </div>
+
+          <div class="grid-4" style="margin-bottom:0;">
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <span class="kpi-label">Historical EOD Close</span>
+                <span class="pill pill-observed">OBSERVED</span>
+              </div>
+              <div class="kpi-value">10.160<small>TND</small></div>
+              <div class="kpi-meta">Session <code>2026-11-18</code> (<code>EOD_UNVERIFIED_PUB_TIME</code>)</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <span class="kpi-label">Executable Quote</span>
+                <span class="pill pill-unavailable">UNAVAILABLE</span>
+              </div>
+              <div class="kpi-value text-unavail" style="font-size:18px;">Unavailable</div>
+              <div class="kpi-meta">EOD-only mode; never inferred from close</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <span class="kpi-label">20s Median Turnover</span>
+                <span class="pill pill-calculated">CALCULATED</span>
+              </div>
+              <div class="kpi-value">21,552<small>TND</small></div>
+              <div class="kpi-meta">10% med cap = <strong class="num">214 sh</strong> &middot; 0 zero-vol days</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <span class="kpi-label">Fundamentals (L3)</span>
+                <span class="pill pill-unavailable">UNAVAILABLE</span>
+              </div>
+              <div class="kpi-value text-unavail" style="font-size:18px;">No Filings</div>
+              <div class="kpi-meta"><code>ABSENT_NO_FILINGS</code> in local PIT store</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Price/Volume Chart + Hypothesis Decomposition -->
+        <section class="grid-7-5">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>EOD Price &amp; Volume Trajectory (Nov 6 – Nov 18)</h2>
+                <div class="card-sub">Observed BVMT EOD closes only; not an intraday executable feed.</div>
+              </div>
+              <div class="segmented" data-tab-group="horizon-tabs" aria-label="Research horizon">
+                <button type="button" data-tab-target="h1">1–2s</button>
+                <button type="button" class="active" data-tab-target="h5">5–10s</button>
+                <button type="button" data-tab-target="h20">20–60s</button>
+              </div>
+            </div>
+            <div class="card-pad">
+              <div data-tab-panel="horizon-tabs" data-panel-id="h1" style="display:none; margin-bottom:8px;" class="muted-box">
+                <strong>Horizon 1–2s:</strong> Short bounce (+0.20% Nov 18) inside tight 10.070–10.470 intraday range; high fee drag (1.00% round-trip) vs 1.55% daily vol.
+              </div>
+              <div data-tab-panel="horizon-tabs" data-panel-id="h5" style="margin-bottom:8px;" class="muted-box">
+                <strong>Horizon 5–10s:</strong> +1.60% 5-session recovery off 9.750 low (Nov 10), testing 10.160–10.470 resistance.
+              </div>
+              <div data-tab-panel="horizon-tabs" data-panel-id="h20" style="display:none; margin-bottom:8px;" class="muted-box">
+                <strong>Horizon 20–60s:</strong> 20s flat (+1.60%), but 60-session trend remains <strong>-16.65%</strong> (negative medium-term structural trend).
+              </div>
+
+              <svg class="chart-svg" viewBox="0 0 640 220" role="img" aria-label="EURO-CYCLES EOD close and volume chart Nov 6 to Nov 18">
+                <!-- Grid -->
+                <line x1="48" y1="24" x2="620" y2="24" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+                <line x1="48" y1="68" x2="620" y2="68" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+                <line x1="48" y1="112" x2="620" y2="112" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+                <line x1="48" y1="145" x2="620" y2="145" stroke="#CBD5E1"/>
+
+                <!-- Y Axis -->
+                <text x="42" y="28" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">10.25</text>
+                <text x="42" y="72" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">10.00</text>
+                <text x="42" y="116" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">9.75</text>
+
+                <!-- Volume Bars (scaled 14,207 max) -->
+                <rect x="64" y="182" width="22" height="14" fill="#CBD5E1"/>
+                <rect x="130" y="177" width="22" height="19" fill="#CBD5E1"/>
+                <rect x="196" y="154" width="22" height="42" fill="#94A3B8"/>
+                <rect x="262" y="164" width="22" height="32" fill="#94A3B8"/>
+                <rect x="328" y="191" width="22" height="5" fill="#CBD5E1"/>
+                <rect x="394" y="179" width="22" height="17" fill="#0F766E" opacity="0.45"/>
+                <rect x="460" y="188" width="22" height="8" fill="#CBD5E1"/>
+                <rect x="526" y="191" width="22" height="5" fill="#0F766E" opacity="0.45"/>
+                <rect x="592" y="182" width="22" height="14" fill="#0F766E" opacity="0.65"/>
+
+                <!-- Price Line (10.18, 10.00, 9.75, 10.00, 9.99, 10.08, 10.05, 10.14, 10.16) -->
+                <polyline fill="none" stroke="#0F766E" stroke-width="2.2"
+                  points="75,36 141,68 207,112 273,68 339,70 405,54 471,59 537,43 603,40"/>
+                <circle cx="75" cy="36" r="3.5" fill="#0F766E"/>
+                <circle cx="207" cy="112" r="3.5" fill="#991B1B"/>
+                <circle cx="405" cy="54" r="3.5" fill="#0F766E"/>
+                <circle cx="603" cy="40" r="4.5" fill="#0F766E" stroke="#FFFFFF" stroke-width="1.5"/>
+
+                <!-- X Axis -->
+                <text x="75" y="212" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-06</text>
+                <text x="207" y="212" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-10</text>
+                <text x="339" y="212" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-12</text>
+                <text x="471" y="212" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#64748B">11-16</text>
+                <text x="603" y="212" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#0F172A" font-weight="600">11-18</text>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Supporting / Contradicting / Missing Summary -->
+          <div class="card">
+            <div class="card-head">
+              <h2>Evidence Polarity Summary</h2>
+              <span class="pill pill-review">MIXED SIGNALS</span>
+            </div>
+            <div class="card-pad">
+              <div class="evidence-list">
+                <div class="evidence-item supporting">
+                  <strong>SUPPORTING &middot; L1 / L2</strong><br>
+                  +1.60% 5s recovery from 9.750 low; 0 zero-volume days in trailing 20 sessions (21,552 TND median turnover).
+                </div>
+                <div class="evidence-item contradicting">
+                  <strong>CONTRADICTING &middot; L1 / L6 / L7</strong><br>
+                  60-session structural trend is <strong>-16.65%</strong>; position sits at <strong>10.29%</strong> portfolio weight (&gt;10.00% cap) and requires 2.38 days at 10% ADV cap for full exit.
+                </div>
+                <div class="evidence-item missing">
+                  <strong>MISSING &middot; L3 / L4 / L9</strong><br>
+                  Corporate financial statements (<code>ABSENT_NO_FILINGS</code>), dated issuer disclosures, and <code>source_publication_time</code> are unavailable locally.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- L1-L9 Structured Evidence Grid -->
+        <section class="grid-2">
+          <!-- L1 Technical -->
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:8px;">
+              <span class="kpi-label">L1 · Technical &amp; Return Structure</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kv-row"><span class="kv-key">5-Session Return</span><span class="kv-val num text-pos">+1.60%</span></div>
+            <div class="kv-row"><span class="kv-key">20-Session Return</span><span class="kv-val num text-pos">+1.60%</span></div>
+            <div class="kv-row"><span class="kv-key">60-Session Return</span><span class="kv-val num text-neg">-16.65%</span></div>
+            <div class="kv-row"><span class="kv-key">20s Daily Realized Volatility</span><span class="kv-val num">1.55%</span></div>
+          </div>
+
+          <!-- L2 Liquidity -->
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:8px;">
+              <span class="kpi-label">L2 · Market Structure &amp; Liquidity</span>
+              <span class="pill pill-observed">OBSERVED</span>
+            </div>
+            <div class="kv-row"><span class="kv-key">20s Median Turnover</span><span class="kv-val num">21,552.100 TND</span></div>
+            <div class="kv-row"><span class="kv-key">20s Mean Share Volume</span><span class="kv-val num">5,533.7 shares</span></div>
+            <div class="kv-row"><span class="kv-key">10% Median Daily Volume Cap</span><span class="kv-val num">214 shares</span></div>
+            <div class="kv-row"><span class="kv-key">Zero-Volume Sessions (20s)</span><span class="kv-val num">0 / 20</span></div>
+          </div>
+
+          <!-- L3 Fundamentals (UNAVAILABLE) -->
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:8px;">
+              <span class="kpi-label">L3 · Fundamental Filings</span>
+              <span class="pill pill-unavailable">UNAVAILABLE</span>
+            </div>
+            <div class="muted-box">
+              <strong>Coverage Status: <code>ABSENT_NO_FILINGS</code></strong><br>
+              Point-in-time balance sheet, earnings, and dividend schedules are not loaded in <code>bvmt_v2</code>. Absence of filings is never treated as neutral or zero risk.
+            </div>
+          </div>
+
+          <!-- L4 Events & L5 Regime -->
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:8px;">
+              <span class="kpi-label">L4 · PIT Events &amp; L5 · Market Regime</span>
+              <span class="pill pill-unverified">PARTIAL</span>
+            </div>
+            <div class="kv-row"><span class="kv-key">PIT Issuer Disclosures (&le; 2026-11-18)</span><span class="kv-val text-unavail">0 verified events</span></div>
+            <div class="kv-row"><span class="kv-key">TUNINDEX Benchmark Series</span><span class="kv-val"><span class="pill pill-unavailable">UNAVAILABLE</span></span></div>
+            <div class="kv-row"><span class="kv-key">76-Equity Equal-Weight Regime</span><span class="kv-val num">Sideways / Thin Breadth</span></div>
+          </div>
+        </section>
+
+        <!-- L6 Contradictions + L9 10-Field Provenance Register -->
+        <section class="grid-2">
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:8px;">
+              <span class="kpi-label">L6 · Contradictions &amp; L7/L8 · Portfolio Fit</span>
+              <span class="pill pill-review">CONCENTRATION BREACH</span>
+            </div>
+            <div class="kv-row"><span class="kv-key">Short vs Medium Trend</span><span class="kv-val text-warn">+1.60% (5s) vs -16.65% (60s)</span></div>
+            <div class="kv-row"><span class="kv-key">Current Weight (Nov 12 Lot)</span><span class="kv-val text-warn num">10.29% (Cap: 10.00%)</span></div>
+            <div class="kv-row"><span class="kv-key">Round-Trip Challenge Fee</span><span class="kv-val num">1.00% (0.50% buy + 0.50% sell)</span></div>
+            <div class="kv-row"><span class="kv-key">Additional Buy Headroom</span><span class="kv-val text-neg num">0 shares (Blocked by Cap)</span></div>
+          </div>
+
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:8px;">
+              <span class="kpi-label">L9 · 10-Field Market Observation Provenance (ADR-003)</span>
+              <span class="pill pill-observed">VERIFIED_LOCAL_CSV</span>
+            </div>
+            <div class="kv-row"><span class="kv-key"><code>event_time</code> / <code>exchange_session</code></span><span class="kv-val mono">2026-11-18</span></div>
+            <div class="kv-row"><span class="kv-key"><code>source_publication_time</code></span><span class="kv-val"><span class="pill pill-unavailable">None (Omitted by BVMT)</span></span></div>
+            <div class="kv-row"><span class="kv-key"><code>first_observed_at</code> / <code>ingested_at</code></span><span class="kv-val mono">2026-11-24T10:17:35Z</span></div>
+            <div class="kv-row"><span class="kv-key"><code>source_id</code> / <code>source_hash</code></span><span class="kv-val mono">bvmt_official_2026 · c4f7efab</span></div>
+            <div class="kv-row"><span class="kv-key"><code>data_quality_status</code></span><span class="kv-val mono">EOD_UNVERIFIED_PUB_TIME</span></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

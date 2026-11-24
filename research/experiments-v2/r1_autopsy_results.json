@@ -1,0 +1,2291 @@
+{
+  "generated_at_utc": "2026-11-24T10:23:08.740251+00:00",
+  "data_sources": {
+    "equity_bars": "C:\\Users\\Thinkcenter\\Desktop\\BVMT\\bvmt-v2\\data\\v2_market\\daily_bars.equity_only.csv",
+    "equity_rows": 15080,
+    "unique_token_ids": 76,
+    "unique_isins": 75,
+    "sessions_count": 202,
+    "first_session": "2026-01-02",
+    "last_session": "2026-11-18",
+    "snapshots_dir": "C:\\Users\\Thinkcenter\\Desktop\\BVMT\\bvmt-starter-kit\\data\\portfolio\\snapshots",
+    "ledger_path": "C:\\Users\\Thinkcenter\\Desktop\\BVMT\\bvmt-starter-kit\\data\\portfolio\\real_competition_ledger.json"
+  },
+  "snapshot_reconstruction": {
+    "opening_snapshot": {
+      "snapshot_id": "SNAP-TBC-USER-001",
+      "provenance": "user_supplied_competition_screenshot",
+      "portfolio_total_tnd": "49998.050",
+      "available_cash_tnd": "49608.050",
+      "cash_drag_pct": 99.22,
+      "competition_rank": 4813,
+      "competition_participants": 14530,
+      "holdings": [
+        {
+          "current_market_value_tnd": "390.000",
+          "displayed_acquisition_amount_tnd": "391.950",
+          "displayed_acquisition_price_tnd": "13.065",
+          "displayed_last_price_tnd": "13.000",
+          "displayed_unrealized_pnl_tnd": "-1.950",
+          "displayed_unrealized_return_pct": "-0.500",
+          "instrument_id": "BH_BANK",
+          "isin": "TN0001900604",
+          "portfolio_allocation_pct": "0.780",
+          "quantity": 30,
+          "symbol": "BH BANK"
+        }
+      ]
+    },
+    "snapshots_count": 11,
+    "chronology": [
+      {
+        "filename": "sync_20261107_122006.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-07T12:20:06.833200+00:00",
+        "source_url": "https://www.tunisbourse-challenge.com/displayp.aspx",
+        "portfolio_total_tnd": "50000.75",
+        "available_cash_tnd": "49608.05",
+        "holdings_market_value_tnd": "392.700",
+        "cash_drag_pct": 99.21,
+        "invested_pct": 0.79,
+        "holdings_count": 1,
+        "competition_rank": 118,
+        "total_participants": 14530,
+        "displayed_overall_performance_pct": "0.00",
+        "movements_page_captured": true,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "0.750",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH BANK",
+            "displayed_identifier": "223375",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.95",
+            "latest_price_tnd": "13.09",
+            "market_value_tnd": "392.70",
+            "gain_tnd": "0.75",
+            "gain_pct": "0.19",
+            "weight_pct": 0.785
+          }
+        ]
+      },
+      {
+        "filename": "sync_20261109_091300.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-09T09:13:00.648488+00:00",
+        "source_url": "https://www.tunisbourse-challenge.com/displayp.aspx",
+        "portfolio_total_tnd": "49979.07",
+        "available_cash_tnd": "44586.07",
+        "holdings_market_value_tnd": "5393.000",
+        "cash_drag_pct": 89.21,
+        "invested_pct": 10.79,
+        "holdings_count": 2,
+        "competition_rank": 133,
+        "total_participants": 14547,
+        "displayed_overall_performance_pct": "0.01",
+        "movements_page_captured": true,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "-20.930",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH BANK",
+            "displayed_identifier": "223375",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.95",
+            "latest_price_tnd": "13.20",
+            "market_value_tnd": "396.00",
+            "gain_tnd": "4.05",
+            "gain_pct": "1.03",
+            "weight_pct": 0.792
+          },
+          {
+            "canonical_id": "DELICE_HOLDING",
+            "symbol": "DELICE HOLDING",
+            "displayed_identifier": "223493",
+            "quantity": 263,
+            "acquisition_price_tnd": "19.095",
+            "acquisition_amount_tnd": "5021.99",
+            "latest_price_tnd": "19.00",
+            "market_value_tnd": "4997.00",
+            "gain_tnd": "-24.98",
+            "gain_pct": "-0.50",
+            "weight_pct": 9.998
+          }
+        ]
+      },
+      {
+        "filename": "sync_20261109_120109.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-09T12:01:09.076000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "50000.000",
+        "available_cash_tnd": "36939.520",
+        "holdings_market_value_tnd": "13060.480",
+        "cash_drag_pct": 73.88,
+        "invested_pct": 26.12,
+        "holdings_count": 5,
+        "competition_rank": 14450,
+        "total_participants": 14572,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": true,
+        "open_unrealized_sum_tnd": null,
+        "holdings": [],
+        "decoded_corrupted_holdings": [
+          {
+            "portal_id": 223375,
+            "mapped_candidate_id": "BH_BANK",
+            "actual_quantity": 30,
+            "actual_acquisition_price_tnd": "13.065",
+            "actual_acquisition_amount_tnd": "391.950",
+            "corrupted_dom_qty": 223375,
+            "corrupted_dom_acq_amt": "6701250.000",
+            "corrupted_dom_gain": "-6700858.050"
+          },
+          {
+            "portal_id": 223493,
+            "mapped_candidate_id": "DELICE_HOLDING",
+            "actual_quantity": 263,
+            "actual_acquisition_price_tnd": "19.095",
+            "actual_acquisition_amount_tnd": "5021.990",
+            "corrupted_dom_qty": 223493,
+            "corrupted_dom_acq_amt": "58778659.000",
+            "corrupted_dom_gain": "-58773637.010"
+          },
+          {
+            "portal_id": 223529,
+            "mapped_candidate_id": "UNCONFIRMED_PORTAL_223529",
+            "actual_quantity": 35,
+            "actual_acquisition_price_tnd": "131.756",
+            "actual_acquisition_amount_tnd": "4611.440",
+            "corrupted_dom_qty": 223529,
+            "corrupted_dom_acq_amt": "7823515.000",
+            "corrupted_dom_gain": "-7818903.560"
+          },
+          {
+            "portal_id": 223514,
+            "mapped_candidate_id": "NEW_BODY_LINE",
+            "actual_quantity": 200,
+            "actual_acquisition_price_tnd": "2.462",
+            "actual_acquisition_amount_tnd": "492.450",
+            "corrupted_dom_qty": 223514,
+            "corrupted_dom_acq_amt": "44702800.000",
+            "corrupted_dom_gain": "-44702307.550"
+          },
+          {
+            "portal_id": 223516,
+            "mapped_candidate_id": "STA",
+            "actual_quantity": 22,
+            "actual_acquisition_price_tnd": "115.575",
+            "actual_acquisition_amount_tnd": "2542.650",
+            "corrupted_dom_qty": 223516,
+            "corrupted_dom_acq_amt": "4917352.000",
+            "corrupted_dom_gain": "-4914809.350"
+          }
+        ],
+        "corrupted_bogus_pnl_sum_tnd": "-122910515.520"
+      },
+      {
+        "filename": "sync_20261109_120310.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-09T12:03:10.401000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "50000.000",
+        "available_cash_tnd": "36939.520",
+        "holdings_market_value_tnd": "13060.480",
+        "cash_drag_pct": 73.88,
+        "invested_pct": 26.12,
+        "holdings_count": 5,
+        "competition_rank": 98,
+        "total_participants": 14573,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": true,
+        "open_unrealized_sum_tnd": null,
+        "holdings": [],
+        "decoded_corrupted_holdings": [
+          {
+            "portal_id": 223375,
+            "mapped_candidate_id": "BH_BANK",
+            "actual_quantity": 30,
+            "actual_acquisition_price_tnd": "13.065",
+            "actual_acquisition_amount_tnd": "391.950",
+            "corrupted_dom_qty": 223375,
+            "corrupted_dom_acq_amt": "6701250.000",
+            "corrupted_dom_gain": "-6700858.050"
+          },
+          {
+            "portal_id": 223493,
+            "mapped_candidate_id": "DELICE_HOLDING",
+            "actual_quantity": 263,
+            "actual_acquisition_price_tnd": "19.095",
+            "actual_acquisition_amount_tnd": "5021.990",
+            "corrupted_dom_qty": 223493,
+            "corrupted_dom_acq_amt": "58778659.000",
+            "corrupted_dom_gain": "-58773637.010"
+          },
+          {
+            "portal_id": 223529,
+            "mapped_candidate_id": "UNCONFIRMED_PORTAL_223529",
+            "actual_quantity": 35,
+            "actual_acquisition_price_tnd": "131.756",
+            "actual_acquisition_amount_tnd": "4611.440",
+            "corrupted_dom_qty": 223529,
+            "corrupted_dom_acq_amt": "7823515.000",
+            "corrupted_dom_gain": "-7818903.560"
+          },
+          {
+            "portal_id": 223514,
+            "mapped_candidate_id": "NEW_BODY_LINE",
+            "actual_quantity": 200,
+            "actual_acquisition_price_tnd": "2.462",
+            "actual_acquisition_amount_tnd": "492.450",
+            "corrupted_dom_qty": 223514,
+            "corrupted_dom_acq_amt": "44702800.000",
+            "corrupted_dom_gain": "-44702307.550"
+          },
+          {
+            "portal_id": 223516,
+            "mapped_candidate_id": "STA",
+            "actual_quantity": 22,
+            "actual_acquisition_price_tnd": "115.575",
+            "actual_acquisition_amount_tnd": "2542.650",
+            "corrupted_dom_qty": 223516,
+            "corrupted_dom_acq_amt": "4917352.000",
+            "corrupted_dom_gain": "-4914809.350"
+          }
+        ],
+        "corrupted_bogus_pnl_sum_tnd": "-122910515.520"
+      },
+      {
+        "filename": "sync_20261109_120411.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-09T12:04:11.576000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "50000.000",
+        "available_cash_tnd": "36939.520",
+        "holdings_market_value_tnd": "13060.480",
+        "cash_drag_pct": 73.88,
+        "invested_pct": 26.12,
+        "holdings_count": 5,
+        "competition_rank": 98,
+        "total_participants": 14573,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": true,
+        "open_unrealized_sum_tnd": null,
+        "holdings": [],
+        "decoded_corrupted_holdings": [
+          {
+            "portal_id": 223375,
+            "mapped_candidate_id": "BH_BANK",
+            "actual_quantity": 30,
+            "actual_acquisition_price_tnd": "13.065",
+            "actual_acquisition_amount_tnd": "391.950",
+            "corrupted_dom_qty": 223375,
+            "corrupted_dom_acq_amt": "6701250.000",
+            "corrupted_dom_gain": "-6700858.050"
+          },
+          {
+            "portal_id": 223493,
+            "mapped_candidate_id": "DELICE_HOLDING",
+            "actual_quantity": 263,
+            "actual_acquisition_price_tnd": "19.095",
+            "actual_acquisition_amount_tnd": "5021.990",
+            "corrupted_dom_qty": 223493,
+            "corrupted_dom_acq_amt": "58778659.000",
+            "corrupted_dom_gain": "-58773637.010"
+          },
+          {
+            "portal_id": 223529,
+            "mapped_candidate_id": "UNCONFIRMED_PORTAL_223529",
+            "actual_quantity": 35,
+            "actual_acquisition_price_tnd": "131.756",
+            "actual_acquisition_amount_tnd": "4611.440",
+            "corrupted_dom_qty": 223529,
+            "corrupted_dom_acq_amt": "7823515.000",
+            "corrupted_dom_gain": "-7818903.560"
+          },
+          {
+            "portal_id": 223514,
+            "mapped_candidate_id": "NEW_BODY_LINE",
+            "actual_quantity": 200,
+            "actual_acquisition_price_tnd": "2.462",
+            "actual_acquisition_amount_tnd": "492.450",
+            "corrupted_dom_qty": 223514,
+            "corrupted_dom_acq_amt": "44702800.000",
+            "corrupted_dom_gain": "-44702307.550"
+          },
+          {
+            "portal_id": 223516,
+            "mapped_candidate_id": "STA",
+            "actual_quantity": 22,
+            "actual_acquisition_price_tnd": "115.575",
+            "actual_acquisition_amount_tnd": "2542.650",
+            "corrupted_dom_qty": 223516,
+            "corrupted_dom_acq_amt": "4917352.000",
+            "corrupted_dom_gain": "-4914809.350"
+          }
+        ],
+        "corrupted_bogus_pnl_sum_tnd": "-122910515.520"
+      },
+      {
+        "filename": "sync_20261109_144000.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-09T14:40:00.000000+00:00",
+        "source_url": "https://www.tunisbourse-challenge.com/displayp.aspx",
+        "portfolio_total_tnd": "50061.960",
+        "available_cash_tnd": "41622.790",
+        "holdings_market_value_tnd": "8439.170",
+        "cash_drag_pct": 83.14,
+        "invested_pct": 16.86,
+        "holdings_count": 4,
+        "competition_rank": 112,
+        "total_participants": 14573,
+        "displayed_overall_performance_pct": "0.120",
+        "movements_page_captured": false,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "-9.815",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH",
+            "displayed_identifier": "BH BANK",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.950",
+            "latest_price_tnd": "13.090",
+            "market_value_tnd": "392.700",
+            "gain_tnd": "0.750",
+            "gain_pct": "0.190",
+            "weight_pct": 0.784
+          },
+          {
+            "canonical_id": "DELICE_HOLDING",
+            "symbol": "DH",
+            "displayed_identifier": "DELICE HOLDING",
+            "quantity": 263,
+            "acquisition_price_tnd": "19.095",
+            "acquisition_amount_tnd": "5021.985",
+            "latest_price_tnd": "19.090",
+            "market_value_tnd": "5020.670",
+            "gain_tnd": "-1.315",
+            "gain_pct": "-0.026",
+            "weight_pct": 10.029
+          },
+          {
+            "canonical_id": "NEW_BODY_LINE",
+            "symbol": "NBL",
+            "displayed_identifier": "NEW BODY LINE",
+            "quantity": 200,
+            "acquisition_price_tnd": "2.462",
+            "acquisition_amount_tnd": "492.400",
+            "latest_price_tnd": "2.490",
+            "market_value_tnd": "498.000",
+            "gain_tnd": "5.600",
+            "gain_pct": "1.137",
+            "weight_pct": 0.995
+          },
+          {
+            "canonical_id": "STA",
+            "symbol": "STA",
+            "displayed_identifier": "STA",
+            "quantity": 22,
+            "acquisition_price_tnd": "115.575",
+            "acquisition_amount_tnd": "2542.650",
+            "latest_price_tnd": "114.900",
+            "market_value_tnd": "2527.800",
+            "gain_tnd": "-14.850",
+            "gain_pct": "-0.584",
+            "weight_pct": 5.049
+          }
+        ]
+      },
+      {
+        "filename": "sync_20261110_092042.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-10T09:20:42.023000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "50006.570",
+        "available_cash_tnd": "39628.870",
+        "holdings_market_value_tnd": "10377.700",
+        "cash_drag_pct": 79.25,
+        "invested_pct": 20.75,
+        "holdings_count": 5,
+        "competition_rank": 118,
+        "total_participants": 14429,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "-65.250",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH BANK",
+            "displayed_identifier": "BH BANK",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.950",
+            "latest_price_tnd": "13.000",
+            "market_value_tnd": "390.000",
+            "gain_tnd": "-1.950",
+            "gain_pct": "-0.50",
+            "weight_pct": 0.78
+          },
+          {
+            "canonical_id": "DELICE_HOLDING",
+            "symbol": "DELICE HOLDING",
+            "displayed_identifier": "DELICE HOLDING",
+            "quantity": 263,
+            "acquisition_price_tnd": "19.095",
+            "acquisition_amount_tnd": "5021.990",
+            "latest_price_tnd": "19.000",
+            "market_value_tnd": "4997.000",
+            "gain_tnd": "-24.980",
+            "gain_pct": "-0.50",
+            "weight_pct": 9.993
+          },
+          {
+            "canonical_id": "NEW_BODY_LINE",
+            "symbol": "NEW BODY LINE",
+            "displayed_identifier": "NEW BODY LINE",
+            "quantity": 200,
+            "acquisition_price_tnd": "2.462",
+            "acquisition_amount_tnd": "492.450",
+            "latest_price_tnd": "2.400",
+            "market_value_tnd": "480.000",
+            "gain_tnd": "-12.450",
+            "gain_pct": "-2.53",
+            "weight_pct": 0.96
+          },
+          {
+            "canonical_id": "SMART_TUNISIE",
+            "symbol": "SMART TUNISIE",
+            "displayed_identifier": "SMART TUNISIE",
+            "quantity": 62,
+            "acquisition_price_tnd": "32.160",
+            "acquisition_amount_tnd": "1993.920",
+            "latest_price_tnd": "32.000",
+            "market_value_tnd": "1984.000",
+            "gain_tnd": "-9.920",
+            "gain_pct": "-0.50",
+            "weight_pct": 3.967
+          },
+          {
+            "canonical_id": "STA",
+            "symbol": "STA",
+            "displayed_identifier": "STA",
+            "quantity": 22,
+            "acquisition_price_tnd": "115.575",
+            "acquisition_amount_tnd": "2542.650",
+            "latest_price_tnd": "114.850",
+            "market_value_tnd": "2526.700",
+            "gain_tnd": "-15.950",
+            "gain_pct": "-0.63",
+            "weight_pct": 5.053
+          }
+        ]
+      },
+      {
+        "filename": "sync_20261110_092129.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-10T09:21:29.393000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "50006.570",
+        "available_cash_tnd": "39628.870",
+        "holdings_market_value_tnd": "10377.700",
+        "cash_drag_pct": 79.25,
+        "invested_pct": 20.75,
+        "holdings_count": 5,
+        "competition_rank": 118,
+        "total_participants": 14429,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "-65.250",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH BANK",
+            "displayed_identifier": "BH BANK",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.950",
+            "latest_price_tnd": "13.000",
+            "market_value_tnd": "390.000",
+            "gain_tnd": "-1.950",
+            "gain_pct": "-0.50",
+            "weight_pct": 0.78
+          },
+          {
+            "canonical_id": "DELICE_HOLDING",
+            "symbol": "DELICE HOLDING",
+            "displayed_identifier": "DELICE HOLDING",
+            "quantity": 263,
+            "acquisition_price_tnd": "19.095",
+            "acquisition_amount_tnd": "5021.990",
+            "latest_price_tnd": "19.000",
+            "market_value_tnd": "4997.000",
+            "gain_tnd": "-24.980",
+            "gain_pct": "-0.50",
+            "weight_pct": 9.993
+          },
+          {
+            "canonical_id": "NEW_BODY_LINE",
+            "symbol": "NEW BODY LINE",
+            "displayed_identifier": "NEW BODY LINE",
+            "quantity": 200,
+            "acquisition_price_tnd": "2.462",
+            "acquisition_amount_tnd": "492.450",
+            "latest_price_tnd": "2.400",
+            "market_value_tnd": "480.000",
+            "gain_tnd": "-12.450",
+            "gain_pct": "-2.53",
+            "weight_pct": 0.96
+          },
+          {
+            "canonical_id": "SMART_TUNISIE",
+            "symbol": "SMART TUNISIE",
+            "displayed_identifier": "SMART TUNISIE",
+            "quantity": 62,
+            "acquisition_price_tnd": "32.160",
+            "acquisition_amount_tnd": "1993.920",
+            "latest_price_tnd": "32.000",
+            "market_value_tnd": "1984.000",
+            "gain_tnd": "-9.920",
+            "gain_pct": "-0.50",
+            "weight_pct": 3.967
+          },
+          {
+            "canonical_id": "STA",
+            "symbol": "STA",
+            "displayed_identifier": "STA",
+            "quantity": 22,
+            "acquisition_price_tnd": "115.575",
+            "acquisition_amount_tnd": "2542.650",
+            "latest_price_tnd": "114.850",
+            "market_value_tnd": "2526.700",
+            "gain_tnd": "-15.950",
+            "gain_pct": "-0.63",
+            "weight_pct": 5.053
+          }
+        ]
+      },
+      {
+        "filename": "sync_20261110_110400.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-10T11:04:00.309000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "49993.430",
+        "available_cash_tnd": "38752.350",
+        "holdings_market_value_tnd": "11241.080",
+        "cash_drag_pct": 77.51,
+        "invested_pct": 22.49,
+        "holdings_count": 6,
+        "competition_rank": 14258,
+        "total_participants": 14430,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "-78.390",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH BANK",
+            "displayed_identifier": "BH BANK",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.950",
+            "latest_price_tnd": "13.000",
+            "market_value_tnd": "390.000",
+            "gain_tnd": "-1.950",
+            "gain_pct": "-0.50",
+            "weight_pct": 0.78
+          },
+          {
+            "canonical_id": "DELICE_HOLDING",
+            "symbol": "DELICE HOLDING",
+            "displayed_identifier": "DELICE HOLDING",
+            "quantity": 263,
+            "acquisition_price_tnd": "19.095",
+            "acquisition_amount_tnd": "5021.990",
+            "latest_price_tnd": "19.000",
+            "market_value_tnd": "4997.000",
+            "gain_tnd": "-24.980",
+            "gain_pct": "-0.50",
+            "weight_pct": 9.995
+          },
+          {
+            "canonical_id": "NEW_BODY_LINE",
+            "symbol": "NEW BODY LINE",
+            "displayed_identifier": "NEW BODY LINE",
+            "quantity": 200,
+            "acquisition_price_tnd": "2.462",
+            "acquisition_amount_tnd": "492.450",
+            "latest_price_tnd": "2.400",
+            "market_value_tnd": "480.000",
+            "gain_tnd": "-12.450",
+            "gain_pct": "-2.53",
+            "weight_pct": 0.96
+          },
+          {
+            "canonical_id": "SMART_TUNISIE",
+            "symbol": "SMART TUNISIE",
+            "displayed_identifier": "SMART TUNISIE",
+            "quantity": 62,
+            "acquisition_price_tnd": "32.160",
+            "acquisition_amount_tnd": "1993.920",
+            "latest_price_tnd": "31.990",
+            "market_value_tnd": "1983.380",
+            "gain_tnd": "-10.540",
+            "gain_pct": "-0.53",
+            "weight_pct": 3.967
+          },
+          {
+            "canonical_id": "STA",
+            "symbol": "STA",
+            "displayed_identifier": "STA",
+            "quantity": 22,
+            "acquisition_price_tnd": "115.575",
+            "acquisition_amount_tnd": "2542.650",
+            "latest_price_tnd": "114.850",
+            "market_value_tnd": "2526.700",
+            "gain_tnd": "-15.950",
+            "gain_pct": "-0.63",
+            "weight_pct": 5.054
+          },
+          {
+            "canonical_id": "UIB",
+            "symbol": "UIB",
+            "displayed_identifier": "UIB",
+            "quantity": 24,
+            "acquisition_price_tnd": "36.522",
+            "acquisition_amount_tnd": "876.520",
+            "latest_price_tnd": "36.000",
+            "market_value_tnd": "864.000",
+            "gain_tnd": "-12.520",
+            "gain_pct": "-1.43",
+            "weight_pct": 1.728
+          }
+        ]
+      },
+      {
+        "filename": "sync_20261110_110702.json",
+        "snapshot_id": null,
+        "retrieved_at": "2026-11-10T11:07:02.522000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "49993.430",
+        "available_cash_tnd": "38752.350",
+        "holdings_market_value_tnd": "11241.080",
+        "cash_drag_pct": 77.51,
+        "invested_pct": 22.49,
+        "holdings_count": 6,
+        "competition_rank": 14258,
+        "total_participants": 14430,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "-78.390",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH BANK",
+            "displayed_identifier": "BH BANK",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.950",
+            "latest_price_tnd": "13.000",
+            "market_value_tnd": "390.000",
+            "gain_tnd": "-1.950",
+            "gain_pct": "-0.50",
+            "weight_pct": 0.78
+          },
+          {
+            "canonical_id": "DELICE_HOLDING",
+            "symbol": "DELICE HOLDING",
+            "displayed_identifier": "DELICE HOLDING",
+            "quantity": 263,
+            "acquisition_price_tnd": "19.095",
+            "acquisition_amount_tnd": "5021.990",
+            "latest_price_tnd": "19.000",
+            "market_value_tnd": "4997.000",
+            "gain_tnd": "-24.980",
+            "gain_pct": "-0.50",
+            "weight_pct": 9.995
+          },
+          {
+            "canonical_id": "NEW_BODY_LINE",
+            "symbol": "NEW BODY LINE",
+            "displayed_identifier": "NEW BODY LINE",
+            "quantity": 200,
+            "acquisition_price_tnd": "2.462",
+            "acquisition_amount_tnd": "492.450",
+            "latest_price_tnd": "2.400",
+            "market_value_tnd": "480.000",
+            "gain_tnd": "-12.450",
+            "gain_pct": "-2.53",
+            "weight_pct": 0.96
+          },
+          {
+            "canonical_id": "SMART_TUNISIE",
+            "symbol": "SMART TUNISIE",
+            "displayed_identifier": "SMART TUNISIE",
+            "quantity": 62,
+            "acquisition_price_tnd": "32.160",
+            "acquisition_amount_tnd": "1993.920",
+            "latest_price_tnd": "31.990",
+            "market_value_tnd": "1983.380",
+            "gain_tnd": "-10.540",
+            "gain_pct": "-0.53",
+            "weight_pct": 3.967
+          },
+          {
+            "canonical_id": "STA",
+            "symbol": "STA",
+            "displayed_identifier": "STA",
+            "quantity": 22,
+            "acquisition_price_tnd": "115.575",
+            "acquisition_amount_tnd": "2542.650",
+            "latest_price_tnd": "114.850",
+            "market_value_tnd": "2526.700",
+            "gain_tnd": "-15.950",
+            "gain_pct": "-0.63",
+            "weight_pct": 5.054
+          },
+          {
+            "canonical_id": "UIB",
+            "symbol": "UIB",
+            "displayed_identifier": "UIB",
+            "quantity": 24,
+            "acquisition_price_tnd": "36.522",
+            "acquisition_amount_tnd": "876.520",
+            "latest_price_tnd": "36.000",
+            "market_value_tnd": "864.000",
+            "gain_tnd": "-12.520",
+            "gain_pct": "-1.43",
+            "weight_pct": 1.728
+          }
+        ]
+      },
+      {
+        "filename": "sync_20261112_093526.json",
+        "snapshot_id": "ext_1794476128406",
+        "retrieved_at": "2026-11-12T09:35:26.734000+00:00",
+        "source_url": "bvmt-sync://chrome_extension/displayp.aspx",
+        "portfolio_total_tnd": "50093.190",
+        "available_cash_tnd": "29574.190",
+        "holdings_market_value_tnd": "20519.000",
+        "cash_drag_pct": 59.04,
+        "invested_pct": 40.96,
+        "holdings_count": 8,
+        "competition_rank": 81,
+        "total_participants": 14450,
+        "displayed_overall_performance_pct": null,
+        "movements_page_captured": false,
+        "is_dom_corrupted": false,
+        "open_unrealized_sum_tnd": "21.370",
+        "holdings": [
+          {
+            "canonical_id": "BH_BANK",
+            "symbol": "BH BANK",
+            "displayed_identifier": "BH BANK",
+            "quantity": 30,
+            "acquisition_price_tnd": "13.065",
+            "acquisition_amount_tnd": "391.950",
+            "latest_price_tnd": "12.910",
+            "market_value_tnd": "387.300",
+            "gain_tnd": "-4.650",
+            "gain_pct": "-1.190",
+            "weight_pct": 0.773
+          },
+          {
+            "canonical_id": "DELICE_HOLDING",
+            "symbol": "DELICE HOLDING",
+            "displayed_identifier": "DELICE HOLDING",
+            "quantity": 263,
+            "acquisition_price_tnd": "19.095",
+            "acquisition_amount_tnd": "5021.990",
+            "latest_price_tnd": "19.000",
+            "market_value_tnd": "4997.000",
+            "gain_tnd": "-24.980",
+            "gain_pct": "-0.500",
+            "weight_pct": 9.975
+          },
+          {
+            "canonical_id": "EURO-CYCLES",
+            "symbol": "EURO-CYCLES",
+            "displayed_identifier": "EURO-CYCLES",
+            "quantity": 510,
+            "acquisition_price_tnd": "9.799",
+            "acquisition_amount_tnd": "4997.360",
+            "latest_price_tnd": "9.850",
+            "market_value_tnd": "5023.500",
+            "gain_tnd": "26.140",
+            "gain_pct": "0.520",
+            "weight_pct": 10.028
+          },
+          {
+            "canonical_id": "MPBS",
+            "symbol": "MPBS",
+            "displayed_identifier": "MPBS",
+            "quantity": 400,
+            "acquisition_price_tnd": "10.452",
+            "acquisition_amount_tnd": "4180.800",
+            "latest_price_tnd": "10.600",
+            "market_value_tnd": "4240.000",
+            "gain_tnd": "59.200",
+            "gain_pct": "1.420",
+            "weight_pct": 8.464
+          },
+          {
+            "canonical_id": "NEW_BODY_LINE",
+            "symbol": "NEW BODY LINE",
+            "displayed_identifier": "NEW BODY LINE",
+            "quantity": 200,
+            "acquisition_price_tnd": "2.462",
+            "acquisition_amount_tnd": "492.450",
+            "latest_price_tnd": "2.370",
+            "market_value_tnd": "474.000",
+            "gain_tnd": "-18.450",
+            "gain_pct": "-3.750",
+            "weight_pct": 0.946
+          },
+          {
+            "canonical_id": "SMART_TUNISIE",
+            "symbol": "SMART TUNISIE",
+            "displayed_identifier": "SMART TUNISIE",
+            "quantity": 62,
+            "acquisition_price_tnd": "32.160",
+            "acquisition_amount_tnd": "1993.920",
+            "latest_price_tnd": "32.000",
+            "market_value_tnd": "1984.000",
+            "gain_tnd": "-9.920",
+            "gain_pct": "-0.500",
+            "weight_pct": 3.961
+          },
+          {
+            "canonical_id": "STA",
+            "symbol": "STA",
+            "displayed_identifier": "STA",
+            "quantity": 22,
+            "acquisition_price_tnd": "115.575",
+            "acquisition_amount_tnd": "2542.650",
+            "latest_price_tnd": "115.000",
+            "market_value_tnd": "2530.000",
+            "gain_tnd": "-12.650",
+            "gain_pct": "-0.500",
+            "weight_pct": 5.051
+          },
+          {
+            "canonical_id": "UIB",
+            "symbol": "UIB",
+            "displayed_identifier": "UIB",
+            "quantity": 24,
+            "acquisition_price_tnd": "36.522",
+            "acquisition_amount_tnd": "876.520",
+            "latest_price_tnd": "36.800",
+            "market_value_tnd": "883.200",
+            "gain_tnd": "6.680",
+            "gain_pct": "0.760",
+            "weight_pct": 1.763
+          }
+        ]
+      }
+    ],
+    "ledger_discrepancy": {
+      "ledger_updated_at": "2026-11-10T11:07:02.522000+00:00",
+      "ledger_available_cash_tnd": "38752.350",
+      "ledger_active_holdings_count": 6,
+      "ledger_active_holdings": {
+        "BH_BANK": {
+          "total_shares": 30,
+          "average_cost_tnd": "13.065",
+          "cost_basis_tnd": "391.950"
+        },
+        "DELICE_HOLDING": {
+          "total_shares": 263,
+          "average_cost_tnd": "19.095",
+          "cost_basis_tnd": "5021.990"
+        },
+        "NEW_BODY_LINE": {
+          "total_shares": 200,
+          "average_cost_tnd": "2.462",
+          "cost_basis_tnd": "492.450"
+        },
+        "SMART_TUNISIE": {
+          "total_shares": 62,
+          "average_cost_tnd": "32.160",
+          "cost_basis_tnd": "1993.920"
+        },
+        "STA": {
+          "total_shares": 22,
+          "average_cost_tnd": "115.575",
+          "cost_basis_tnd": "2542.650"
+        },
+        "UIB": {
+          "total_shares": 24,
+          "average_cost_tnd": "36.522",
+          "cost_basis_tnd": "876.520"
+        }
+      },
+      "account_snapshots_sequence_in_ledger": [
+        {
+          "index": 0,
+          "snapshot_id": "SNAP-TBC-USER-001",
+          "capture_timestamp": null,
+          "portfolio_total_tnd": "49998.050",
+          "available_cash_tnd": "49608.050",
+          "holdings_count": 1,
+          "competition_rank": 4813
+        },
+        {
+          "index": 1,
+          "snapshot_id": "browser_sync_20261107_122006",
+          "capture_timestamp": "2026-11-07T12:20:06.833200+00:00",
+          "portfolio_total_tnd": "50000.750",
+          "available_cash_tnd": "49608.050",
+          "holdings_count": 1,
+          "competition_rank": 118
+        },
+        {
+          "index": 2,
+          "snapshot_id": "browser_sync_20261109_091300",
+          "capture_timestamp": "2026-11-09T09:13:00.648488+00:00",
+          "portfolio_total_tnd": "49979.070",
+          "available_cash_tnd": "44586.070",
+          "holdings_count": 2,
+          "competition_rank": 133
+        },
+        {
+          "index": 3,
+          "snapshot_id": "browser_sync_20261109_091300",
+          "capture_timestamp": "2026-11-09T09:13:00.648488+00:00",
+          "portfolio_total_tnd": "49979.070",
+          "available_cash_tnd": "44586.070",
+          "holdings_count": 2,
+          "competition_rank": 133
+        },
+        {
+          "index": 4,
+          "snapshot_id": "browser_sync_20261109_091300",
+          "capture_timestamp": "2026-11-09T09:13:00.648488+00:00",
+          "portfolio_total_tnd": "49979.070",
+          "available_cash_tnd": "44586.070",
+          "holdings_count": 2,
+          "competition_rank": 133
+        },
+        {
+          "index": 5,
+          "snapshot_id": "browser_sync_20261109_120411",
+          "capture_timestamp": "2026-11-09T12:04:11.576000+00:00",
+          "portfolio_total_tnd": "50000.000",
+          "available_cash_tnd": "36939.520",
+          "holdings_count": 5,
+          "competition_rank": 98
+        },
+        {
+          "index": 6,
+          "snapshot_id": "browser_sync_20261109_120411",
+          "capture_timestamp": "2026-11-09T12:04:11.576000+00:00",
+          "portfolio_total_tnd": "50000.000",
+          "available_cash_tnd": "36939.520",
+          "holdings_count": 5,
+          "competition_rank": 98
+        },
+        {
+          "index": 7,
+          "snapshot_id": "browser_sync_20261109_144000",
+          "capture_timestamp": "2026-11-09T14:40:00+00:00",
+          "portfolio_total_tnd": "50061.960",
+          "available_cash_tnd": "41622.790",
+          "holdings_count": 4,
+          "competition_rank": 112
+        },
+        {
+          "index": 8,
+          "snapshot_id": "browser_sync_20261110_092129",
+          "capture_timestamp": "2026-11-10T09:21:29.393000+00:00",
+          "portfolio_total_tnd": "50006.570",
+          "available_cash_tnd": "39628.870",
+          "holdings_count": 5,
+          "competition_rank": 118
+        },
+        {
+          "index": 9,
+          "snapshot_id": "browser_sync_20261110_092129",
+          "capture_timestamp": "2026-11-10T09:21:29.393000+00:00",
+          "portfolio_total_tnd": "50006.570",
+          "available_cash_tnd": "39628.870",
+          "holdings_count": 5,
+          "competition_rank": 118
+        },
+        {
+          "index": 10,
+          "snapshot_id": "ext_1794476128406",
+          "capture_timestamp": "2026-11-12T09:35:26.734000+00:00",
+          "portfolio_total_tnd": "50093.190",
+          "available_cash_tnd": "29574.190",
+          "holdings_count": 8,
+          "competition_rank": 81
+        },
+        {
+          "index": 11,
+          "snapshot_id": "browser_sync_20261110_110702",
+          "capture_timestamp": "2026-11-10T11:07:02.522000+00:00",
+          "portfolio_total_tnd": "49993.430",
+          "available_cash_tnd": "38752.350",
+          "holdings_count": 6,
+          "competition_rank": 14258
+        }
+      ],
+      "root_cause": "real_competition_ledger.json ingested Nov 12 ext_1794476128406 (8 holdings, cash 29,574.190 TND, total 50,093.190 TND, rank 81/14,450) at EVT-00020/21, then a stale Nov 10 browser_sync_20261110_110702 capture (6 holdings, cash 38,752.350 TND, total 49,993.430 TND, rank 14,258/14,430) was re-applied last at EVT-00022/23 without monotonic timestamp guard, reverting the active state back to Nov 10 and dropping EURO-CYCLES (510 sh) and MPBS (400 sh)."
+    }
+  },
+  "nov9_roundtrip_223529": {
+    "portal_id": 223529,
+    "quantity": 35,
+    "displayed_avg_cost_shifted_tnd": "131.756",
+    "dom_shifted_acq_amount_tnd": "4611.440",
+    "cash_reconciled_acq_amount_tnd": "4611.450",
+    "sale_net_proceeds_tnd": "4683.270",
+    "realized_gain_cash_reconciled_tnd": "71.820",
+    "realized_gain_dom_reconciled_tnd": "71.830",
+    "implied_gross_buy_price_tnd": "131.100",
+    "implied_gross_sell_price_tnd": "134.480",
+    "candidate_equities_in_130_136_band_nov06_nov09": [
+      {
+        "canonical_id": "ICF",
+        "nov06": {
+          "open": "134.250",
+          "high": "134.250",
+          "low": "134.200",
+          "close": "134.200",
+          "volume_shares": 2
+        },
+        "nov09": {
+          "open": "133.900",
+          "high": "135.900",
+          "low": "131.000",
+          "close": "135.900",
+          "volume_shares": 3192
+        }
+      }
+    ],
+    "candidate_label": "UNVERIFIED_CANDIDATE (ICF pending display_histo.aspx sync)",
+    "if_icf_held_instead_of_sold_trajectory": {
+      "2026-11-06": {
+        "close": "134.200",
+        "volume": 2,
+        "gross_value_35sh": "4697.000",
+        "net_liq_value_35sh": "4673.515",
+        "net_pnl_vs_4611_45": "62.065"
+      },
+      "2026-11-09": {
+        "close": "135.900",
+        "volume": 3192,
+        "gross_value_35sh": "4756.500",
+        "net_liq_value_35sh": "4732.718",
+        "net_pnl_vs_4611_45": "121.268"
+      },
+      "2026-11-10": {
+        "close": "143.500",
+        "volume": 3473,
+        "gross_value_35sh": "5022.500",
+        "net_liq_value_35sh": "4997.388",
+        "net_pnl_vs_4611_45": "385.938"
+      },
+      "2026-11-11": {
+        "close": "146.990",
+        "volume": 215,
+        "gross_value_35sh": "5144.650",
+        "net_liq_value_35sh": "5118.927",
+        "net_pnl_vs_4611_45": "507.477"
+      },
+      "2026-11-12": {
+        "close": "144.790",
+        "volume": 1056,
+        "gross_value_35sh": "5067.650",
+        "net_liq_value_35sh": "5042.312",
+        "net_pnl_vs_4611_45": "430.862"
+      },
+      "2026-11-18": {
+        "close": "145.800",
+        "volume": 0,
+        "gross_value_35sh": "5103.000",
+        "net_liq_value_35sh": "5077.485",
+        "net_pnl_vs_4611_45": "466.035"
+      }
+    }
+  },
+  "eod_trajectories": {
+    "confirmed_8_holdings_eod": {
+      "BH_BANK": {
+        "qty": 30,
+        "acq_amt_tnd": "391.950",
+        "nov12_morning_snap_price": "12.910",
+        "nov12_eod_price": "12.650",
+        "nov18_eod_price": "12.480",
+        "nov12_eod_pnl_tnd": "-12.450",
+        "nov18_eod_pnl_tnd": "-17.550",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "13.090",
+            "volume": 5650,
+            "market_value_tnd": "392.700",
+            "unrealized_pnl_tnd": "0.750",
+            "unrealized_return_pct": 0.1914
+          },
+          "2026-11-09": {
+            "close": "13.090",
+            "volume": 131,
+            "market_value_tnd": "392.700",
+            "unrealized_pnl_tnd": "0.750",
+            "unrealized_return_pct": 0.1914
+          },
+          "2026-11-10": {
+            "close": "12.770",
+            "volume": 4499,
+            "market_value_tnd": "383.100",
+            "unrealized_pnl_tnd": "-8.850",
+            "unrealized_return_pct": -2.2579
+          },
+          "2026-11-11": {
+            "close": "12.450",
+            "volume": 405,
+            "market_value_tnd": "373.500",
+            "unrealized_pnl_tnd": "-18.450",
+            "unrealized_return_pct": -4.7072
+          },
+          "2026-11-12": {
+            "close": "12.650",
+            "volume": 1618,
+            "market_value_tnd": "379.500",
+            "unrealized_pnl_tnd": "-12.450",
+            "unrealized_return_pct": -3.1764
+          },
+          "2026-11-13": {
+            "close": "12.600",
+            "volume": 1693,
+            "market_value_tnd": "378.000",
+            "unrealized_pnl_tnd": "-13.950",
+            "unrealized_return_pct": -3.5591
+          },
+          "2026-11-16": {
+            "close": "12.590",
+            "volume": 360,
+            "market_value_tnd": "377.700",
+            "unrealized_pnl_tnd": "-14.250",
+            "unrealized_return_pct": -3.6357
+          },
+          "2026-11-17": {
+            "close": "12.490",
+            "volume": 1264,
+            "market_value_tnd": "374.700",
+            "unrealized_pnl_tnd": "-17.250",
+            "unrealized_return_pct": -4.4011
+          },
+          "2026-11-18": {
+            "close": "12.480",
+            "volume": 236,
+            "market_value_tnd": "374.400",
+            "unrealized_pnl_tnd": "-17.550",
+            "unrealized_return_pct": -4.4776
+          }
+        }
+      },
+      "DELICE_HOLDING": {
+        "qty": 263,
+        "acq_amt_tnd": "5021.990",
+        "nov12_morning_snap_price": "19.000",
+        "nov12_eod_price": "18.800",
+        "nov18_eod_price": "19.480",
+        "nov12_eod_pnl_tnd": "-77.590",
+        "nov18_eod_pnl_tnd": "101.250",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "19.100",
+            "volume": 8320,
+            "market_value_tnd": "5023.300",
+            "unrealized_pnl_tnd": "1.310",
+            "unrealized_return_pct": 0.0261
+          },
+          "2026-11-09": {
+            "close": "19.090",
+            "volume": 16483,
+            "market_value_tnd": "5020.670",
+            "unrealized_pnl_tnd": "-1.320",
+            "unrealized_return_pct": -0.0263
+          },
+          "2026-11-10": {
+            "close": "18.930",
+            "volume": 5323,
+            "market_value_tnd": "4978.590",
+            "unrealized_pnl_tnd": "-43.400",
+            "unrealized_return_pct": -0.8642
+          },
+          "2026-11-11": {
+            "close": "19.000",
+            "volume": 27465,
+            "market_value_tnd": "4997.000",
+            "unrealized_pnl_tnd": "-24.990",
+            "unrealized_return_pct": -0.4976
+          },
+          "2026-11-12": {
+            "close": "18.800",
+            "volume": 31580,
+            "market_value_tnd": "4944.400",
+            "unrealized_pnl_tnd": "-77.590",
+            "unrealized_return_pct": -1.545
+          },
+          "2026-11-13": {
+            "close": "19.450",
+            "volume": 372109,
+            "market_value_tnd": "5115.350",
+            "unrealized_pnl_tnd": "93.360",
+            "unrealized_return_pct": 1.859
+          },
+          "2026-11-16": {
+            "close": "19.390",
+            "volume": 10404,
+            "market_value_tnd": "5099.570",
+            "unrealized_pnl_tnd": "77.580",
+            "unrealized_return_pct": 1.5448
+          },
+          "2026-11-17": {
+            "close": "19.490",
+            "volume": 5437,
+            "market_value_tnd": "5125.870",
+            "unrealized_pnl_tnd": "103.880",
+            "unrealized_return_pct": 2.0685
+          },
+          "2026-11-18": {
+            "close": "19.480",
+            "volume": 5643,
+            "market_value_tnd": "5123.240",
+            "unrealized_pnl_tnd": "101.250",
+            "unrealized_return_pct": 2.0161
+          }
+        }
+      },
+      "EURO-CYCLES": {
+        "qty": 510,
+        "acq_amt_tnd": "4997.360",
+        "nov12_morning_snap_price": "9.850",
+        "nov12_eod_price": "9.990",
+        "nov18_eod_price": "10.160",
+        "nov12_eod_pnl_tnd": "97.540",
+        "nov18_eod_pnl_tnd": "184.240",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "10.180",
+            "volume": 2214,
+            "market_value_tnd": "5191.800",
+            "unrealized_pnl_tnd": "194.440",
+            "unrealized_return_pct": 3.8909
+          },
+          "2026-11-09": {
+            "close": "10.000",
+            "volume": 3056,
+            "market_value_tnd": "5100.000",
+            "unrealized_pnl_tnd": "102.640",
+            "unrealized_return_pct": 2.0539
+          },
+          "2026-11-10": {
+            "close": "9.750",
+            "volume": 14207,
+            "market_value_tnd": "4972.500",
+            "unrealized_pnl_tnd": "-24.860",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-11": {
+            "close": "10.000",
+            "volume": 10899,
+            "market_value_tnd": "5100.000",
+            "unrealized_pnl_tnd": "102.640",
+            "unrealized_return_pct": 2.0539
+          },
+          "2026-11-12": {
+            "close": "9.990",
+            "volume": 757,
+            "market_value_tnd": "5094.900",
+            "unrealized_pnl_tnd": "97.540",
+            "unrealized_return_pct": 1.9518
+          },
+          "2026-11-13": {
+            "close": "10.080",
+            "volume": 5351,
+            "market_value_tnd": "5140.800",
+            "unrealized_pnl_tnd": "143.440",
+            "unrealized_return_pct": 2.8703
+          },
+          "2026-11-16": {
+            "close": "10.050",
+            "volume": 2315,
+            "market_value_tnd": "5125.500",
+            "unrealized_pnl_tnd": "128.140",
+            "unrealized_return_pct": 2.5642
+          },
+          "2026-11-17": {
+            "close": "10.140",
+            "volume": 990,
+            "market_value_tnd": "5171.400",
+            "unrealized_pnl_tnd": "174.040",
+            "unrealized_return_pct": 3.4826
+          },
+          "2026-11-18": {
+            "close": "10.160",
+            "volume": 2206,
+            "market_value_tnd": "5181.600",
+            "unrealized_pnl_tnd": "184.240",
+            "unrealized_return_pct": 3.6867
+          }
+        }
+      },
+      "MPBS": {
+        "qty": 400,
+        "acq_amt_tnd": "4180.800",
+        "nov12_morning_snap_price": "10.600",
+        "nov12_eod_price": "10.670",
+        "nov18_eod_price": "10.690",
+        "nov12_eod_pnl_tnd": "87.200",
+        "nov18_eod_pnl_tnd": "95.200",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "10.650",
+            "volume": 410,
+            "market_value_tnd": "4260.000",
+            "unrealized_pnl_tnd": "79.200",
+            "unrealized_return_pct": 1.8944
+          },
+          "2026-11-09": {
+            "close": "10.350",
+            "volume": 862,
+            "market_value_tnd": "4140.000",
+            "unrealized_pnl_tnd": "-40.800",
+            "unrealized_return_pct": -0.9759
+          },
+          "2026-11-10": {
+            "close": "10.680",
+            "volume": 171,
+            "market_value_tnd": "4272.000",
+            "unrealized_pnl_tnd": "91.200",
+            "unrealized_return_pct": 2.1814
+          },
+          "2026-11-11": {
+            "close": "10.670",
+            "volume": 1475,
+            "market_value_tnd": "4268.000",
+            "unrealized_pnl_tnd": "87.200",
+            "unrealized_return_pct": 2.0857
+          },
+          "2026-11-12": {
+            "close": "10.670",
+            "volume": 312,
+            "market_value_tnd": "4268.000",
+            "unrealized_pnl_tnd": "87.200",
+            "unrealized_return_pct": 2.0857
+          },
+          "2026-11-13": {
+            "close": "10.670",
+            "volume": 345,
+            "market_value_tnd": "4268.000",
+            "unrealized_pnl_tnd": "87.200",
+            "unrealized_return_pct": 2.0857
+          },
+          "2026-11-16": {
+            "close": "10.700",
+            "volume": 11,
+            "market_value_tnd": "4280.000",
+            "unrealized_pnl_tnd": "99.200",
+            "unrealized_return_pct": 2.3728
+          },
+          "2026-11-17": {
+            "close": "10.690",
+            "volume": 1761,
+            "market_value_tnd": "4276.000",
+            "unrealized_pnl_tnd": "95.200",
+            "unrealized_return_pct": 2.2771
+          },
+          "2026-11-18": {
+            "close": "10.690",
+            "volume": 1524,
+            "market_value_tnd": "4276.000",
+            "unrealized_pnl_tnd": "95.200",
+            "unrealized_return_pct": 2.2771
+          }
+        }
+      },
+      "NEW_BODY_LINE": {
+        "qty": 200,
+        "acq_amt_tnd": "492.450",
+        "nov12_morning_snap_price": "2.370",
+        "nov12_eod_price": "2.360",
+        "nov18_eod_price": "2.390",
+        "nov12_eod_pnl_tnd": "-20.450",
+        "nov18_eod_pnl_tnd": "-14.450",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "2.450",
+            "volume": 1214,
+            "market_value_tnd": "490.000",
+            "unrealized_pnl_tnd": "-2.450",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-09": {
+            "close": "2.490",
+            "volume": 792,
+            "market_value_tnd": "498.000",
+            "unrealized_pnl_tnd": "5.550",
+            "unrealized_return_pct": 1.127
+          },
+          "2026-11-10": {
+            "close": "2.400",
+            "volume": 688,
+            "market_value_tnd": "480.000",
+            "unrealized_pnl_tnd": "-12.450",
+            "unrealized_return_pct": -2.5282
+          },
+          "2026-11-11": {
+            "close": "2.400",
+            "volume": 1157,
+            "market_value_tnd": "480.000",
+            "unrealized_pnl_tnd": "-12.450",
+            "unrealized_return_pct": -2.5282
+          },
+          "2026-11-12": {
+            "close": "2.360",
+            "volume": 63,
+            "market_value_tnd": "472.000",
+            "unrealized_pnl_tnd": "-20.450",
+            "unrealized_return_pct": -4.1527
+          },
+          "2026-11-13": {
+            "close": "2.360",
+            "volume": 3597,
+            "market_value_tnd": "472.000",
+            "unrealized_pnl_tnd": "-20.450",
+            "unrealized_return_pct": -4.1527
+          },
+          "2026-11-16": {
+            "close": "2.360",
+            "volume": 582,
+            "market_value_tnd": "472.000",
+            "unrealized_pnl_tnd": "-20.450",
+            "unrealized_return_pct": -4.1527
+          },
+          "2026-11-17": {
+            "close": "2.390",
+            "volume": 4540,
+            "market_value_tnd": "478.000",
+            "unrealized_pnl_tnd": "-14.450",
+            "unrealized_return_pct": -2.9343
+          },
+          "2026-11-18": {
+            "close": "2.390",
+            "volume": 1229,
+            "market_value_tnd": "478.000",
+            "unrealized_pnl_tnd": "-14.450",
+            "unrealized_return_pct": -2.9343
+          }
+        }
+      },
+      "SMART_TUNISIE": {
+        "qty": 62,
+        "acq_amt_tnd": "1993.920",
+        "nov12_morning_snap_price": "32.000",
+        "nov12_eod_price": "31.990",
+        "nov18_eod_price": "31.700",
+        "nov12_eod_pnl_tnd": "-10.540",
+        "nov18_eod_pnl_tnd": "-28.520",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "31.990",
+            "volume": 192,
+            "market_value_tnd": "1983.380",
+            "unrealized_pnl_tnd": "-10.540",
+            "unrealized_return_pct": -0.5286
+          },
+          "2026-11-09": {
+            "close": "32.000",
+            "volume": 424,
+            "market_value_tnd": "1984.000",
+            "unrealized_pnl_tnd": "-9.920",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-10": {
+            "close": "32.000",
+            "volume": 655,
+            "market_value_tnd": "1984.000",
+            "unrealized_pnl_tnd": "-9.920",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-11": {
+            "close": "32.000",
+            "volume": 22318,
+            "market_value_tnd": "1984.000",
+            "unrealized_pnl_tnd": "-9.920",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-12": {
+            "close": "31.990",
+            "volume": 123,
+            "market_value_tnd": "1983.380",
+            "unrealized_pnl_tnd": "-10.540",
+            "unrealized_return_pct": -0.5286
+          },
+          "2026-11-13": {
+            "close": "31.990",
+            "volume": 552,
+            "market_value_tnd": "1983.380",
+            "unrealized_pnl_tnd": "-10.540",
+            "unrealized_return_pct": -0.5286
+          },
+          "2026-11-16": {
+            "close": "31.940",
+            "volume": 13,
+            "market_value_tnd": "1980.280",
+            "unrealized_pnl_tnd": "-13.640",
+            "unrealized_return_pct": -0.6841
+          },
+          "2026-11-17": {
+            "close": "31.930",
+            "volume": 2141,
+            "market_value_tnd": "1979.660",
+            "unrealized_pnl_tnd": "-14.260",
+            "unrealized_return_pct": -0.7152
+          },
+          "2026-11-18": {
+            "close": "31.700",
+            "volume": 293,
+            "market_value_tnd": "1965.400",
+            "unrealized_pnl_tnd": "-28.520",
+            "unrealized_return_pct": -1.4303
+          }
+        }
+      },
+      "STA": {
+        "qty": 22,
+        "acq_amt_tnd": "2542.650",
+        "nov12_morning_snap_price": "115.000",
+        "nov12_eod_price": "115.000",
+        "nov18_eod_price": "114.500",
+        "nov12_eod_pnl_tnd": "-12.650",
+        "nov18_eod_pnl_tnd": "-23.650",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "115.900",
+            "volume": 7,
+            "market_value_tnd": "2549.800",
+            "unrealized_pnl_tnd": "7.150",
+            "unrealized_return_pct": 0.2812
+          },
+          "2026-11-09": {
+            "close": "114.900",
+            "volume": 320,
+            "market_value_tnd": "2527.800",
+            "unrealized_pnl_tnd": "-14.850",
+            "unrealized_return_pct": -0.584
+          },
+          "2026-11-10": {
+            "close": "114.500",
+            "volume": 911,
+            "market_value_tnd": "2519.000",
+            "unrealized_pnl_tnd": "-23.650",
+            "unrealized_return_pct": -0.9301
+          },
+          "2026-11-11": {
+            "close": "114.500",
+            "volume": 451,
+            "market_value_tnd": "2519.000",
+            "unrealized_pnl_tnd": "-23.650",
+            "unrealized_return_pct": -0.9301
+          },
+          "2026-11-12": {
+            "close": "115.000",
+            "volume": 368,
+            "market_value_tnd": "2530.000",
+            "unrealized_pnl_tnd": "-12.650",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-13": {
+            "close": "115.000",
+            "volume": 0,
+            "market_value_tnd": "2530.000",
+            "unrealized_pnl_tnd": "-12.650",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-16": {
+            "close": "115.000",
+            "volume": 0,
+            "market_value_tnd": "2530.000",
+            "unrealized_pnl_tnd": "-12.650",
+            "unrealized_return_pct": -0.4975
+          },
+          "2026-11-17": {
+            "close": "114.000",
+            "volume": 218,
+            "market_value_tnd": "2508.000",
+            "unrealized_pnl_tnd": "-34.650",
+            "unrealized_return_pct": -1.3628
+          },
+          "2026-11-18": {
+            "close": "114.500",
+            "volume": 1394,
+            "market_value_tnd": "2519.000",
+            "unrealized_pnl_tnd": "-23.650",
+            "unrealized_return_pct": -0.9301
+          }
+        }
+      },
+      "UIB": {
+        "qty": 24,
+        "acq_amt_tnd": "876.520",
+        "nov12_morning_snap_price": "36.800",
+        "nov12_eod_price": "36.100",
+        "nov18_eod_price": "36.000",
+        "nov12_eod_pnl_tnd": "-10.120",
+        "nov18_eod_pnl_tnd": "-12.520",
+        "trajectory": {
+          "2026-11-06": {
+            "close": "36.390",
+            "volume": 2828,
+            "market_value_tnd": "873.360",
+            "unrealized_pnl_tnd": "-3.160",
+            "unrealized_return_pct": -0.3605
+          },
+          "2026-11-09": {
+            "close": "36.300",
+            "volume": 207,
+            "market_value_tnd": "871.200",
+            "unrealized_pnl_tnd": "-5.320",
+            "unrealized_return_pct": -0.6069
+          },
+          "2026-11-10": {
+            "close": "36.000",
+            "volume": 3346,
+            "market_value_tnd": "864.000",
+            "unrealized_pnl_tnd": "-12.520",
+            "unrealized_return_pct": -1.4284
+          },
+          "2026-11-11": {
+            "close": "36.800",
+            "volume": 3056,
+            "market_value_tnd": "883.200",
+            "unrealized_pnl_tnd": "6.680",
+            "unrealized_return_pct": 0.7621
+          },
+          "2026-11-12": {
+            "close": "36.100",
+            "volume": 1095,
+            "market_value_tnd": "866.400",
+            "unrealized_pnl_tnd": "-10.120",
+            "unrealized_return_pct": -1.1546
+          },
+          "2026-11-13": {
+            "close": "36.100",
+            "volume": 1946,
+            "market_value_tnd": "866.400",
+            "unrealized_pnl_tnd": "-10.120",
+            "unrealized_return_pct": -1.1546
+          },
+          "2026-11-16": {
+            "close": "36.200",
+            "volume": 5054,
+            "market_value_tnd": "868.800",
+            "unrealized_pnl_tnd": "-7.720",
+            "unrealized_return_pct": -0.8808
+          },
+          "2026-11-17": {
+            "close": "36.000",
+            "volume": 1426,
+            "market_value_tnd": "864.000",
+            "unrealized_pnl_tnd": "-12.520",
+            "unrealized_return_pct": -1.4284
+          },
+          "2026-11-18": {
+            "close": "36.000",
+            "volume": 1795,
+            "market_value_tnd": "864.000",
+            "unrealized_pnl_tnd": "-12.520",
+            "unrealized_return_pct": -1.4284
+          }
+        }
+      }
+    },
+    "confirmed_portfolio_static_from_nov12_mtm": [
+      {
+        "session_date": "2026-11-12",
+        "holdings_mv_tnd": "20538.580",
+        "cash_tnd": "29574.190",
+        "total_equity_tnd": "50112.770",
+        "return_vs_50k_pct": 0.2255,
+        "liquidated_equity_tnd": "50010.077",
+        "liquidated_return_vs_50k_pct": 0.0202,
+        "open_unrealized_pnl_tnd": "40.940"
+      },
+      {
+        "session_date": "2026-11-13",
+        "holdings_mv_tnd": "20753.930",
+        "cash_tnd": "29574.190",
+        "total_equity_tnd": "50328.120",
+        "return_vs_50k_pct": 0.6562,
+        "liquidated_equity_tnd": "50224.350",
+        "liquidated_return_vs_50k_pct": 0.4487,
+        "open_unrealized_pnl_tnd": "256.290"
+      },
+      {
+        "session_date": "2026-11-16",
+        "holdings_mv_tnd": "20733.850",
+        "cash_tnd": "29574.190",
+        "total_equity_tnd": "50308.040",
+        "return_vs_50k_pct": 0.6161,
+        "liquidated_equity_tnd": "50204.371",
+        "liquidated_return_vs_50k_pct": 0.4087,
+        "open_unrealized_pnl_tnd": "236.210"
+      },
+      {
+        "session_date": "2026-11-17",
+        "holdings_mv_tnd": "20777.630",
+        "cash_tnd": "29574.190",
+        "total_equity_tnd": "50351.820",
+        "return_vs_50k_pct": 0.7036,
+        "liquidated_equity_tnd": "50247.932",
+        "liquidated_return_vs_50k_pct": 0.4959,
+        "open_unrealized_pnl_tnd": "279.990"
+      },
+      {
+        "session_date": "2026-11-18",
+        "holdings_mv_tnd": "20781.640",
+        "cash_tnd": "29574.190",
+        "total_equity_tnd": "50355.830",
+        "return_vs_50k_pct": 0.7117,
+        "liquidated_equity_tnd": "50251.922",
+        "liquidated_return_vs_50k_pct": 0.5038,
+        "open_unrealized_pnl_tnd": "284.000"
+      }
+    ],
+    "stale_ledger_6_holdings_static_mtm": [
+      {
+        "session_date": "2026-11-12",
+        "holdings_mv_tnd": "11175.680",
+        "cash_tnd": "38752.350",
+        "total_equity_tnd": "49928.030",
+        "return_vs_50k_pct": -0.1439
+      },
+      {
+        "session_date": "2026-11-13",
+        "holdings_mv_tnd": "11345.130",
+        "cash_tnd": "38752.350",
+        "total_equity_tnd": "50097.480",
+        "return_vs_50k_pct": 0.195
+      },
+      {
+        "session_date": "2026-11-16",
+        "holdings_mv_tnd": "11328.350",
+        "cash_tnd": "38752.350",
+        "total_equity_tnd": "50080.700",
+        "return_vs_50k_pct": 0.1614
+      },
+      {
+        "session_date": "2026-11-17",
+        "holdings_mv_tnd": "11330.230",
+        "cash_tnd": "38752.350",
+        "total_equity_tnd": "50082.580",
+        "return_vs_50k_pct": 0.1652
+      },
+      {
+        "session_date": "2026-11-18",
+        "holdings_mv_tnd": "11324.040",
+        "cash_tnd": "38752.350",
+        "total_equity_tnd": "50076.390",
+        "return_vs_50k_pct": 0.1528
+      }
+    ],
+    "unverified_user_screenshot": {
+      "provenance_tag": "UNVERIFIED_USER_SCREENSHOT",
+      "reported_equity_tnd": "50647.64",
+      "reported_return_pct": "+1.30%",
+      "computed_return_pct": 1.2953,
+      "reported_rank": "111 / 14541",
+      "reported_holdings_count": 9,
+      "reported_new_holding": "AMEN_BANK 45 sh",
+      "amen_bank_nov12_nov18_prices": {
+        "2026-11-12": {
+          "close": "92.750",
+          "mv_45sh": "4173.750"
+        },
+        "2026-11-13": {
+          "close": "93.000",
+          "mv_45sh": "4185.000"
+        },
+        "2026-11-16": {
+          "close": "93.000",
+          "mv_45sh": "4185.000"
+        },
+        "2026-11-17": {
+          "close": "93.000",
+          "mv_45sh": "4185.000"
+        },
+        "2026-11-18": {
+          "close": "93.000",
+          "mv_45sh": "4185.000"
+        }
+      },
+      "reported_open_gains_sum_tnd": "411.96",
+      "reported_total_gain_tnd": "647.64",
+      "unexplained_realized_fee_valuation_gap_tnd": "235.68",
+      "known_nov9_realized_gain_tnd": "71.82",
+      "residual_unexplained_after_nov9_tnd": "163.86"
+    }
+  },
+  "benchmark_comparisons": {
+    "Nov7_to_Nov12": {
+      "cash_baseline_pct": 0.0,
+      "tunindex": "UNAVAILABLE (no point-in-time TUNINDEX CSV exists in local archive)",
+      "ew_challenge_42_eod_nov06_gross": {
+        "count_included": 42,
+        "count_missing": 0,
+        "gross_or_net": "gross_no_fees",
+        "return_pct": 0.126,
+        "median_stock_return_pct": -0.1164
+      },
+      "ew_challenge_42_open_nov09_net": {
+        "count_included": 42,
+        "count_missing": 0,
+        "gross_or_net": "net_0.5pct_each_way",
+        "return_pct": -0.9939,
+        "median_stock_return_pct": -1.1162
+      },
+      "ew_full_bvmt_75_isin_eod_nov06_gross": {
+        "count_included": 75,
+        "count_missing": 0,
+        "gross_or_net": "gross_no_fees",
+        "return_pct": -0.1287,
+        "median_stock_return_pct": 0.0
+      },
+      "ew_full_bvmt_75_isin_open_nov09_net": {
+        "count_included": 75,
+        "count_missing": 0,
+        "gross_or_net": "net_0.5pct_each_way",
+        "return_pct": -1.0853,
+        "median_stock_return_pct": -0.995
+      },
+      "simple_mom20_challenge_top5_unfiltered": {
+        "picks": [
+          {
+            "id": "CITY_CARS",
+            "mom20_pct": 10.54,
+            "shares": 215,
+            "entry_open": "20.240",
+            "end_close": "20.950",
+            "mv_end_tnd": "4504.250",
+            "liq_end_tnd": "4481.729"
+          },
+          {
+            "id": "TELNET_HOLDING",
+            "mom20_pct": 9.03,
+            "shares": 404,
+            "entry_open": "12.300",
+            "end_close": "11.700",
+            "mv_end_tnd": "4726.800",
+            "liq_end_tnd": "4703.166"
+          },
+          {
+            "id": "MPBS",
+            "mom20_pct": 7.58,
+            "shares": 86,
+            "entry_open": "10.780",
+            "end_close": "10.670",
+            "mv_end_tnd": "917.620",
+            "liq_end_tnd": "913.032"
+          },
+          {
+            "id": "STA",
+            "mom20_pct": 5.84,
+            "shares": 32,
+            "entry_open": "115.000",
+            "end_close": "115.000",
+            "mv_end_tnd": "3680.000",
+            "liq_end_tnd": "3661.600"
+          },
+          {
+            "id": "ONE_TECH_HOLDING",
+            "mom20_pct": 4.79,
+            "shares": 463,
+            "entry_open": "10.730",
+            "end_close": "10.970",
+            "mv_end_tnd": "5079.110",
+            "liq_end_tnd": "5053.714"
+          }
+        ],
+        "cash_remaining_tnd": "31009.651",
+        "equity_mtm_tnd": "49917.431",
+        "return_mtm_pct": -0.1651,
+        "equity_liq_tnd": "49822.892",
+        "return_liq_pct": -0.3542
+      },
+      "simple_mom20_challenge_top5_liq5k": {
+        "picks": [
+          {
+            "id": "CITY_CARS",
+            "mom20_pct": 10.54,
+            "shares": 215,
+            "entry_open": "20.240",
+            "end_close": "20.950",
+            "mv_end_tnd": "4504.250",
+            "liq_end_tnd": "4481.729"
+          },
+          {
+            "id": "TELNET_HOLDING",
+            "mom20_pct": 9.03,
+            "shares": 404,
+            "entry_open": "12.300",
+            "end_close": "11.700",
+            "mv_end_tnd": "4726.800",
+            "liq_end_tnd": "4703.166"
+          },
+          {
+            "id": "MPBS",
+            "mom20_pct": 7.58,
+            "shares": 86,
+            "entry_open": "10.780",
+            "end_close": "10.670",
+            "mv_end_tnd": "917.620",
+            "liq_end_tnd": "913.032"
+          },
+          {
+            "id": "STA",
+            "mom20_pct": 5.84,
+            "shares": 32,
+            "entry_open": "115.000",
+            "end_close": "115.000",
+            "mv_end_tnd": "3680.000",
+            "liq_end_tnd": "3661.600"
+          },
+          {
+            "id": "ONE_TECH_HOLDING",
+            "mom20_pct": 4.79,
+            "shares": 463,
+            "entry_open": "10.730",
+            "end_close": "10.970",
+            "mv_end_tnd": "5079.110",
+            "liq_end_tnd": "5053.714"
+          }
+        ],
+        "cash_remaining_tnd": "31009.651",
+        "equity_mtm_tnd": "49917.431",
+        "return_mtm_pct": -0.1651,
+        "equity_liq_tnd": "49822.892",
+        "return_liq_pct": -0.3542
+      },
+      "simple_mom20_full_top5_liq5k": {
+        "picks": [
+          {
+            "id": "CITY_CARS",
+            "mom20_pct": 10.54,
+            "shares": 215,
+            "entry_open": "20.240",
+            "end_close": "20.950",
+            "mv_end_tnd": "4504.250",
+            "liq_end_tnd": "4481.729"
+          },
+          {
+            "id": "TELNET_HOLDING",
+            "mom20_pct": 9.03,
+            "shares": 404,
+            "entry_open": "12.300",
+            "end_close": "11.700",
+            "mv_end_tnd": "4726.800",
+            "liq_end_tnd": "4703.166"
+          },
+          {
+            "id": "MONOPRIX",
+            "mom20_pct": 8.76,
+            "shares": 30,
+            "entry_open": "12.200",
+            "end_close": "11.840",
+            "mv_end_tnd": "355.200",
+            "liq_end_tnd": "353.424"
+          },
+          {
+            "id": "ESSOUKNA",
+            "mom20_pct": 8.41,
+            "shares": 897,
+            "entry_open": "4.680",
+            "end_close": "5.000",
+            "mv_end_tnd": "4485.000",
+            "liq_end_tnd": "4462.575"
+          },
+          {
+            "id": "MPBS",
+            "mom20_pct": 7.58,
+            "shares": 86,
+            "entry_open": "10.780",
+            "end_close": "10.670",
+            "mv_end_tnd": "917.620",
+            "liq_end_tnd": "913.032"
+          }
+        ],
+        "cash_remaining_tnd": "35114.101",
+        "equity_mtm_tnd": "50102.971",
+        "return_mtm_pct": 0.2059,
+        "equity_liq_tnd": "50028.027",
+        "return_liq_pct": 0.0561
+      },
+      "buy_and_hold_nov7_initial": {
+        "equity_tnd": "49987.550",
+        "return_vs_50k_pct": -0.0249
+      },
+      "buy_and_hold_nov9_0913_holdings": {
+        "equity_tnd": "49909.970",
+        "return_vs_50k_pct": -0.1801
+      },
+      "buy_and_hold_nov9_1440_holdings": {
+        "equity_tnd": "49948.690",
+        "return_vs_50k_pct": -0.1026
+      },
+      "actual_confirmed_nov12_morning_snap": {
+        "equity_tnd": "50093.190",
+        "return_vs_50k_pct": 0.1864,
+        "return_vs_nov7_snap_pct": 0.1849
+      },
+      "actual_confirmed_nov12_eod_mtm": {
+        "session_date": "2026-11-12",
+        "holdings_mv_tnd": "20538.580",
+        "cash_tnd": "29574.190",
+        "total_equity_tnd": "50112.770",
+        "return_vs_50k_pct": 0.2255,
+        "liquidated_equity_tnd": "50010.077",
+        "liquidated_return_vs_50k_pct": 0.0202,
+        "open_unrealized_pnl_tnd": "40.940"
+      }
+    },
+    "Nov7_to_Nov18": {
+      "cash_baseline_pct": 0.0,
+      "tunindex": "UNAVAILABLE (no point-in-time TUNINDEX CSV exists in local archive)",
+      "ew_challenge_42_eod_nov06_gross": {
+        "count_included": 42,
+        "count_missing": 0,
+        "gross_or_net": "gross_no_fees",
+        "return_pct": 1.1185,
+        "median_stock_return_pct": 0.0885
+      },
+      "ew_challenge_42_open_nov09_net": {
+        "count_included": 42,
+        "count_missing": 0,
+        "gross_or_net": "net_0.5pct_each_way",
+        "return_pct": -0.013,
+        "median_stock_return_pct": -0.7667
+      },
+      "ew_full_bvmt_75_isin_eod_nov06_gross": {
+        "count_included": 75,
+        "count_missing": 0,
+        "gross_or_net": "gross_no_fees",
+        "return_pct": 0.8831,
+        "median_stock_return_pct": 0.0
+      },
+      "ew_full_bvmt_75_isin_open_nov09_net": {
+        "count_included": 75,
+        "count_missing": 0,
+        "gross_or_net": "net_0.5pct_each_way",
+        "return_pct": -0.0791,
+        "median_stock_return_pct": -0.995
+      },
+      "simple_mom20_challenge_top5_unfiltered": {
+        "picks": [
+          {
+            "id": "CITY_CARS",
+            "mom20_pct": 10.54,
+            "shares": 215,
+            "entry_open": "20.240",
+            "end_close": "20.700",
+            "mv_end_tnd": "4450.500",
+            "liq_end_tnd": "4428.248"
+          },
+          {
+            "id": "TELNET_HOLDING",
+            "mom20_pct": 9.03,
+            "shares": 404,
+            "entry_open": "12.300",
+            "end_close": "12.380",
+            "mv_end_tnd": "5001.520",
+            "liq_end_tnd": "4976.512"
+          },
+          {
+            "id": "MPBS",
+            "mom20_pct": 7.58,
+            "shares": 86,
+            "entry_open": "10.780",
+            "end_close": "10.690",
+            "mv_end_tnd": "919.340",
+            "liq_end_tnd": "914.743"
+          },
+          {
+            "id": "STA",
+            "mom20_pct": 5.84,
+            "shares": 32,
+            "entry_open": "115.000",
+            "end_close": "114.500",
+            "mv_end_tnd": "3664.000",
+            "liq_end_tnd": "3645.680"
+          },
+          {
+            "id": "ONE_TECH_HOLDING",
+            "mom20_pct": 4.79,
+            "shares": 463,
+            "entry_open": "10.730",
+            "end_close": "11.200",
+            "mv_end_tnd": "5185.600",
+            "liq_end_tnd": "5159.672"
+          }
+        ],
+        "cash_remaining_tnd": "31009.651",
+        "equity_mtm_tnd": "50230.611",
+        "return_mtm_pct": 0.4612,
+        "equity_liq_tnd": "50134.506",
+        "return_liq_pct": 0.269
+      },
+      "simple_mom20_challenge_top5_liq5k": {
+        "picks": [
+          {
+            "id": "CITY_CARS",
+            "mom20_pct": 10.54,
+            "shares": 215,
+            "entry_open": "20.240",
+            "end_close": "20.700",
+            "mv_end_tnd": "4450.500",
+            "liq_end_tnd": "4428.248"
+          },
+          {
+            "id": "TELNET_HOLDING",
+            "mom20_pct": 9.03,
+            "shares": 404,
+            "entry_open": "12.300",
+            "end_close": "12.380",
+            "mv_end_tnd": "5001.520",
+            "liq_end_tnd": "4976.512"
+          },
+          {
+            "id": "MPBS",
+            "mom20_pct": 7.58,
+            "shares": 86,
+            "entry_open": "10.780",
+            "end_close": "10.690",
+            "mv_end_tnd": "919.340",
+            "liq_end_tnd": "914.743"
+          },
+          {
+            "id": "STA",
+            "mom20_pct": 5.84,
+            "shares": 32,
+            "entry_open": "115.000",
+            "end_close": "114.500",
+            "mv_end_tnd": "3664.000",
+            "liq_end_tnd": "3645.680"
+          },
+          {
+            "id": "ONE_TECH_HOLDING",
+            "mom20_pct": 4.79,
+            "shares": 463,
+            "entry_open": "10.730",
+            "end_close": "11.200",
+            "mv_end_tnd": "5185.600",
+            "liq_end_tnd": "5159.672"
+          }
+        ],
+        "cash_remaining_tnd": "31009.651",
+        "equity_mtm_tnd": "50230.611",
+        "return_mtm_pct": 0.4612,
+        "equity_liq_tnd": "50134.506",
+        "return_liq_pct": 0.269
+      },
+      "simple_mom20_full_top5_liq5k": {
+        "picks": [
+          {
+            "id": "CITY_CARS",
+            "mom20_pct": 10.54,
+            "shares": 215,
+            "entry_open": "20.240",
+            "end_close": "20.700",
+            "mv_end_tnd": "4450.500",
+            "liq_end_tnd": "4428.248"
+          },
+          {
+            "id": "TELNET_HOLDING",
+            "mom20_pct": 9.03,
+            "shares": 404,
+            "entry_open": "12.300",
+            "end_close": "12.380",
+            "mv_end_tnd": "5001.520",
+            "liq_end_tnd": "4976.512"
+          },
+          {
+            "id": "MONOPRIX",
+            "mom20_pct": 8.76,
+            "shares": 30,
+            "entry_open": "12.200",
+            "end_close": "11.990",
+            "mv_end_tnd": "359.700",
+            "liq_end_tnd": "357.902"
+          },
+          {
+            "id": "ESSOUKNA",
+            "mom20_pct": 8.41,
+            "shares": 897,
+            "entry_open": "4.680",
+            "end_close": "5.050",
+            "mv_end_tnd": "4529.850",
+            "liq_end_tnd": "4507.201"
+          },
+          {
+            "id": "MPBS",
+            "mom20_pct": 7.58,
+            "shares": 86,
+            "entry_open": "10.780",
+            "end_close": "10.690",
+            "mv_end_tnd": "919.340",
+            "liq_end_tnd": "914.743"
+          }
+        ],
+        "cash_remaining_tnd": "35114.101",
+        "equity_mtm_tnd": "50375.011",
+        "return_mtm_pct": 0.75,
+        "equity_liq_tnd": "50298.707",
+        "return_liq_pct": 0.5974
+      },
+      "buy_and_hold_nov7_initial": {
+        "equity_tnd": "49982.450",
+        "return_vs_50k_pct": -0.0351
+      },
+      "buy_and_hold_nov9_0913_holdings": {
+        "equity_tnd": "50083.710",
+        "return_vs_50k_pct": 0.1674
+      },
+      "buy_and_hold_nov9_1440_holdings": {
+        "equity_tnd": "50117.430",
+        "return_vs_50k_pct": 0.2349
+      },
+      "actual_confirmed_nov12_static_through_nov18_eod": {
+        "session_date": "2026-11-18",
+        "holdings_mv_tnd": "20781.640",
+        "cash_tnd": "29574.190",
+        "total_equity_tnd": "50355.830",
+        "return_vs_50k_pct": 0.7117,
+        "liquidated_equity_tnd": "50251.922",
+        "liquidated_return_vs_50k_pct": 0.5038,
+        "open_unrealized_pnl_tnd": "284.000"
+      },
+      "unverified_user_screenshot": {
+        "status": "UNVERIFIED_USER_SCREENSHOT",
+        "equity_tnd": "50647.64",
+        "return_vs_50k_pct": 1.2953,
+        "displayed_return_pct": "+1.30%",
+        "rank": "111 / 14541"
+      }
+    }
+  }
+}

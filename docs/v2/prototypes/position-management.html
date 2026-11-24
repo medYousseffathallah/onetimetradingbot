@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Position Management: EURO-CYCLES — BVMT Trading Intelligence V2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="drawer-backdrop" data-close-nav></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary V2 Navigation">
+      <div class="brand">
+        <div class="brand-mark">BV</div>
+        <div>
+          <div class="brand-title">BVMT Terminal V2</div>
+          <div class="brand-sub">Manual Research &amp; Risk</div>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Portfolio &amp; Supervision</div>
+        <a class="nav-link" href="overview.html">1. Investment Overview</a>
+        <a class="nav-link" href="portfolio.html">2. Portfolio Manager</a>
+        <a class="nav-link active" href="position-management.html">6. Position Management</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Research &amp; Decisions</div>
+        <a class="nav-link muted-route" href="overview.html#discovery-note">3. Opportunity Discovery <span class="nav-tag">Spec</span></a>
+        <a class="nav-link" href="stock-research.html">4. Stock Research</a>
+        <a class="nav-link muted-route" href="overview.html#decision-note">5. Decision Workspace <span class="nav-tag">Spec</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Evaluation &amp; Integrity</div>
+        <a class="nav-link" href="attribution.html">7. Performance &amp; Attribution</a>
+        <a class="nav-link muted-route" href="attribution.html#benchmarks">8. Research Lab <span class="nav-tag">Spec</span></a>
+        <a class="nav-link muted-route" href="overview.html#health-note">9. Data &amp; Account Health <span class="nav-tag">72</span></a>
+      </div>
+
+      <div class="sidebar-foot">
+        <strong>Decoupled Gate Policy</strong><br>
+        Monitoring alerts never override execution blockers. Zero auto-sell.
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" type="button" data-toggle-nav>Menu</button>
+          <div class="breadcrumb">BVMT V2 / <strong>6. Position Management</strong> / EURO-CYCLES</div>
+        </div>
+        <div class="topbar-meta">
+          <span class="context-chip">Cutoff: <strong class="num">2026-11-18 EOD</strong> (Not Live)</span>
+          <span class="pill pill-blocked">EXECUTION_BLOCKED</span>
+          <select class="mode-select" aria-label="Workspace mode" data-mode-select>
+            <option value="REAL_COMPETITION">REAL_COMPETITION</option>
+            <option value="SYNTHETIC_DEMO">SYNTHETIC_DEMO</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="sandbox-ribbon">
+        <strong>SYNTHETIC DEMO MODE</strong> — Illustrative sandbox only.
+      </div>
+
+      <main class="main-content">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">GET /api/v2/positions/EURO-CYCLES?mode=REAL_COMPETITION</div>
+            <h1>Position Management: EURO-CYCLES</h1>
+            <p class="page-subtitle">ISIN <code>TN0007570013</code> &middot; Held lot from Nov 12 capture (510 shares @ 9.799 TND avg cost).</p>
+          </div>
+          <div class="header-actions">
+            <span class="pill pill-review">Monitoring: REVIEW</span>
+            <span class="pill pill-blocked">Gate: EXECUTION_BLOCKED</span>
+          </div>
+        </div>
+
+        <!-- Position KPI Strip -->
+        <section class="grid-4">
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Capture Quantity</span>
+              <span class="pill pill-unverified">NOV 12 CAPTURE</span>
+            </div>
+            <div class="kpi-value">510<small>SHARES</small></div>
+            <div class="kpi-meta">Confirmed Nov 10 ledger shows <strong class="num">0</strong> shares</div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">EOD Mark Value</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kpi-value">5,181.600<small>TND</small></div>
+            <div class="kpi-meta">510 &times; 10.160 TND (Nov 18 EOD close)</div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Unrealized Gain</span>
+              <span class="pill pill-calculated">CALCULATED</span>
+            </div>
+            <div class="kpi-value text-pos">+184.240<small>TND</small></div>
+            <div class="kpi-meta">+3.69% vs 4,997.360 TND cost basis</div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Portfolio Weight</span>
+              <span class="pill pill-trim">CAP BREACH</span>
+            </div>
+            <div class="kpi-value text-warn">10.29%</div>
+            <div class="kpi-meta">Exceeds 10.00% single-stock cap (+146.02 TND)</div>
+          </article>
+        </section>
+
+        <!-- Strict Separation: Monitoring State vs Execution State -->
+        <section class="grid-2">
+          <div class="card card-pad">
+            <div class="kpi-top" style="margin-bottom:10px;">
+              <span class="kpi-label">Monitoring Verdict (<code>monitoring_state</code>)</span>
+              <span class="pill pill-trim">REVIEW / CONSIDER_TRIM</span>
+            </div>
+            <p style="margin:0 0 10px; color:var(--text-secondary);">
+              Position warrants active review and potential trim sizing in simulation due to three risk triggers:
+            </p>
+            <div class="evidence-list">
+              <div class="evidence-item contradicting">
+                <strong>1. Concentration Breach (10.29% &gt; 10.00%)</strong><br>
+                Mark-to-market appreciation pushed weight 29 bps above the 10% cap; trims of &ge;15 shares restore compliance.
+              </div>
+              <div class="evidence-item contradicting">
+                <strong>2. Medium-Term Downtrend (-16.65% 60s)</strong><br>
+                Recent +1.60% 5s bounce sits below trailing 60-session levels; 20s daily vol is 1.55%.
+              </div>
+              <div class="evidence-item missing">
+                <strong>3. Liquidity Exit Horizon (2.38 Sessions)</strong><br>
+                510 shares = 2.38&times; the 10% median daily volume cap (214 shares/session).
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-pad" style="border-color:var(--neg-border);">
+            <div class="kpi-top" style="margin-bottom:10px;">
+              <span class="kpi-label">Execution Gate (<code>execution_state</code>)</span>
+              <span class="pill pill-blocked">EXECUTION_BLOCKED</span>
+            </div>
+            <p style="margin:0 0 10px; color:var(--text-secondary);">
+              Even if you choose to trim, deterministic planning clearance is currently <strong>BLOCKED</strong> by 3 unresolved system blockers:
+            </p>
+            <div class="evidence-list">
+              <div class="evidence-item" style="border-left:3px solid #991B1B;">
+                <strong>Blocker 1 — Account Reconciliation Conflict</strong><br>
+                Confirmed ledger (<code>browser_sync_20261110_110702</code>) shows 0 EURO-CYCLES shares; movements history not imported.
+              </div>
+              <div class="evidence-item" style="border-left:3px solid #991B1B;">
+                <strong>Blocker 2 — Executable Quote Unavailable</strong><br>
+                Latest price is <code>2026-11-18</code> EOD close (<code>10.160</code>). No live bid/ask exists in EOD-only mode.
+              </div>
+              <div class="evidence-item" style="border-left:3px solid #991B1B;">
+                <strong>Blocker 3 — Competition Rules Unverified</strong><br>
+                <code>configs/competition.json</code> retains 72 unresolved evidence checks across 15 rule categories.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Interactive Scenarios: Protection Scenario + Manual Partial Sale Calculator -->
+        <section class="grid-2">
+          <!-- Left: Protection Scenario -->
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Downside Protection Scenario</h2>
+                <div class="card-sub"><code>POST /api/v2/positions/protection-scenario</code></div>
+              </div>
+              <span class="pill pill-simulated">SIMULATED</span>
+            </div>
+            <div class="card-pad">
+              <div class="calc-group">
+                <label class="calc-label" for="stress-price">Stress / Stop Reference Price (TND — User Input)</label>
+                <input class="calc-input" id="stress-price" type="number" step="0.01" min="1" value="9.60">
+                <div class="calc-presets">
+                  <button class="preset-btn" type="button" data-stress="9.75">Nov 10 Low (9.750)</button>
+                  <button class="preset-btn" type="button" data-stress="9.60">2&times; Daily Vol (9.600)</button>
+                  <button class="preset-btn" type="button" data-stress="9.15">-10% Stress (9.150)</button>
+                </div>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Stressed Market Value (510 sh)</span>
+                <span class="kv-val num" id="prot-val">4,896.000 TND</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Net Proceeds After 0.50% Fee</span>
+                <span class="kv-val num" id="prot-net">4,871.520 TND</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Drawdown vs Nov 18 EOD (5,181.600)</span>
+                <span class="kv-val num text-neg" id="prot-dd">-310.080 TND</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">P&amp;L vs Cost Basis (4,997.360)</span>
+                <span class="kv-val num text-neg" id="prot-pnl">-125.840 TND</span>
+              </div>
+              <div class="muted-box" style="margin-top:10px;">
+                <strong>Next Review Trigger:</strong> Re-evaluate if EOD close breaks below <strong class="num">9.750 TND</strong> or if <code>ext_1794476128406</code> movements reconcile.
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Manual Partial Sale Calculator Mock -->
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Manual Partial Sale Calculator</h2>
+                <div class="card-sub"><code>POST /api/v2/positions/sell-scenario</code> &middot; <code>is_executed=False</code></div>
+              </div>
+              <span class="pill pill-simulated">SCENARIO ONLY</span>
+            </div>
+            <div class="card-pad">
+              <div class="calc-group">
+                <label class="calc-label" for="sell-qty">Shares to Trim (Available: 510 unconfirmed)</label>
+                <input class="calc-input" id="sell-qty" type="number" step="1" min="1" max="510" value="100">
+                <div class="calc-presets">
+                  <button class="preset-btn" type="button" data-sell="25">25 sh (Restore &lt;10%)</button>
+                  <button class="preset-btn" type="button" data-sell="100">100 sh (Trim ~20%)</button>
+                  <button class="preset-btn" type="button" data-sell="214">214 sh (10% ADV Cap)</button>
+                </div>
+              </div>
+              <div class="calc-group">
+                <label class="calc-label" for="sell-limit">User Limit Price (TND — Reference EOD: 10.160)</label>
+                <input class="calc-input" id="sell-limit" type="number" step="0.01" min="1" value="10.16">
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Gross Notional</span>
+                <span class="kv-val num" id="sale-gross">1,016.000 TND</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Estimated Fee (0.50% FAQ rate)</span>
+                <span class="kv-val num" id="sale-fee">5.080 TND</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Simulated Net Proceeds</span>
+                <span class="kv-val num" id="sale-net">1,010.920 TND</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key">Post-Sale Weight (on 50,355.830)</span>
+                <span class="kv-val num text-pos" id="sale-weight">8.27% (Compliant &le;10%)</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-key"><code>automatic_submission_enabled</code></span>
+                <span class="kv-val"><span class="pill pill-blocked">False · Manual Portal Only</span></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <p class="footnote">
+          <strong>Safety Boundary:</strong> This workspace performs arithmetic dry-runs only. It never connects to <code>tunisbourse-challenge.com/bysell.aspx</code> and never mutates <code>real_competition_ledger.json</code>.
+        </p>
+      </main>
+    </div>
+  </div>
+  <script src="app.js"></script>
+  <script>
+    (function () {
+      const stressInput = document.getElementById('stress-price');
+      const sellQty = document.getElementById('sell-qty');
+      const sellLimit = document.getElementById('sell-limit');
+
+      function fmt(n) {
+        return n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      }
+      function updateProtection() {
+        const p = Math.max(0.01, parseFloat(stressInput.value) || 0);
+        const gross = 510 * p;
+        const net = gross * 0.995;
+        const dd = net - 5181.600;
+        const pnl = net - 4997.360;
+        document.getElementById('prot-val').textContent = fmt(gross) + ' TND';
+        document.getElementById('prot-net').textContent = fmt(net) + ' TND';
+        document.getElementById('prot-dd').textContent = (dd >= 0 ? '+' : '') + fmt(dd) + ' TND';
+        document.getElementById('prot-pnl').textContent = (pnl >= 0 ? '+' : '') + fmt(pnl) + ' TND';
+      }
+      function updateSale() {
+        const q = Math.min(510, Math.max(1, parseInt(sellQty.value, 10) || 1));
+        const p = Math.max(0.01, parseFloat(sellLimit.value) || 0);
+        const gross = q * p;
+        const fee = gross * 0.005;
+        const net = gross - fee;
+        const remVal = (510 - q) * 10.160;
+        const weight = (remVal / 50355.830) * 100;
+        document.getElementById('sale-gross').textContent = fmt(gross) + ' TND';
+        document.getElementById('sale-fee').textContent = fmt(fee) + ' TND';
+        document.getElementById('sale-net').textContent = fmt(net) + ' TND';
+        const wEl = document.getElementById('sale-weight');
+        wEl.textContent = weight.toFixed(2) + '% (' + (weight <= 10 ? 'Compliant \u226410%' : 'Above 10% Cap') + ')';
+        wEl.className = 'kv-val num ' + (weight <= 10 ? 'text-pos' : 'text-warn');
+      }
+      document.querySelectorAll('[data-stress]').forEach((b) => {
+        b.addEventListener('click', () => { stressInput.value = b.getAttribute('data-stress'); updateProtection(); });
+      });
+      document.querySelectorAll('[data-sell]').forEach((b) => {
+        b.addEventListener('click', () => { sellQty.value = b.getAttribute('data-sell'); updateSale(); });
+      });
+      stressInput.addEventListener('input', updateProtection);
+      sellQty.addEventListener('input', updateSale);
+      sellLimit.addEventListener('input', updateSale);
+      updateProtection();
+      updateSale();
+    })();
+  </script>
+</body>
+</html>
