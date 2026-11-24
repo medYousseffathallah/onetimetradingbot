@@ -363,6 +363,7 @@ class ModelExperiment(Contract):
     fees_paid_tnd: ProvenanceValue
     win_rate: ProvenanceValue
     sample_count: int
+    run_mode: Literal["STRICT_PIT", "RETROSPECTIVE_EXPLORATORY", "SYNTHETIC_DEMO"] = "STRICT_PIT"
     provenance_status: ValueStatus
     limitations: tuple[str, ...]
     config_hash: str

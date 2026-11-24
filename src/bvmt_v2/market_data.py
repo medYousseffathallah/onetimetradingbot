@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -73,6 +74,7 @@ class MarketData:
     bars: dict[str, tuple[MarketObservation, ...]]
     sessions: tuple[date, ...]
     rejected_non_equity_count: int = 0
+    upstream_excluded_non_equity_count: int = 0
 
     def resolve(self, identifier: str) -> str:
         token = identifier.strip().upper()
@@ -282,11 +284,20 @@ def load_market(
             if prev and prev != bar:
                 raise ValueError(f"Conflicting observations for {key} {session}")
             rows[key][session] = bar
+    upstream_excluded = 0
+    manifest_path = bars_path.parent / "v2_market_manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            upstream_excluded = int(manifest_data.get("excluded_non_equity_rows") or 0)
+        except (ValueError, TypeError, OSError):
+            upstream_excluded = 0
     return MarketData(
         instruments,
         {k: tuple(s[d] for d in sorted(s)) for k, s in rows.items()},
         tuple(sorted(calendar)),
         rejected,
+        upstream_excluded,
     )
 
 

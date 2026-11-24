@@ -124,7 +124,7 @@ export default function InvestmentOverviewPage() {
             key: "latest_dom_capture",
             title: "2. Latest DOM Capture",
             snap: latestCapture,
-            overrideStatus: "UNVERIFIED",
+            overrideStatus: latestCapture?.verification_status ?? "UNVERIFIED",
             footerLeft: latestCapture?.snapshot_id ?? "latest_dom_capture",
             footerRight: latestCapture?.rank
               ? `Rank ${formatInteger(latestCapture.rank)} / ${formatInteger(latestCapture.total_participants)}`
@@ -658,7 +658,8 @@ export default function InvestmentOverviewPage() {
       <p className="border-t border-[#E2E8F0] pt-3 text-[12px] text-[#64748B]">
         <strong>Canonical Dataset Provenance:</strong> {overview.equity_instruments} equities (
         {overview.challenge_members} Challenge members) across {overview.session_count} sessions
-        &middot; {formatInteger(overview.rejected_non_equity_count)} non-equity rows excluded
+        &middot; {formatInteger(overview.upstream_excluded_non_equity_count)} non-equity rows excluded upstream (
+        {formatInteger(overview.rejected_non_equity_count)} rejected at runtime)
         &middot; <code>published_at_present_count = {overview.published_at_present_count}</code>{" "}
         &middot; <code>automatic_submission_enabled = {String(overview.automatic_submission_enabled)}</code>
       </p>

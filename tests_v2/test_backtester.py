@@ -172,3 +172,32 @@ def test_trailing_profit_uses_next_open_after_a_drop():
     assert trail.missed_subsequent_upside_pct.value > 0
     assert trail.net_return_pct.value < results["fixed_horizon"].net_return_pct.value
     assert trail.feasibility_pct.value == 100
+
+
+def test_higher_slippage_never_improves_return_by_dropping_fills():
+    from dataclasses import replace
+
+    orig = tape(80, ("A", "B"))
+    rows_a = list(orig.series["A"])
+    # Set open == high (normal auction open at day's high) while next open rises sharply.
+    rows_a[62] = replace(rows_a[62], open=D("12.0"), high=D("12.0"), low=D("11.5"), close=D("11.8"))
+    bt_zero = Backtester(orig.sessions, {"A": tuple(rows_a), "B": orig.series["B"]}, orig.challenge)
+    res_zero = bt_zero.run("V2-F-LIQ-TREND", 10, bps=D(0))
+    res_50 = bt_zero.run("V2-F-LIQ-TREND", 10, bps=D(50))
+    assert res_zero.sample_count > 0
+    assert res_50.net_return_pct.value <= res_zero.net_return_pct.value
+    assert res_50.sample_count == res_zero.sample_count
+
+
+def test_cap_headroom_and_missing_feature_sell_liquidation():
+    from dataclasses import replace
+
+    orig = tape(85, ("A", "B"))
+    rows_a = list(orig.series["A"])
+    # Create an untraded halt at session 72 so signal session 72 has _features == None for A,
+    # then resume trading on session 73 so an existing position in A can still be exited.
+    rows_a[72] = replace(rows_a[72], volume=0, status="untraded")
+    bt = Backtester(orig.sessions, {"A": tuple(rows_a), "B": orig.series["B"]}, orig.challenge)
+    res = bt.run("V2-D-MOM-RISK", 10)
+    assert res.run_mode == "STRICT_PIT"
+    assert res.sample_count >= 1

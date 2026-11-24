@@ -84,8 +84,8 @@ class Bar:
         if (
             not self.tradable
             or price <= 0
-            or (self.low is not None and price < self.low)
-            or (self.high is not None and price > self.high)
+            or (self.low is not None and self.open < self.low)
+            or (self.high is not None and self.open > self.high)
         ):
             return None
         return price
@@ -169,9 +169,11 @@ class Book:
             self.unfilled_orders += 1
             return
         if side == "BUY":
-            room = equity * CAP - held * bar.open
+            room = equity * CAP - held * price
             quantity = min(
-                quantity, int(max(ZERO, room) / price), int(self.cash / (price * (1 + FEE)))
+                quantity,
+                int(max(ZERO, room) / (price * (1 + FEE))),
+                int(self.cash / (price * (1 + FEE))),
             )
         else:
             quantity = min(quantity, held)
@@ -266,6 +268,10 @@ class Backtester:
         series: dict[str, tuple[Bar, ...]],
         challenge: frozenset[str],
         challenge_known_from: date | None = None,
+        *,
+        run_mode: Literal[
+            "STRICT_PIT", "RETROSPECTIVE_EXPLORATORY", "SYNTHETIC_DEMO"
+        ] = "STRICT_PIT",
     ):
         if not sessions or tuple(sorted(set(sessions))) != sessions:
             raise ValueError("expected sorted unique exchange sessions")
@@ -273,6 +279,9 @@ class Backtester:
         self.series = series
         self.challenge = challenge
         self.challenge_known_from = challenge_known_from
+        self.run_mode: Literal["STRICT_PIT", "RETROSPECTIVE_EXPLORATORY", "SYNTHETIC_DEMO"] = (
+            run_mode
+        )
         self.rows = {s: {b.session: b for b in series[s]} for s in sorted(series)}
         if any(len(rows) != len(series[s]) for s, rows in self.rows.items()):
             raise ValueError("duplicate instrument/session")
@@ -313,17 +322,17 @@ class Backtester:
                     )
                 )
             series[name] = tuple(values)
+        is_demo = any(
+            b.provenance.data_quality_status == "SYNTHETIC_FIXTURE"
+            for bars in market.bars.values()
+            for b in bars
+        )
         return cls(
             market.sessions,
             series,
             frozenset(k for k, v in market.instruments.items() if v.challenge_member),
-            REGISTRY_KNOWN.date()
-            if any(
-                b.provenance.data_quality_status != "SYNTHETIC_FIXTURE"
-                for bars in market.bars.values()
-                for b in bars
-            )
-            else None,
+            None if is_demo else REGISTRY_KNOWN.date(),
+            run_mode="SYNTHETIC_DEMO" if is_demo else "STRICT_PIT",
         )
 
     def _features(self, index: int, name: str) -> Features | None:
@@ -498,10 +507,22 @@ class Backtester:
             target = budget * min(CAP, D(1) / len(selected)) if selected else ZERO
             for name in dict.fromkeys([*book.quantity, *selected]):
                 feature = known.get(name)
+                held_qty = book.quantity.get(name, 0)
                 if feature is None:
+                    if held_qty > 0 and name not in selected:
+                        recent_vols = [
+                            D(b.volume)
+                            for s in self.sessions[max(0, i - 19) : i + 1]
+                            if (b := self.rows.get(name, {}).get(s)) is not None
+                            and b.available_at is not None
+                            and b.available_at <= datetime.combine(self.sessions[i], time(16), UTC)
+                        ]
+                        cap_shares = int(median(recent_vols) * CAP) if recent_vols else held_qty
+                        if cap_shares > 0:
+                            pending.append(Order(name, "SELL", held_qty, cap_shares))
                     continue
                 desired = int(target / feature.close) if name in selected else 0
-                delta = desired - book.quantity.get(name, 0)
+                delta = desired - held_qty
                 if delta:
                     pending.append(
                         Order(name, "BUY" if delta > 0 else "SELL", abs(delta), feature.volume_cap)
@@ -651,9 +672,10 @@ class Backtester:
                 None if known else "No known executable entry and terminal-exit pairs",
             ),
             sample_count=known,
+            run_mode=self.run_mode,
             provenance_status="SIMULATED",
             limitations=(
-                "RETROSPECTIVE_EXPLORATORY",
+                f"{self.run_mode}: {'all bars lack published_at and pre-Nov-9 Challenge history; zero historical fills' if self.run_mode == 'STRICT_PIT' else 'exploratory diagnostics using EOD session close clock and retrospective Challenge membership'}",
                 "Unadjusted EOD prices; executable depth and official benchmark unavailable",
                 "Availability gated on archived observation and ingestion times; unavailable history stays cash",
                 f"Known candidate observations: {sim.known_candidates}; unavailable: {sim.missing_candidates}; zero-fill orders: {book.unfilled_orders}",

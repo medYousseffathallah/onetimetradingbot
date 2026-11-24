@@ -391,7 +391,18 @@ export default function StockResearchDetailPage() {
               Point-in-time availability timestamps and source SHA-256 integrity fields.
             </div>
           </div>
-          {prov ? <ProvenanceBadge status="OBSERVED" label={prov.data_quality_status} /> : null}
+          {prov ? (
+            <ProvenanceBadge
+              status={
+                prov.data_quality_status === "SYNTHETIC_FIXTURE"
+                  ? "SIMULATED"
+                  : prov.data_quality_status === "VERIFIED_PIT"
+                    ? "OBSERVED"
+                    : "UNVERIFIED"
+              }
+              label={prov.data_quality_status}
+            />
+          ) : null}
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

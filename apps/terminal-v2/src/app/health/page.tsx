@@ -107,7 +107,8 @@ export default function DataAccountHealthPage() {
           </div>
           <div className="text-[12px] text-[#64748B]">
             {health.challenge_members} Challenge &middot;{" "}
-            {formatInteger(health.rejected_non_equity_count)} non-equity rows excluded
+            {formatInteger(health.upstream_excluded_non_equity_count)} upstream /{" "}
+            {formatInteger(health.rejected_non_equity_count)} runtime non-equity excluded
           </div>
         </div>
 
@@ -177,7 +178,8 @@ export default function DataAccountHealthPage() {
             <div className="flex justify-between gap-2 py-2">
               <span className="text-[#334155]">Excluded Non-Equity Rows</span>
               <span className="mono-num font-semibold text-[#0F172A]">
-                {formatInteger(health.rejected_non_equity_count)}
+                {formatInteger(health.upstream_excluded_non_equity_count)} upstream /{" "}
+                {formatInteger(health.rejected_non_equity_count)} runtime
               </span>
             </div>
             <div className="flex justify-between gap-2 py-2">

@@ -300,6 +300,7 @@ export interface HealthResponse {
   equity_instruments: number;
   challenge_members: number;
   rejected_non_equity_count: number;
+  upstream_excluded_non_equity_count: number;
   published_at_present_count: number;
 }
 
@@ -333,6 +334,7 @@ export interface StockBarsResponse {
 
 export interface ResearchLabResponse {
   mode: Mode;
+  simulation_mode?: "STRICT_PIT" | "RETROSPECTIVE_EXPLORATORY" | "SYNTHETIC_DEMO";
   classification: string;
   families: string[];
   exit_policies: string[];
@@ -466,12 +468,13 @@ export const v2Api = {
     mode: Mode,
     horizon: 5 | 10 | 20 = 10,
     exitInstrumentId?: string,
+    simulationMode: "STRICT_PIT" | "RETROSPECTIVE_EXPLORATORY" = "STRICT_PIT",
   ): Promise<ResearchLabResponse> {
     const exitParam = exitInstrumentId
       ? `&exit_instrument_id=${encodeURIComponent(exitInstrumentId)}`
       : "";
     return requestJson(
-      `/api/v2/research-lab?mode=${encodeURIComponent(mode)}&horizon=${horizon}${exitParam}`,
+      `/api/v2/research-lab?mode=${encodeURIComponent(mode)}&horizon=${horizon}&simulation_mode=${encodeURIComponent(simulationMode)}${exitParam}`,
     );
   },
 };

@@ -60,28 +60,28 @@ Evaluated against BVMT's exact domain constraints (`75` ISINs, thin liquidity, z
 
 ---
 
-## 5. Reproducible V2 Benchmark Results (`run_v2_benchmark_suite.py`)
+## 5. Reproducible V2 Benchmark Results (`run_v2_benchmark_suite.py` — Post P0-2/P1-3 Remediation)
 
 Executed via `bvmt_v2.backtester` over the clean equity archive (`data/v2_market/daily_bars.equity_only.csv`: `15,080` rows, `75` canonical ISINs after consolidating `TN0005700018`, `202` sessions `2026-01-02..2026-11-18`; artifact `artifacts/v2/v2-benchmark-results.json`):
 
-1. **Strict PIT Mode (`Backtester.from_market`, `challenge_known_from = 2026-11-09`, `published_at = None`)**:
-   - Returns **`N = 0`** active historical Challenge trades prior to `2026-11-09` because neither historical bar publication timestamps nor pre-Nov-9 Challenge universe membership files exist in the local archive. Only `BL-EW-FULL` (if ingestion timestamps permit) has non-Challenge universe coverage.
+1. **Strict PIT Mode (`Backtester.from_market`, `challenge_known_from = 2026-11-18`, `published_at = None`)**:
+   - Returns **`N = 0`** active historical Challenge trades because neither historical bar publication timestamps nor pre-Nov-18 Challenge universe membership files exist in the local archive (`STRICT_PIT` refuses to fabricate historical PIT trades).
 2. **Retrospective Exploratory Mode (`H = 10` Primary Horizon, `offset = 0`, `0 bps` extra slippage, `T+0` reuse, explicit unverified EOD availability & Challenge-42 retrospective membership)**:
 
 | Strategy / Baseline (`H=10`) | Net Return | Alpha vs EW-CHAL | Max DD | Top-1 Excluded Return (`Top1`) | Utilization | Matched Fills (`N`) |
 |---|---:|---:|---:|---:|---:|---:|
-| `BL-CASH` | `0.00%` | `-22.08%` | `0.00%` | `0.00%` (`None`) | `0.00%` | `0` |
-| `BL-EW-CHAL` (Challenge 42 EW) | **`+22.08%`** | `0.00%` | `14.22%` | **`+18.42%`** (`SOTETEL`) | `97.72%` | `196` |
-| `BL-EW-FULL` (Full 75 ISINs EW) | `+12.29%` | `0.00%` *(self)* | `11.24%` | `+10.16%` (`SOTETEL`) | `81.53%` | `279` |
-| `BL-MOM20` | `+6.88%` | `-15.19%` | `10.46%` | `-0.04%` (`SOTETEL`) | `56.22%` | `41` |
-| `LEGACY-G-APPROX` (cadence `20`) | `+14.38%` | `-5.26%` | `5.75%` | `+1.80%` (`SOTETEL`) | `33.91%` | `10` |
-| `V2-D-MOM-RISK` | `+6.59%` | `-15.48%` | `11.01%` | `-0.13%` (`SOTETEL`) | `54.76%` | `36` |
-| `V2-F-LIQ-TREND` | `+14.18%` | `-7.89%` | `13.51%` | **`+10.50%`** (`SOTETEL`) | `87.93%` | `70` |
-| `V2-H-PULLBACK` | `+7.93%` | `-14.14%` | `5.17%` | `+1.91%` (`SOTUVER`) | `35.91%` | `40` |
-| `V2-G-AWAKENING` | `+15.83%` | `-6.24%` | `3.81%` | `+6.68%` (`SOTETEL`) | `30.09%` | `23` |
+| `BL-CASH` | `0.00%` | `-19.32%` | `0.00%` | `0.00%` (`None`) | `0.00%` | `0` |
+| `BL-EW-CHAL` (Challenge 42 EW) | **`+19.32%`** | `0.00%` | `15.46%` | **`+15.59%`** (`SOTETEL`) | `94.97%` | `259` |
+| `BL-EW-FULL` (Full 75 ISINs EW) | `+11.59%` | `0.00%` *(self)* | `11.16%` | `+9.44%` (`SOTETEL`) | `76.18%` | `277` |
+| `BL-MOM20` | `+4.81%` | `-14.51%` | `11.50%` | `-2.16%` (`SOTETEL`) | `50.94%` | `40` |
+| `LEGACY-G-APPROX` (cadence `20`) | `+14.31%` | `-3.99%` | `5.78%` | `+1.77%` (`SOTETEL`) | `32.04%` | `10` |
+| `V2-D-MOM-RISK` | `+6.30%` | `-13.01%` | `11.30%` | `-0.45%` (`SOTETEL`) | `51.36%` | `37` |
+| `V2-F-LIQ-TREND` | `+13.50%` | `-5.81%` | `13.77%` | **`+18.62%`** (`ATL`) | `85.09%` | `69` |
+| `V2-H-PULLBACK` | `+6.86%` | `-12.45%` | `5.32%` | `+0.87%` (`SOTUVER`) | `32.75%` | `40` |
+| `V2-G-AWAKENING` | `+14.47%` | `-4.85%` | `4.07%` | `+5.37%` (`SOTETEL`) | `25.85%` | `23` |
 
 ### Key Scientific Takeaways (No Hypothesis Promoted)
-- **None of the tested active models beat `BL-EW-CHAL` (`+22.08%` MTM, `+18.42%` ex-`SOTETEL`) at `H=10`**, and at `H=20` only `V2-F-LIQ-TREND` (`+23.00%` vs `+21.81%`, phase-0) edges slightly ahead before dropping to `+12.82%` ex-`SOTETEL` (`< +17.84%` EW ex-`SOTETEL`).
-- **Outlier & Phase Fragility**: Concentrated momentum rules (`BL-MOM20`, `LEGACY-G-APPROX`, `V2-D-MOM-RISK`) lose almost 90–100% of net return when `SOTETEL` is excluded (`-0.04%`, `+1.80%`, `-0.13%`) and exhibit `2.12–6.80 pp` IQR across cadence offsets (`V2-F-LIQ-TREND` spans `+8.85%` to `+35.46%`, median `+19.33%`).
-- **T+3 Settlement Sensitivity**: Enforcing unverified `T+3` settlement drops `V2-F-LIQ-TREND` (`H=10`) from `+14.18%` to **`+1.93%`**, proving why resolving `settlement_and_cash` in `configs/competition.json` is critical before trusting high-turnover models.
-- **Exit Policy Benchmark (`EURO-CYCLES`, `H=10`, `13/13` matched periods)**: `fixed_horizon` (`-2.01%`), `trend_deterioration` (`-1.44%`, `64.17%` false exits), `trailing_profit_5pct` (`-2.03%`), `partial_profit_trim` (`-2.00%`), **`opportunity_rotation` (`-0.60%`, lowest `27.74%` false-exit rate)**, `combined_risk_trend` (`-1.92%`). None turns a structurally declining stock profitable, reinforcing that entry quality and rotation beat naive tight stops on thin BVMT books.
+- **None of the tested active models beat `BL-EW-CHAL` (`+19.32%` MTM, `+15.59%` ex-`SOTETEL`) at `H=10`** (`H=5`: `BL-EW-CHAL` `+19.89%` vs active `+1.17%..+17.40%`). At `H=20`, `V2-F-LIQ-TREND` reaches `+22.52%` vs `BL-EW-CHAL` `+20.19%`, yet remains lower once `SOTETEL` is excluded (`+12.35%` vs `+16.35%`).
+- **Outlier & Phase Fragility**: Concentrated momentum rules (`BL-MOM20`, `LEGACY-G-APPROX`, `V2-D-MOM-RISK`) lose nearly all net return when `SOTETEL` is excluded (`-2.16%`, `+1.77%`, `-0.45%` at `H=10`) and exhibit `1.96–5.57 pp` IQR across `H=10` cadence offsets (`V2-F-LIQ-TREND` spans `+6.86%` to `+34.42%`, median `+18.62%`; `LEGACY-G-APPROX` spans `-1.51%` to `+14.31%`, median `+6.90%`).
+- **Slippage Monotonicity & T+3 Settlement Sensitivity (Post P0-2 Fix)**: Applying `50 bps` extra slippage honestly reduces `V2-D-MOM-RISK` (`H=10`) from `+6.30%` to **`+2.85%`** and `V2-F-LIQ-TREND` (`H=10`) from `+13.50%` to **`+7.98%`**. Enforcing unverified `T+3` settlement drops `V2-F-LIQ-TREND` (`H=10`) from `+13.50%` to **`+2.17%`**, proving why resolving `settlement_and_cash` in `configs/competition.json` is mandatory before trusting higher-turnover models.
+- **Exit Policy Benchmark (`EURO-CYCLES`, `H=10`, `13/13` matched periods)**: `fixed_horizon` (`-2.01%`), `trend_deterioration` (`-1.44%`, `64.14%` false exits), `trailing_profit_5pct` (`-2.03%`), `partial_profit_trim` (`-1.99%`), **`opportunity_rotation` (`-0.60%`, lowest `27.78%` false-exit rate)**, `combined_risk_trend` (`-1.92%`). None turns a structurally declining stock profitable, reinforcing that entry quality and rotation beat naive tight stops on thin BVMT books.

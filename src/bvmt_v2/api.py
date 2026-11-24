@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .backtester import EXIT_POLICIES, FAMILIES, Backtester, PhaseSensitivity
+from .backtester import EXIT_POLICIES, FAMILIES, Backtester, Bar, PhaseSensitivity
 from .contracts import (
     Horizon,
     ManualTradeScenario,
@@ -33,8 +33,25 @@ from .market_data import MarketData, load_market, synthetic_market
 from .portfolio_engine import PortfolioBook, load_portfolio, read_signal_journal
 from .research_engine import ResearchContext, ResearchEngine
 
-HOST = r"(?:127\.0\.0\.1|localhost)(?::[0-9]{1,5})?"
+HOST = r"(?:127\.0\.0\.1|localhost)(?::([0-9]{1,5}))?"
 ORIGIN = rf"https?://{HOST}"
+SimulationMode = Literal["STRICT_PIT", "RETROSPECTIVE_EXPLORATORY"]
+
+
+def _valid_host(value: str) -> bool:
+    match = re.fullmatch(HOST, value, re.IGNORECASE)
+    if not match:
+        return False
+    port = match.group(1)
+    return port is None or 1 <= int(port) <= 65535
+
+
+def _valid_origin(value: str) -> bool:
+    match = re.fullmatch(ORIGIN, value, re.IGNORECASE)
+    if not match:
+        return False
+    port = match.group(1)
+    return port is None or 1 <= int(port) <= 65535
 
 
 class ScenarioInput(BaseModel):
@@ -85,8 +102,8 @@ def create_v2_app(
         if (
             request.client is None
             or request.client.host not in {"127.0.0.1", "localhost", "::1"}
-            or not re.fullmatch(HOST, request.headers.get("host", ""), re.IGNORECASE)
-            or (origin is not None and not re.fullmatch(ORIGIN, origin, re.IGNORECASE))
+            or not _valid_host(request.headers.get("host", ""))
+            or (origin is not None and not _valid_origin(origin))
         ):
             return JSONResponse({"detail": "Loopback access required"}, status_code=403)
         return await call_next(request)
@@ -126,9 +143,11 @@ def create_v2_app(
         except KeyError as exc:
             raise HTTPException(404, "Unknown equity instrument") from exc
 
-    def _competition_blockers_count() -> int:
+    def _competition_blockers_count(mode: Mode = "REAL_COMPETITION") -> int:
         cfg_path = Path(__file__).resolve().parents[2] / "configs/competition.json"
         if not cfg_path.is_file():
+            if mode == "REAL_COMPETITION":
+                raise HTTPException(503, "Competition configuration unavailable")
             return 0
         raw = json.loads(cfg_path.read_text(encoding="utf-8"))
         fields = raw.get("fields") or {}
@@ -160,12 +179,13 @@ def create_v2_app(
             "execution_enabled": False,
             "automatic_submission_enabled": False,
             "llm_live_enabled": False,
-            "rules_blocker_count": _competition_blockers_count(),
+            "rules_blocker_count": _competition_blockers_count(mode),
             "latest_session": m.sessions[-1] if m.sessions else None,
             "session_count": len(m.sessions),
             "equity_instruments": len(m.instruments),
             "challenge_members": sum(i.challenge_member for i in m.instruments.values()),
             "rejected_non_equity_count": m.rejected_non_equity_count,
+            "upstream_excluded_non_equity_count": m.upstream_excluded_non_equity_count,
             "published_at_present_count": pub_count,
         }
 
@@ -182,6 +202,7 @@ def create_v2_app(
             "market_instruments": len(m.instruments),
             "challenge_members": sum(i.challenge_member for i in m.instruments.values()),
             "rejected_non_equity_count": m.rejected_non_equity_count,
+            "upstream_excluded_non_equity_count": m.upstream_excluded_non_equity_count,
         }
 
     @app.get("/api/v2/portfolio")
@@ -270,15 +291,41 @@ def create_v2_app(
     def attribution(mode: Mode = "REAL_COMPETITION") -> PerformanceAttribution:
         return book(mode).attribution
 
-    @lru_cache(maxsize=2)
-    def simulator(mode: Mode) -> Backtester:
-        return Backtester.from_market(data(mode))
+    @lru_cache(maxsize=4)
+    def simulator(mode: Mode, simulation_mode: SimulationMode = "STRICT_PIT") -> Backtester:
+        m = data(mode)
+        if mode == "SYNTHETIC_DEMO" or simulation_mode == "STRICT_PIT":
+            return Backtester.from_market(m)
+        series = {
+            name: tuple(
+                Bar(
+                    bar.session_date,
+                    bar.open_tnd.value or money(Decimal(0)),
+                    bar.close_tnd.value or money(Decimal(0)),
+                    bar.turnover_tnd.value,
+                    bar.volume_shares,
+                    bar.status,
+                    datetime.combine(bar.session_date, time(16), tzinfo=UTC),
+                    bar.low_tnd.value,
+                    bar.high_tnd.value,
+                )
+                for bar in observations
+            )
+            for name, observations in m.bars.items()
+        }
+        return Backtester(
+            m.sessions,
+            series,
+            frozenset(k for k, v in m.instruments.items() if v.challenge_member),
+            challenge_known_from=None,
+            run_mode="RETROSPECTIVE_EXPLORATORY",
+        )
 
-    @lru_cache(maxsize=6)
+    @lru_cache(maxsize=12)
     def lab(
-        mode: Mode, horizon: int
+        mode: Mode, horizon: int, simulation_mode: SimulationMode = "STRICT_PIT"
     ) -> tuple[tuple[ModelExperiment, ...], dict[str, PhaseSensitivity]]:
-        tester = simulator(mode)
+        tester = simulator(mode, simulation_mode)
         experiments = tuple(tester.run(family, horizon) for family in FAMILIES)
         phases = {}
         for family in FAMILIES:
@@ -289,30 +336,42 @@ def create_v2_app(
 
     @app.get("/api/v2/research-lab")
     def research_lab(
-        mode: Mode = "REAL_COMPETITION", horizon: int = 10, exit_instrument_id: str | None = None
+        mode: Mode = "REAL_COMPETITION",
+        horizon: int = 10,
+        exit_instrument_id: str | None = None,
+        simulation_mode: SimulationMode = "STRICT_PIT",
     ) -> dict[str, object]:
         if horizon not in (5, 10, 20):
             raise HTTPException(422, "Supported experiment horizons are 5, 10 and 20 sessions")
-        enough = len(data(mode).sessions) >= 62 + horizon
-        experiments, phases = lab(mode, horizon) if enough else ((), {})
+        tester = simulator(mode, simulation_mode)
+        enough = len(tester.sessions) >= 62 + horizon
+        experiments, phases = lab(mode, horizon, simulation_mode) if enough else ((), {})
         exit_key = identify(mode, exit_instrument_id) if exit_instrument_id is not None else None
+        limitations: list[str] = []
+        if tester.run_mode == "STRICT_PIT":
+            limitations.append(
+                "STRICT_PIT blocks historical EOD runs lacking pre-cutoff source_publication_time and retrospective challenge membership dates."
+            )
+        elif tester.run_mode == "RETROSPECTIVE_EXPLORATORY":
+            limitations.append(
+                "RETROSPECTIVE_EXPLORATORY assumes same-session 16:00 UTC EOD availability and retroactive Challenge membership for exploratory comparison only."
+            )
+        if len(phases) != len(FAMILIES):
+            limitations.append("Insufficient sessions for all phase offsets")
         return {
             "mode": mode,
-            "classification": "RETROSPECTIVE_EXPLORATORY"
-            if mode == "REAL_COMPETITION"
-            else "SYNTHETIC_DEMO",
+            "simulation_mode": tester.run_mode,
+            "classification": tester.run_mode,
             "families": FAMILIES,
             "exit_policies": EXIT_POLICIES,
             "signal_journal": read_signal_journal() if mode == "REAL_COMPETITION" else (),
             "experiments": experiments,
             "phase_sensitivity": phases,
             "exit_instrument_id": exit_key,
-            "exit_policy_comparison": simulator(mode).compare_exit_policies(exit_key, horizon)
+            "exit_policy_comparison": tester.compare_exit_policies(exit_key, horizon)
             if exit_key and enough
             else {},
-            "limitations": ("Insufficient sessions for all phase offsets",)
-            if len(phases) != len(FAMILIES)
-            else (),
+            "limitations": tuple(limitations),
             "tunindex": pv(
                 None,
                 "RATIO",

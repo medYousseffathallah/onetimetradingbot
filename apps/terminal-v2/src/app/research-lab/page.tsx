@@ -15,12 +15,18 @@ import { ProvenanceNumber } from "@/components/ProvenanceNumber";
 import { ApiErrorBanner, LoadingSkeleton } from "@/components/StateFeedback";
 
 const LAB_HORIZONS: Array<5 | 10 | 20> = [5, 10, 20];
-const EXIT_CANDIDATES = ["EURO-CYCLES", "DELICE_HOLDING", "AMEN_BANK", "MPBS", "STA"];
+const REAL_EXIT_CANDIDATES = ["EURO-CYCLES", "DELICE_HOLDING", "AMEN_BANK", "MPBS", "STA"];
+const DEMO_EXIT_CANDIDATES = ["EURO-CYCLES", "DELICE_HOLDING", "AMEN_BANK"];
 
 export default function ResearchLabPage() {
   const { mode } = useMode();
   const [horizon, setHorizon] = useState<5 | 10 | 20>(10);
+  const [simulationMode, setSimulationMode] = useState<
+    "STRICT_PIT" | "RETROSPECTIVE_EXPLORATORY"
+  >("STRICT_PIT");
+  const candidates = mode === "SYNTHETIC_DEMO" ? DEMO_EXIT_CANDIDATES : REAL_EXIT_CANDIDATES;
   const [exitInstrumentId, setExitInstrumentId] = useState<string>("EURO-CYCLES");
+  const safeExitId = candidates.includes(exitInstrumentId) ? exitInstrumentId : candidates[0];
   const [data, setData] = useState<ResearchLabResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,14 +35,14 @@ export default function ResearchLabPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await v2Api.getResearchLab(mode, horizon, exitInstrumentId);
+      const res = await v2Api.getResearchLab(mode, horizon, safeExitId, simulationMode);
       setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load research lab");
     } finally {
       setLoading(false);
     }
-  }, [mode, horizon, exitInstrumentId]);
+  }, [mode, horizon, safeExitId, simulationMode]);
 
   useEffect(() => {
     void loadData();
@@ -52,8 +58,8 @@ export default function ResearchLabPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#64748B]">
-            GET /api/v2/research-lab?mode={mode}&amp;horizon={horizon}&amp;exit_instrument_id=
-            {exitInstrumentId}
+            GET /api/v2/research-lab?mode={mode}&amp;horizon={horizon}&amp;simulation_mode=
+            {simulationMode}&amp;exit_instrument_id={safeExitId}
           </div>
           <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-[#0F172A]">
             Research Lab
@@ -99,6 +105,26 @@ export default function ResearchLabPage() {
               {h} Sessions
             </button>
           ))}
+          <span className="ml-2 text-[12px] font-semibold uppercase tracking-wide text-[#64748B]">
+            Simulation:
+          </span>
+          {(["STRICT_PIT", "RETROSPECTIVE_EXPLORATORY"] as const).map((sim) => (
+            <button
+              key={sim}
+              type="button"
+              disabled={mode === "SYNTHETIC_DEMO"}
+              onClick={() => setSimulationMode(sim)}
+              className={`min-h-[34px] rounded-md border px-3 py-1 text-[12px] font-semibold ${
+                mode === "SYNTHETIC_DEMO"
+                  ? "border-[#E2E8F0] bg-[#F8FAFC] text-[#94A3B8] cursor-not-allowed"
+                  : simulationMode === sim
+                    ? "border-[#99F6E4] bg-[#F0FDFA] text-[#0F766E]"
+                    : "border-[#E2E8F0] bg-white text-[#334155] hover:bg-[#F1F5F9]"
+              }`}
+            >
+              {sim}
+            </button>
+          ))}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -110,11 +136,11 @@ export default function ResearchLabPage() {
           </label>
           <select
             id="exit-instrument"
-            value={exitInstrumentId}
+            value={safeExitId}
             onChange={(e) => setExitInstrumentId(e.target.value)}
             className="min-h-[36px] rounded-md border border-[#CBD5E1] bg-white px-2.5 text-[12.5px] font-semibold text-[#0F172A] focus:border-[#0F766E] focus:outline-none"
           >
-            {EXIT_CANDIDATES.map((id) => (
+            {candidates.map((id) => (
               <option key={id} value={id}>
                 {id}
               </option>
@@ -399,7 +425,10 @@ export default function ResearchLabPage() {
           <ul className="list-disc space-y-1 pl-4 text-[12.5px] text-[#334155]">
             <li>Unadjusted EOD prices; executable intraday depth and TUNINDEX unavailable.</li>
             <li>Zero-volume bars never fill; next-open fills capped at 10% trailing ADV.</li>
-            <li>All experiments are retrospective exploratory runs, never live profit claims.</li>
+            <li>
+              Active simulation classification: <code>{data.classification}</code> — never live
+              profit claims.
+            </li>
             {data.limitations.map((lim) => (
               <li key={lim}>{lim}</li>
             ))}

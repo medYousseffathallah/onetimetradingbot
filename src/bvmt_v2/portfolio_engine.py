@@ -7,12 +7,13 @@ import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from statistics import median, pstdev
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from .contracts import (
     Holding,
@@ -159,10 +160,15 @@ def _snapshot(
     )
 
 
+def _tunis_date(stamp: datetime) -> date:
+    return stamp.astimezone(ZoneInfo("Africa/Tunis")).date()
+
+
 def _mark_portfolio(
     current: PortfolioSnapshot, market: MarketData, at: datetime, demo: bool
 ) -> PortfolioSnapshot:
-    session = max((s for s in market.sessions if s <= at.date()), default=None)
+    cutoff_date = _tunis_date(at)
+    session = max((s for s in market.sessions if s <= cutoff_date), default=None)
     source = f"{current.source_id}+eod_{session}"
     status: ValueStatus = "SIMULATED" if demo else "CALCULATED"
     marked: list[Holding] = []
@@ -284,12 +290,13 @@ class PortfolioBook:
         weight = (
             price * item.quantity / equity if price is not None and equity and equity > 0 else None
         )
+        cutoff_date = _tunis_date(self.at)
         known = {
             b.session_date: b
             for b in self.market.bars.get(instrument_id, ())
-            if b.session_date <= self.at.date() and b.provenance.available_at <= self.at
+            if b.session_date <= cutoff_date and b.provenance.available_at <= self.at
         }
-        sessions = [d for d in self.market.sessions if d <= self.at.date()][-21:]
+        sessions = [d for d in self.market.sessions if d <= cutoff_date][-21:]
         closes = [known[d].close_tnd.value for d in sessions if d in known]
         vols = [Decimal(known[d].volume_shares) for d in sessions[-20:] if d in known]
         capacity = median(vols) * CAP if len(vols) == 20 else None
@@ -458,6 +465,7 @@ def _attribution(
     at: datetime,
     report: Mapping[str, Any],
     demo: bool,
+    partial_screenshot_omits: int = 0,
 ) -> PerformanceAttribution:
     status: ValueStatus = "SIMULATED" if demo else "CALCULATED"
     source = marked.source_id
@@ -547,6 +555,11 @@ def _attribution(
             "INCOMPLETE_TRANSACTION_HISTORY",
             "STATIC_HOLDINGS_SINCE_DOM_CAPTURE",
             "EOD_PRICES_ONLY",
+            *(
+                (f"PARTIAL_SCREENSHOT_OMITS_{partial_screenshot_omits}_HOLDINGS",)
+                if partial_screenshot_omits > 0
+                else ()
+            ),
         ),
     )
 
@@ -664,7 +677,12 @@ def load_portfolio(
     unverified = _snapshot(
         screenshot_raw, "unverified_user_screenshot_2026_11", market, at, "UNVERIFIED"
     )
-    attribution = _attribution(captures[0], marked, market.sessions[-1], at, report, False)
+    omitted_holdings = max(
+        0, int(screenshot.get("reported_holdings_count") or 0) - len(unverified.holdings)
+    )
+    attribution = _attribution(
+        captures[0], marked, market.sessions[-1], at, report, False, omitted_holdings
+    )
     return PortfolioBook(
         market,
         mode,
@@ -736,7 +754,7 @@ def freeze_signal(
                 return previous
             raise ValueError("Frozen journal ID already contains a different signal")
         recorded = datetime.now(UTC)
-        if forecast_session <= (recorded + timedelta(hours=1)).date():
+        if forecast_session <= _tunis_date(recorded):
             raise ValueError("Frozen signals require a future Tunis session")
         draft = SignalJournal(
             journal_id=journal_id,

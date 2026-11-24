@@ -50,8 +50,11 @@ export default function InvestmentDecisionWorkspacePage() {
       const disc = await v2Api.getDiscovery(mode, "FULL_BVMT_RESEARCH", "5_10");
       setCandidates(disc.candidates);
       const targetId =
-        disc.candidates.find((c) => c.assessment.instrument.instrument_id === selectedId)
-          ?.assessment.instrument.instrument_id ??
+        disc.candidates.find(
+          (c) =>
+            c.assessment.instrument.instrument_id.toUpperCase() === selectedId.toUpperCase() ||
+            c.assessment.instrument.symbol.toUpperCase() === selectedId.toUpperCase(),
+        )?.assessment.instrument.instrument_id ??
         disc.candidates[0]?.assessment.instrument.instrument_id ??
         selectedId;
       setSelectedId(targetId);
@@ -375,6 +378,13 @@ export default function InvestmentDecisionWorkspacePage() {
                 </span>
               </div>
 
+              {!assessment.instrument.challenge_member ? (
+                <div className="rounded-md border border-[#FECACA] bg-[#FEF2F2] p-2.5 text-[12px] text-[#991B1B]">
+                  <strong>RESTRICTED_CHALLENGE:</strong> Non-Challenge instrument &mdash; dry-run
+                  BUY simulation is blocked at the pre-trade gate.
+                </div>
+              ) : null}
+
               {scenarioError ? (
                 <div className="rounded-md border border-[#FECACA] bg-[#FEF2F2] p-2.5 text-[12px] text-[#991B1B]">
                   {scenarioError}
@@ -383,10 +393,14 @@ export default function InvestmentDecisionWorkspacePage() {
 
               <button
                 type="submit"
-                disabled={scenarioBusy}
+                disabled={scenarioBusy || !assessment.instrument.challenge_member}
                 className="min-h-[42px] w-full rounded-md bg-[#0F766E] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#115E59] disabled:opacity-60"
               >
-                {scenarioBusy ? "Simulating BUY Scenario..." : "Run Dry-Run BUY Scenario"}
+                {!assessment.instrument.challenge_member
+                  ? "Blocked: Outside Challenge Universe"
+                  : scenarioBusy
+                    ? "Simulating BUY Scenario..."
+                    : "Run Dry-Run BUY Scenario"}
               </button>
             </form>
 

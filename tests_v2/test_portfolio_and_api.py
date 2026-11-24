@@ -355,5 +355,30 @@ async def test_loopback_boundary_and_mode_consistency(demo_market: MarketData) -
             await client.get("/api/v2/health", params={"mode": "REAL_COMPETITION"})
         ).json()
         assert real_health["published_at_present_count"] == 0
+        assert real_health["upstream_excluded_non_equity_count"] >= 0
+        strict_lab = (
+            await client.get(
+                "/api/v2/research-lab",
+                params={"mode": "REAL_COMPETITION", "horizon": "10"},
+            )
+        ).json()
+        assert strict_lab["classification"] == "STRICT_PIT"
+        assert all(exp["sample_count"] == 0 for exp in strict_lab["experiments"])
+        retro_lab = (
+            await client.get(
+                "/api/v2/research-lab",
+                params={
+                    "mode": "REAL_COMPETITION",
+                    "horizon": "10",
+                    "simulation_mode": "RETROSPECTIVE_EXPLORATORY",
+                },
+            )
+        ).json()
+        assert retro_lab["classification"] == "RETROSPECTIVE_EXPLORATORY"
+        assert any(exp["sample_count"] > 0 for exp in retro_lab["experiments"])
+        attr_payload = (
+            await client.get("/api/v2/attribution", params={"mode": "REAL_COMPETITION"})
+        ).json()
+        assert "PARTIAL_SCREENSHOT_OMITS_8_HOLDINGS" in attr_payload["failure_tags"]
     async with http_client(app, "192.0.2.1") as external:
         assert (await external.get("/api/v2/health")).status_code == 403

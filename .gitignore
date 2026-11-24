@@ -42,6 +42,7 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 data/portfolio/
+data/research/
 data/staging/
 
 # External References, Browser Profiles, Frontend Builds & Editor Skills Copies

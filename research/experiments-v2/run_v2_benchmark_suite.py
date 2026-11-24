@@ -56,6 +56,7 @@ def _exploratory_backtester(strict_bt: Backtester) -> Backtester:
         series=exp_series,
         challenge=strict_bt.challenge,
         challenge_known_from=None,
+        run_mode="RETROSPECTIVE_EXPLORATORY",
     )
 
 
