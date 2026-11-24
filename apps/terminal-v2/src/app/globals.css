@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-canvas: #F8F9FA;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #F1F5F9;
+  --bg-hover: #F8FAFC;
+  --border-hairline: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --text-unavailable: #94A3B8;
+
+  --accent-primary: #0F766E;
+  --accent-hover: #115E59;
+  --accent-tint: #F0FDFA;
+  --accent-border: #99F6E4;
+
+  --pos-text: #065F46;
+  --pos-bg: #ECFDF5;
+  --pos-border: #A7F3D0;
+  --warn-text: #92400E;
+  --warn-bg: #FFFBEB;
+  --warn-border: #FDE68A;
+  --neg-text: #991B1B;
+  --neg-bg: #FEF2F2;
+  --neg-border: #FECACA;
+  --info-text: #1E40AF;
+  --info-bg: #EFF6FF;
+  --info-border: #BFDBFE;
+  --sim-text: #5B21B6;
+  --sim-bg: #F5F3FF;
+  --sim-border: #DDD6FE;
+  --neut-text: #475569;
+  --neut-bg: #F1F5F9;
+  --neut-border: #CBD5E1;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.mono-num {
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
